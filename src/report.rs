@@ -136,7 +136,7 @@ impl ReportGenerator {
 
     fn show_investigation_commands(&self, category: &FindingCategory, file_path: &std::path::Path) {
         match category {
-            FindingCategory::GitBranch | FindingCategory::ShaiHuludRepository => {
+            FindingCategory::SuspiciousGitBranch | FindingCategory::ShaiHuludRepo => {
                 if let Some(parent) = file_path.parent() {
                     println!("     {}", "┌─ Git Investigation Commands:".blue());
                     println!("     {}  cd '{}'", "│".blue(), parent.display());
@@ -158,7 +158,7 @@ impl ReportGenerator {
             FindingCategory::SuspiciousContent => {
                 "NOTE: Manual review required to determine if these are malicious."
             }
-            FindingCategory::GitBranch => {
+            FindingCategory::SuspiciousGitBranch => {
                 "NOTE: 'shai-hulud' branches may indicate compromise.\nUse the commands above to investigate each branch."
             }
             FindingCategory::PostinstallHook => {
@@ -170,13 +170,13 @@ impl ReportGenerator {
                     _ => "NOTE: These patterns indicate likely malicious credential harvesting.\nImmediate investigation and remediation required."
                 }
             }
-            FindingCategory::ShaiHuludRepository => {
+            FindingCategory::ShaiHuludRepo => {
                 "NOTE: 'Shai-Hulud' repositories are created by the malware for exfiltration.\nThese should be deleted immediately after investigation."
             }
-            FindingCategory::NamespaceWarning => {
+            FindingCategory::CompromisedNamespace => {
                 "NOTE: These namespaces have been compromised but specific versions may vary.\nCheck package versions against known compromise lists."
             }
-            FindingCategory::IntegrityIssue => {
+            FindingCategory::PackageIntegrity => {
                 "NOTE: These issues may indicate tampering with package dependencies.\nVerify package versions and regenerate lockfiles if necessary."
             }
             FindingCategory::Typosquatting => {
@@ -184,6 +184,9 @@ impl ReportGenerator {
             }
             FindingCategory::NetworkExfiltration => {
                 "NOTE: These patterns may indicate data exfiltration or communication with C2 servers.\nReview network connections and data flows carefully."
+            }
+            FindingCategory::CryptoTheft => {
+                "NOTE: These patterns indicate cryptocurrency theft attempts.\nCheck for wallet address replacements and XMLHttpRequest hijacking."
             }
             _ => return,
         };

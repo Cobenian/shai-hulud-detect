@@ -18,6 +18,40 @@ impl Scanner {
         Self { config }
     }
 
+    pub fn scan_directory(&self, directory: &Path, findings: &mut ScanFindings) -> Result<()> {
+        println!("{}", "🔍 Checking for malicious workflow files...".blue());
+        self.check_workflow_files(directory, findings)?;
+
+        println!("{}", "🔍 Checking file hashes for known malicious content...".blue());
+        self.check_file_hashes(directory, findings)?;
+
+        println!("{}", "🔍 Checking package.json files for compromised packages...".blue());
+        self.check_packages(directory, findings)?;
+
+        println!("{}", "🔍 Checking for suspicious postinstall hooks...".blue());
+        self.check_postinstall_hooks(directory, findings)?;
+
+        println!("{}", "🔍 Checking for suspicious content patterns...".blue());
+        self.check_content(directory, findings)?;
+
+        println!("{}", "🔍 Checking for cryptocurrency theft patterns...".blue());
+        self.check_crypto_theft_patterns(directory, findings)?;
+
+        println!("{}", "🔍 Checking for Trufflehog activity and secret scanning...".blue());
+        self.check_trufflehog_activity(directory, findings)?;
+
+        println!("{}", "🔍 Checking for suspicious git branches...".blue());
+        self.check_git_branches(directory, findings)?;
+
+        println!("{}", "🔍 Checking for Shai-Hulud repositories and migration patterns...".blue());
+        self.check_shai_hulud_repos(directory, findings)?;
+
+        println!("{}", "🔍 Checking package lock files for integrity issues...".blue());
+        self.check_package_integrity(directory, findings)?;
+
+        Ok(())
+    }
+
     pub fn check_workflow_files(&self, directory: &Path, findings: &mut ScanFindings) -> Result<()> {
         println!("{}", "🔍 Checking for malicious workflow files...".blue());
 
@@ -124,7 +158,7 @@ impl Scanner {
                             findings.add_finding(Finding::new(
                                 path.to_path_buf(),
                                 RiskLevel::Medium,
-                                FindingCategory::NamespaceWarning,
+                                FindingCategory::CompromisedNamespace,
                                 format!("Package from compromised namespace: {} ({})", package_name, namespace),
                             ));
                         }
@@ -208,6 +242,120 @@ impl Scanner {
         Ok(())
     }
 
+    pub fn check_crypto_theft_patterns(&self, directory: &Path, findings: &mut ScanFindings) -> Result<()> {
+        let file_extensions = ["js", "ts", "json"];
+        
+        for entry in WalkDir::new(directory).into_iter().filter_map(|e| e.ok()) {
+            let path = entry.path();
+            
+            if let Some(extension) = path.extension().and_then(|e| e.to_str()) {
+                if file_extensions.contains(&extension) {
+                    if let Ok(content) = fs::read_to_string(path) {
+                        self.analyze_crypto_patterns(path, &content, findings)?;
+                    }
+                }
+            }
+        }
+        
+        Ok(())
+    }
+
+    fn analyze_crypto_patterns(&self, path: &Path, content: &str, findings: &mut ScanFindings) -> Result<()> {
+        // Check for wallet address replacement patterns
+        let eth_wallet_regex = Regex::new(r"0x[a-fA-F0-9]{40}")?;
+        if eth_wallet_regex.is_match(content) && 
+           (content.contains("ethereum") || content.contains("wallet") || content.contains("address") || content.contains("crypto")) {
+            findings.add_finding(Finding::new(
+                path.to_path_buf(),
+                RiskLevel::Medium,
+                FindingCategory::CryptoTheft,
+                "Ethereum wallet address patterns detected".to_string(),
+            ));
+        }
+
+        // Check for XMLHttpRequest hijacking
+        if content.contains("XMLHttpRequest.prototype.send") {
+            findings.add_finding(Finding::new(
+                path.to_path_buf(),
+                RiskLevel::High,
+                FindingCategory::CryptoTheft,
+                "XMLHttpRequest prototype modification detected".to_string(),
+            ));
+        }
+
+        // Check for specific malicious functions from chalk/debug attack
+        let malicious_functions = ["checkethereumw", "runmask", "newdlocal", "_0x19ca67"];
+        for func in &malicious_functions {
+            if content.contains(func) {
+                findings.add_finding(Finding::new(
+                    path.to_path_buf(),
+                    RiskLevel::High,
+                    FindingCategory::CryptoTheft,
+                    "Known crypto theft function names detected".to_string(),
+                ));
+                break;
+            }
+        }
+
+        // Check for known attacker wallets
+        let attacker_wallets = [
+            "0xFc4a4858bafef54D1b1d7697bfb5c52F4c166976",
+            "1H13VnQJKtT4HjD5ZFKaaiZEetMbG7nDHx",
+            "TB9emsCq6fQw6wRk4HBxxNnU6Hwt1DnV67"
+        ];
+        for wallet in &attacker_wallets {
+            if content.contains(wallet) {
+                findings.add_finding(Finding::new(
+                    path.to_path_buf(),
+                    RiskLevel::High,
+                    FindingCategory::CryptoTheft,
+                    "Known attacker wallet address detected - HIGH RISK".to_string(),
+                ));
+            }
+        }
+
+        // Check for npmjs.help phishing domain
+        if content.contains("npmjs.help") {
+            findings.add_finding(Finding::new(
+                path.to_path_buf(),
+                RiskLevel::High,
+                FindingCategory::CryptoTheft,
+                "Phishing domain npmjs.help detected".to_string(),
+            ));
+        }
+
+        // Check for javascript obfuscation patterns
+        if content.contains("javascript-obfuscator") {
+            findings.add_finding(Finding::new(
+                path.to_path_buf(),
+                RiskLevel::Medium,
+                FindingCategory::CryptoTheft,
+                "JavaScript obfuscation detected".to_string(),
+            ));
+        }
+
+        // Check for cryptocurrency address regex patterns
+        let crypto_regex_patterns = [
+            r"ethereum.*0x\[a-fA-F0-9\]",
+            r"bitcoin.*\[13\]\[a-km-zA-HJ-NP-Z1-9\]"
+        ];
+        for pattern in &crypto_regex_patterns {
+            if let Ok(regex) = Regex::new(pattern) {
+                if regex.is_match(content) {
+                    findings.add_finding(Finding::new(
+                        path.to_path_buf(),
+                        RiskLevel::Medium,
+                        FindingCategory::CryptoTheft,
+                        "Cryptocurrency regex patterns detected".to_string(),
+                    ));
+                    break;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     pub fn check_git_branches(&self, directory: &Path, findings: &mut ScanFindings) -> Result<()> {
         println!("{}", "🔍 Checking for suspicious git branches...".blue());
 
@@ -226,7 +374,7 @@ impl Scanner {
                                         findings.add_finding(Finding::new(
                                             repo_path.to_path_buf(),
                                             RiskLevel::Medium,
-                                            FindingCategory::GitBranch,
+                                            FindingCategory::SuspiciousGitBranch,
                                             format!("Suspicious branch '{}' (commit: {})", branch_name, &commit_hash.trim()[..8.min(commit_hash.len())]),
                                         ));
                                     }
@@ -470,7 +618,6 @@ impl Scanner {
     }
 
     pub fn check_shai_hulud_repos(&self, directory: &Path, findings: &mut ScanFindings) -> Result<()> {
-        println!("{}", "🔍 Checking for Shai-Hulud repositories and migration patterns...".blue());
 
         for entry in WalkDir::new(directory).into_iter().filter_map(|e| e.ok()) {
             let path = entry.path();
@@ -483,7 +630,7 @@ impl Scanner {
                     findings.add_finding(Finding::new(
                         repo_dir.to_path_buf(),
                         RiskLevel::High,
-                        FindingCategory::ShaiHuludRepository,
+                        FindingCategory::ShaiHuludRepo,
                         "Repository name contains 'Shai-Hulud'".to_string(),
                     ));
                 }
@@ -493,7 +640,7 @@ impl Scanner {
                     findings.add_finding(Finding::new(
                         repo_dir.to_path_buf(),
                         RiskLevel::High,
-                        FindingCategory::ShaiHuludRepository,
+                        FindingCategory::ShaiHuludRepo,
                         "Repository name contains migration pattern".to_string(),
                     ));
                 }
@@ -506,7 +653,7 @@ impl Scanner {
                             findings.add_finding(Finding::new(
                                 repo_dir.to_path_buf(),
                                 RiskLevel::High,
-                                FindingCategory::ShaiHuludRepository,
+                                FindingCategory::ShaiHuludRepo,
                                 "Git remote contains 'Shai-Hulud'".to_string(),
                             ));
                         }
@@ -521,7 +668,7 @@ impl Scanner {
                             findings.add_finding(Finding::new(
                                 repo_dir.to_path_buf(),
                                 RiskLevel::High,
-                                FindingCategory::ShaiHuludRepository,
+                                FindingCategory::ShaiHuludRepo,
                                 "Contains suspicious data.json (possible base64-encoded credentials)".to_string(),
                             ));
                         }
@@ -534,7 +681,6 @@ impl Scanner {
     }
 
     pub fn check_package_integrity(&self, directory: &Path, findings: &mut ScanFindings) -> Result<()> {
-        println!("{}", "🔍 Checking package lock files for integrity issues...".blue());
 
         let lock_files = ["package-lock.json", "yarn.lock"];
         
@@ -563,7 +709,7 @@ impl Scanner {
                     findings.add_finding(Finding::new(
                         path.to_path_buf(),
                         RiskLevel::Medium,
-                        FindingCategory::IntegrityIssue,
+                        FindingCategory::PackageIntegrity,
                         format!("Compromised package in lockfile: {}@{}", compromised.name, compromised.version),
                     ));
                 }
@@ -581,7 +727,7 @@ impl Scanner {
                             findings.add_finding(Finding::new(
                                 path.to_path_buf(),
                                 RiskLevel::Medium,
-                                FindingCategory::IntegrityIssue,
+                                FindingCategory::PackageIntegrity,
                                 "Recently modified lockfile contains @ctrl packages (potential worm activity)".to_string(),
                             ));
                         }

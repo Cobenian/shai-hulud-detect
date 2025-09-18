@@ -21,15 +21,16 @@ pub enum FindingCategory {
     MaliciousWorkflow,
     MaliciousHash,
     CompromisedPackage,
+    CompromisedNamespace,
     SuspiciousContent,
-    GitBranch,
     PostinstallHook,
     TrufflehogActivity,
-    ShaiHuludRepository,
-    NamespaceWarning,
-    IntegrityIssue,
+    SuspiciousGitBranch,
+    ShaiHuludRepo,
+    PackageIntegrity,
     Typosquatting,
     NetworkExfiltration,
+    CryptoTheft,
 }
 
 impl FindingCategory {
@@ -39,14 +40,15 @@ impl FindingCategory {
             FindingCategory::MaliciousHash => "Malicious File Hash",
             FindingCategory::CompromisedPackage => "Compromised Package",
             FindingCategory::SuspiciousContent => "Suspicious Content",
-            FindingCategory::GitBranch => "Suspicious Git Branch",
+            FindingCategory::SuspiciousGitBranch => "Suspicious Git Branch",
             FindingCategory::PostinstallHook => "Suspicious Postinstall Hook",
             FindingCategory::TrufflehogActivity => "Trufflehog Activity",
-            FindingCategory::ShaiHuludRepository => "Shai-Hulud Repository",
-            FindingCategory::NamespaceWarning => "Compromised Namespace",
-            FindingCategory::IntegrityIssue => "Package Integrity Issue",
+            FindingCategory::ShaiHuludRepo => "Shai-Hulud Repository",
+            FindingCategory::CompromisedNamespace => "Compromised Namespace",
+            FindingCategory::PackageIntegrity => "Package Integrity Issue",
             FindingCategory::Typosquatting => "Typosquatting",
             FindingCategory::NetworkExfiltration => "Network Exfiltration",
+            FindingCategory::CryptoTheft => "Cryptocurrency Theft",
         }
     }
 }
