@@ -1,16 +1,16 @@
 # Shai-Hulud NPM Supply Chain Attack Detector
 
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Rust](https://img.shields.io/badge/rust-1.89+-blue)](#requirements)
 [![Shell](https://img.shields.io/badge/shell-Bash-blue)](#requirements)
 [![Status](https://img.shields.io/badge/status-Active-success)](../../)
 [![Contributions](https://img.shields.io/badge/contributions-Welcome-orange)](CONTRIBUTING.md)
-[![Last Commit](https://img.shields.io/github/last-commit/Cobenian/shai-hulud-detect)](https://github.com/Cobenian/shai-hulud-detect/commits/main)
 [![Security Tool](https://img.shields.io/badge/type-Security%20Tool-red)](#overview)
 
 
 <img src="shai_hulu_detector.jpg" alt="sshd" width="80%" />
 
-A bash script to detect indicators of compromise from the September 2025 npm supply chain attacks, including the Shai-Hulud self-replicating worm and the chalk/debug crypto theft attack. This comprehensive detector covers 571+ compromised package versions across multiple attack campaigns, providing protection against the most severe JavaScript supply chain attacks to date.
+A high-performance Rust tool (with original bash script) to detect indicators of compromise from the September 2025 npm supply chain attacks, including the Shai-Hulud self-replicating worm and the chalk/debug crypto theft attack. This comprehensive detector covers 571+ compromised package versions across multiple attack campaigns, providing protection against the most severe JavaScript supply chain attacks to date, surpassing previous incidents like color-name attacks and eslint package hijacking.
 
 ## Overview
 
@@ -34,11 +34,26 @@ The script detects indicators from both attacks to provide comprehensive protect
 
 ## Quick Start
 
+### Rust Version (Recommended - Fast & Modern)
+
 ```bash
 # Clone the repository (required for compromised package list)
 git clone https://github.com/username/shai-hulud-detector.git
 cd shai-hulud-detector
 
+# Build the Rust version
+cargo build --release
+
+# Scan your project for Shai-Hulud indicators
+./target/release/shai-hulud-detector /path/to/your/project
+
+# For comprehensive security scanning
+./target/release/shai-hulud-detector --paranoid /path/to/your/project
+```
+
+### Bash Version (Original)
+
+```bash
 # Make the script executable
 chmod +x shai-hulud-detector.sh
 
@@ -144,6 +159,11 @@ Check these security advisories regularly for newly discovered compromised packa
 
 ## Requirements
 
+### Rust Version
+- Rust 1.89+ (install via [rustup](https://rustup.rs/))
+- macOS or Unix-like system
+
+### Bash Version  
 - macOS or Unix-like system
 - Bash shell
 - Standard Unix tools: `find`, `grep`, `shasum`

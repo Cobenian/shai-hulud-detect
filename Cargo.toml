@@ -1,0 +1,31 @@
+[package]
+name = "shai-hulud-detector"
+version = "0.1.0"
+edition = "2021"
+authors = ["Your Name <your.email@example.com>"]
+description = "Shai-Hulud NPM Supply Chain Attack Detection Tool"
+license = "MIT"
+repository = "https://github.com/yourusername/shai-hulud-detector"
+keywords = ["security", "npm", "supply-chain", "malware-detection"]
+categories = ["command-line-utilities", "development-tools"]
+
+[[bin]]
+name = "shai-hulud-detector"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.4", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+walkdir = "2.4"
+regex = "1.10"
+sha2 = "0.10"
+hex = "0.4"
+colored = "2.0"
+anyhow = "1.0"
+thiserror = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+rayon = "1.8"
+
+[dev-dependencies]
+tempfile = "3.8"
