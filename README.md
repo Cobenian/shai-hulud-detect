@@ -36,23 +36,46 @@ The script detects indicators from both attacks to provide comprehensive protect
 
 ### Rust Version (Recommended - Fast & Modern)
 
+#### Quick Start (Pre-built Binaries)
+
+**📦 [Download Latest Release](https://github.com/milkinteractive/shai-hulud-detect-c/releases/latest)**
+
+**Available Platforms:**
+- 🍎 **macOS**: `shai-hulud-detector-v1.0.1-macos.tar.gz`
+- 🐧 **Linux**: `shai-hulud-detector-v1.0.1-linux.tar.gz`
+- 🪟 **Windows**: `shai-hulud-detector-v1.0.1-windows.zip`
+
 ```bash
-# Clone the repository (required for compromised package list)
-git clone https://github.com/username/shai-hulud-detector.git
-cd shai-hulud-detector
+# Download latest release for your platform
+wget https://github.com/milkinteractive/shai-hulud-detect-c/releases/latest/download/shai-hulud-detector-v1.0.1-macos.tar.gz
+
+# Extract and install
+tar -xzf shai-hulud-detector-v1.0.1-macos.tar.gz
+cd v1.0.1
+./install.sh
+
+# Scan your project for Shai-Hulud indicators
+./shai-hulud-detector /path/to/your/project
+
+# For comprehensive security scanning
+./shai-hulud-detector --paranoid /path/to/your/project
+
+# Use custom packages file or URL
+./shai-hulud-detector --packages ./my-packages.txt /path/to/your/project
+./shai-hulud-detector --packages https://example.com/packages.txt /path/to/your/project
+```
+
+#### Build from Source
+```bash
+# Clone the repository
+git clone https://github.com/milkinteractive/shai-hulud-detect-c.git
+cd shai-hulud-detect-c
 
 # Build the Rust version
 cargo build --release
 
-# Scan your project for Shai-Hulud indicators
+# Use the binary
 ./target/release/shai-hulud-detector /path/to/your/project
-
-# For comprehensive security scanning
-./target/release/shai-hulud-detector --paranoid /path/to/your/project
-
-# Use custom packages file or URL
-./target/release/shai-hulud-detector --packages ./my-packages.txt /path/to/your/project
-./target/release/shai-hulud-detector --packages https://example.com/packages.txt /path/to/your/project
 ```
 
 **Performance Benefits:**

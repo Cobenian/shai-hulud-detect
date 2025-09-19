@@ -1,6 +1,6 @@
 [package]
 name = "shai-hulud-detector"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2021"
 authors = ["Your Name <your.email@example.com>"]
 description = "Shai-Hulud NPM Supply Chain Attack Detection Tool"
