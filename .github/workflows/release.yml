@@ -4,6 +4,13 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag name for the release (e.g., v1.0.3)'
+        required: true
+        default: 'v1.0.3'
+        type: string
 
 env:
   CARGO_TERM_COLOR: always
@@ -14,26 +21,36 @@ jobs:
     outputs:
       upload_url: ${{ steps.create_release.outputs.upload_url }}
       release_id: ${{ steps.create_release.outputs.id }}
+      tag_name: ${{ steps.get_tag.outputs.tag_name }}
     steps:
+      - name: Get tag name
+        id: get_tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag_name=${{ github.event.inputs.tag_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag_name=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          fi
+
       - name: Create Release
         id: create_release
         uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ github.ref_name }}
-          release_name: Shai-Hulud Detector ${{ github.ref_name }}
+          tag_name: ${{ steps.get_tag.outputs.tag_name }}
+          release_name: Shai-Hulud Detector ${{ steps.get_tag.outputs.tag_name }}
           draft: false
           prerelease: false
           body: |
-            ## Shai-Hulud Detector ${{ github.ref_name }}
+            ## Shai-Hulud Detector ${{ steps.get_tag.outputs.tag_name }}
             
-            Automated release created from tag ${{ github.ref_name }}.
+            Automated release created from ${{ github.event_name == 'workflow_dispatch' && 'manual trigger' || format('tag {0}', steps.get_tag.outputs.tag_name) }}.
             
             ### Download
-            - **macOS (Intel/Apple Silicon)**: `shai-hulud-detector-${{ github.ref_name }}-macos.tar.gz`
-            - **Linux (x86_64)**: `shai-hulud-detector-${{ github.ref_name }}-linux.tar.gz`
-            - **Windows (x86_64)**: `shai-hulud-detector-${{ github.ref_name }}-windows.zip`
+            - **macOS (Intel/Apple Silicon)**: `shai-hulud-detector-${{ steps.get_tag.outputs.tag_name }}-macos.tar.gz`
+            - **Linux (x86_64)**: `shai-hulud-detector-${{ steps.get_tag.outputs.tag_name }}-linux.tar.gz`
+            - **Windows (x86_64)**: `shai-hulud-detector-${{ steps.get_tag.outputs.tag_name }}-windows.zip`
             
             ### Features
             - 📦 Embedded database with 571+ compromised packages
@@ -44,8 +61,8 @@ jobs:
             ### Quick Start
             ```bash
             # Download and extract
-            tar -xzf shai-hulud-detector-${{ github.ref_name }}-macos.tar.gz
-            cd ${{ github.ref_name }}
+            tar -xzf shai-hulud-detector-${{ steps.get_tag.outputs.tag_name }}-macos.tar.gz
+            cd ${{ steps.get_tag.outputs.tag_name }}
             
             # Install and run
             ./install.sh
@@ -100,28 +117,28 @@ jobs:
       - name: Create release directory
         shell: bash
         run: |
-          mkdir -p release/${{ github.ref_name }}
+          mkdir -p release/${{ needs.create-release.outputs.tag_name }}
           
       - name: Copy binary (Unix)
         if: matrix.os != 'windows-latest'
         run: |
-          cp target/${{ matrix.target }}/release/shai-hulud-detector release/${{ github.ref_name }}/
-          chmod +x release/${{ github.ref_name }}/shai-hulud-detector
+          cp target/${{ matrix.target }}/release/shai-hulud-detector release/${{ needs.create-release.outputs.tag_name }}/
+          chmod +x release/${{ needs.create-release.outputs.tag_name }}/shai-hulud-detector
           
       - name: Copy binary (Windows)
         if: matrix.os == 'windows-latest'
         run: |
-          cp target/${{ matrix.target }}/release/shai-hulud-detector.exe release/${{ github.ref_name }}/
+          cp target/${{ matrix.target }}/release/shai-hulud-detector.exe release/${{ needs.create-release.outputs.tag_name }}/
 
       - name: Copy documentation
         run: |
-          cp README.md release/${{ github.ref_name }}/
+          cp README.md release/${{ needs.create-release.outputs.tag_name }}/
 
       - name: Create release notes
         shell: bash
         run: |
-          cat > release/${{ github.ref_name }}/RELEASE_NOTES.md << 'EOF'
-          # Shai-Hulud Detector ${{ github.ref_name }}
+          cat > release/${{ needs.create-release.outputs.tag_name }}/RELEASE_NOTES.md << 'EOF'
+          # Shai-Hulud Detector ${{ needs.create-release.outputs.tag_name }}
           
           ## Features
           - 📦 **Embedded Database**: 571+ compromised packages built into binary
@@ -168,13 +185,13 @@ jobs:
         if: matrix.os != 'windows-latest'
         shell: bash
         run: |
-          cat > release/${{ github.ref_name }}/install.sh << 'EOF'
+          cat > release/${{ needs.create-release.outputs.tag_name }}/install.sh << 'EOF'
           #!/bin/bash
-          # Shai-Hulud Detector ${{ github.ref_name }} Installation Script
+          # Shai-Hulud Detector ${{ needs.create-release.outputs.tag_name }} Installation Script
           
           set -e
           
-          echo "🦀 Installing Shai-Hulud Detector ${{ github.ref_name }}..."
+          echo "🦀 Installing Shai-Hulud Detector ${{ needs.create-release.outputs.tag_name }}..."
           
           # Check if binary exists
           if [ ! -f "shai-hulud-detector" ]; then
@@ -202,15 +219,15 @@ jobs:
               exit 1
           fi
           EOF
-          chmod +x release/${{ github.ref_name }}/install.sh
+          chmod +x release/${{ needs.create-release.outputs.tag_name }}/install.sh
 
       - name: Create install script (Windows)
         if: matrix.os == 'windows-latest'
         shell: bash
         run: |
-          cat > release/${{ github.ref_name }}/install.bat << 'EOF'
+          cat > release/${{ needs.create-release.outputs.tag_name }}/install.bat << 'EOF'
           @echo off
-          echo 🦀 Shai-Hulud Detector ${{ github.ref_name }} for Windows
+          echo 🦀 Shai-Hulud Detector ${{ needs.create-release.outputs.tag_name }} for Windows
           echo.
           
           if not exist "shai-hulud-detector.exe" (
@@ -240,22 +257,22 @@ jobs:
         if: matrix.archive == 'tar.gz'
         run: |
           cd release
-          tar -czf shai-hulud-detector-${{ github.ref_name }}-${{ matrix.name }}.tar.gz ${{ github.ref_name }}
+          tar -czf shai-hulud-detector-${{ needs.create-release.outputs.tag_name }}-${{ matrix.name }}.tar.gz ${{ needs.create-release.outputs.tag_name }}
 
       - name: Create archive (zip)
         if: matrix.archive == 'zip'
         run: |
           cd release
-          7z a shai-hulud-detector-${{ github.ref_name }}-${{ matrix.name }}.zip ${{ github.ref_name }}
+          7z a shai-hulud-detector-${{ needs.create-release.outputs.tag_name }}-${{ matrix.name }}.zip ${{ needs.create-release.outputs.tag_name }}
 
       - name: Generate checksums
         shell: bash
         run: |
           cd release
           if [ "${{ matrix.archive }}" = "tar.gz" ]; then
-            shasum -a 256 shai-hulud-detector-${{ github.ref_name }}-${{ matrix.name }}.tar.gz > shai-hulud-detector-${{ github.ref_name }}-${{ matrix.name }}.tar.gz.sha256
+            shasum -a 256 shai-hulud-detector-${{ needs.create-release.outputs.tag_name }}-${{ matrix.name }}.tar.gz > shai-hulud-detector-${{ needs.create-release.outputs.tag_name }}-${{ matrix.name }}.tar.gz.sha256
           else
-            shasum -a 256 shai-hulud-detector-${{ github.ref_name }}-${{ matrix.name }}.zip > shai-hulud-detector-${{ github.ref_name }}-${{ matrix.name }}.zip.sha256
+            shasum -a 256 shai-hulud-detector-${{ needs.create-release.outputs.tag_name }}-${{ matrix.name }}.zip > shai-hulud-detector-${{ needs.create-release.outputs.tag_name }}-${{ matrix.name }}.zip.sha256
           fi
 
       - name: Upload Release Asset (tar.gz)
@@ -265,8 +282,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./release/shai-hulud-detector-${{ github.ref_name }}-${{ matrix.name }}.tar.gz
-          asset_name: shai-hulud-detector-${{ github.ref_name }}-${{ matrix.name }}.tar.gz
+          asset_path: ./release/shai-hulud-detector-${{ needs.create-release.outputs.tag_name }}-${{ matrix.name }}.tar.gz
+          asset_name: shai-hulud-detector-${{ needs.create-release.outputs.tag_name }}-${{ matrix.name }}.tar.gz
           asset_content_type: application/gzip
 
       - name: Upload Release Asset (zip)
@@ -276,8 +293,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./release/shai-hulud-detector-${{ github.ref_name }}-${{ matrix.name }}.zip
-          asset_name: shai-hulud-detector-${{ github.ref_name }}-${{ matrix.name }}.zip
+          asset_path: ./release/shai-hulud-detector-${{ needs.create-release.outputs.tag_name }}-${{ matrix.name }}.zip
+          asset_name: shai-hulud-detector-${{ needs.create-release.outputs.tag_name }}-${{ matrix.name }}.zip
           asset_content_type: application/zip
 
       - name: Upload Checksum (tar.gz)
@@ -287,8 +304,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./release/shai-hulud-detector-${{ github.ref_name }}-${{ matrix.name }}.tar.gz.sha256
-          asset_name: shai-hulud-detector-${{ github.ref_name }}-${{ matrix.name }}.tar.gz.sha256
+          asset_path: ./release/shai-hulud-detector-${{ needs.create-release.outputs.tag_name }}-${{ matrix.name }}.tar.gz.sha256
+          asset_name: shai-hulud-detector-${{ needs.create-release.outputs.tag_name }}-${{ matrix.name }}.tar.gz.sha256
           asset_content_type: text/plain
 
       - name: Upload Checksum (zip)
@@ -298,6 +315,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./release/shai-hulud-detector-${{ github.ref_name }}-${{ matrix.name }}.zip.sha256
-          asset_name: shai-hulud-detector-${{ github.ref_name }}-${{ matrix.name }}.zip.sha256
+          asset_path: ./release/shai-hulud-detector-${{ needs.create-release.outputs.tag_name }}-${{ matrix.name }}.zip.sha256
+          asset_name: shai-hulud-detector-${{ needs.create-release.outputs.tag_name }}-${{ matrix.name }}.zip.sha256
           asset_content_type: text/plain
