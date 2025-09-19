@@ -62,9 +62,10 @@ cargo build --release
 - 📦 **Single binary** - no external dependencies
 
 **Advanced Features:**
+- 📦 **Embedded database**: 571+ compromised packages built into the binary
 - 🌐 **Remote package lists**: Download compromised packages from URLs
 - 📁 **Flexible file paths**: Support for relative and absolute paths
-- 🔄 **Auto-fallback**: Automatically downloads from GitHub if local file missing
+- 🚀 **Zero dependencies**: Works completely standalone without external files
 - 🎯 **Always up-to-date**: Use latest package lists from remote sources
 
 ### Bash Version (Original)
@@ -193,8 +194,9 @@ Check these security advisories regularly for newly discovered compromised packa
 | **Startup Time** | ~2-3 seconds | ~0.5 seconds | 🦀 Rust |
 | **Error Handling** | Basic exit codes | Structured Result<T> | 🦀 Rust |
 | **CLI Interface** | Basic | Modern (clap) | 🦀 Rust |
+| **Embedded Database** | External file required | Built-in 571+ packages | 🦀 Rust |
 | **Remote Package Lists** | Not supported | URL + file support | 🦀 Rust |
-| **Auto-fallback** | Not supported | GitHub fallback | 🦀 Rust |
+| **Zero Dependencies** | Requires external files | Completely standalone | 🦀 Rust |
 | **Maintainability** | Complex at scale | Modular architecture | 🦀 Rust |
 | **Crypto-Theft Detection** | Complete | Implemented | 🐚 Bash |
 | **Typosquatting Detection** | Basic | Enhanced | 🦀 Rust |

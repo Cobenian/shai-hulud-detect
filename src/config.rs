@@ -4,6 +4,9 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 
+// Embed the compromised packages file at compile time
+const EMBEDDED_PACKAGES: &str = include_str!("../compromised-packages.txt");
+
 #[derive(Debug, Clone)]
 pub struct Config {
     pub paranoid_mode: bool,
@@ -70,18 +73,9 @@ impl Config {
                 }
             }
             None => {
-                // Default behavior - try local file first
-                let default_file = "compromised-packages.txt";
-                if Path::new(default_file).exists() {
-                    println!("{}", format!("📦 Loading compromised packages from: {}", default_file).blue());
-                    fs::read_to_string(default_file)
-                        .context("Failed to read compromised-packages.txt")?
-                } else {
-                    // Fallback to GitHub URL
-                    let github_url = "https://raw.githubusercontent.com/milkinteractive/shai-hulud-detect-c/refs/heads/main/compromised-packages.txt";
-                    println!("{}", format!("📦 Local file not found, downloading from: {}", github_url).yellow());
-                    Self::download_packages_from_url(github_url)?
-                }
+                // Default behavior - use embedded packages
+                println!("{}", "📦 Using embedded compromised packages database".green());
+                EMBEDDED_PACKAGES.to_string()
             }
         };
         
@@ -109,7 +103,7 @@ impl Config {
             }
         }
         
-        println!("{}", format!("📦 Loaded {} compromised packages from compromised-packages.txt", count).green());
+        println!("{}", format!("📦 Loaded {} compromised packages", count).green());
         Ok(packages)
     }
 
