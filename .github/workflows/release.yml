@@ -1,0 +1,303 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      release_id: ${{ steps.create_release.outputs.id }}
+    steps:
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref_name }}
+          release_name: Shai-Hulud Detector ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          body: |
+            ## Shai-Hulud Detector ${{ github.ref_name }}
+            
+            Automated release created from tag ${{ github.ref_name }}.
+            
+            ### Download
+            - **macOS (Intel/Apple Silicon)**: `shai-hulud-detector-${{ github.ref_name }}-macos.tar.gz`
+            - **Linux (x86_64)**: `shai-hulud-detector-${{ github.ref_name }}-linux.tar.gz`
+            - **Windows (x86_64)**: `shai-hulud-detector-${{ github.ref_name }}-windows.zip`
+            
+            ### Features
+            - 📦 Embedded database with 571+ compromised packages
+            - 🌐 Flexible package sources (files, URLs, embedded)
+            - 🚀 Zero external dependencies
+            - 🛡️ Complete Shai-Hulud and crypto-theft detection
+            
+            ### Quick Start
+            ```bash
+            # Download and extract
+            tar -xzf shai-hulud-detector-${{ github.ref_name }}-macos.tar.gz
+            cd ${{ github.ref_name }}
+            
+            # Install and run
+            ./install.sh
+            ./shai-hulud-detector /path/to/scan
+            ```
+            
+            See `RELEASE_NOTES.md` in the archive for detailed changelog.
+
+  build-and-upload:
+    needs: create-release
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            name: macos
+            archive: tar.gz
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            name: linux
+            archive: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            name: windows
+            archive: zip
+    
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Cargo dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Create release directory
+        shell: bash
+        run: |
+          mkdir -p release/${{ github.ref_name }}
+          
+      - name: Copy binary (Unix)
+        if: matrix.os != 'windows-latest'
+        run: |
+          cp target/${{ matrix.target }}/release/shai-hulud-detector release/${{ github.ref_name }}/
+          chmod +x release/${{ github.ref_name }}/shai-hulud-detector
+          
+      - name: Copy binary (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          cp target/${{ matrix.target }}/release/shai-hulud-detector.exe release/${{ github.ref_name }}/
+
+      - name: Copy documentation
+        run: |
+          cp README.md release/${{ github.ref_name }}/
+
+      - name: Create release notes
+        shell: bash
+        run: |
+          cat > release/${{ github.ref_name }}/RELEASE_NOTES.md << 'EOF'
+          # Shai-Hulud Detector ${{ github.ref_name }}
+          
+          ## Features
+          - 📦 **Embedded Database**: 571+ compromised packages built into binary
+          - 🌐 **Flexible Sources**: Support for custom package files and URLs
+          - 🚀 **Zero Dependencies**: Completely standalone binary
+          - 🛡️ **Complete Detection**: Shai-Hulud worm and crypto-theft patterns
+          - ⚡ **High Performance**: 3-5x faster than shell script version
+          
+          ## Usage
+          ```bash
+          # Standard scan with embedded database
+          ./shai-hulud-detector /path/to/scan
+          
+          # Paranoid mode for comprehensive scanning
+          ./shai-hulud-detector --paranoid /path/to/scan
+          
+          # Custom package source
+          ./shai-hulud-detector --packages custom.txt /path/to/scan
+          ./shai-hulud-detector --packages https://example.com/packages.txt /path/to/scan
+          ```
+          
+          ## Installation
+          1. Extract the archive
+          2. Run `./install.sh` (Unix) or just use the binary directly
+          3. Execute `./shai-hulud-detector --help` for usage information
+          
+          ## Detection Capabilities
+          - ✅ Malicious workflow files
+          - ✅ Known malicious file hashes
+          - ✅ 571+ compromised package versions
+          - ✅ Suspicious postinstall hooks
+          - ✅ Content pattern scanning
+          - ✅ Cryptocurrency theft patterns
+          - ✅ Trufflehog activity detection
+          - ✅ Git repository analysis
+          - ✅ Package integrity verification
+          - ✅ Typosquatting detection (paranoid mode)
+          - ✅ Network exfiltration patterns (paranoid mode)
+          
+          Built with ❤️ in Rust 🦀
+          EOF
+
+      - name: Create install script (Unix)
+        if: matrix.os != 'windows-latest'
+        shell: bash
+        run: |
+          cat > release/${{ github.ref_name }}/install.sh << 'EOF'
+          #!/bin/bash
+          # Shai-Hulud Detector ${{ github.ref_name }} Installation Script
+          
+          set -e
+          
+          echo "🦀 Installing Shai-Hulud Detector ${{ github.ref_name }}..."
+          
+          # Check if binary exists
+          if [ ! -f "shai-hulud-detector" ]; then
+              echo "❌ Error: shai-hulud-detector binary not found"
+              exit 1
+          fi
+          
+          # Make binary executable
+          chmod +x shai-hulud-detector
+          
+          # Test the binary
+          echo "🧪 Testing installation..."
+          if ./shai-hulud-detector --help > /dev/null 2>&1; then
+              echo "✅ Installation successful!"
+              echo ""
+              echo "📋 Usage:"
+              echo "  ./shai-hulud-detector /path/to/scan"
+              echo "  ./shai-hulud-detector --paranoid /path/to/scan"
+              echo "  ./shai-hulud-detector --packages custom.txt /path/to/scan"
+              echo ""
+              echo "🛡️  Ready to detect Shai-Hulud and crypto theft attacks!"
+              echo "    (Embedded database with 571+ compromised packages)"
+          else
+              echo "❌ Installation test failed"
+              exit 1
+          fi
+          EOF
+          chmod +x release/${{ github.ref_name }}/install.sh
+
+      - name: Create install script (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          cat > release/${{ github.ref_name }}/install.bat << 'EOF'
+          @echo off
+          echo 🦀 Shai-Hulud Detector ${{ github.ref_name }} for Windows
+          echo.
+          
+          if not exist "shai-hulud-detector.exe" (
+              echo ❌ Error: shai-hulud-detector.exe not found
+              exit /b 1
+          )
+          
+          echo 🧪 Testing installation...
+          shai-hulud-detector.exe --help >nul 2>&1
+          if %errorlevel% neq 0 (
+              echo ❌ Installation test failed
+              exit /b 1
+          )
+          
+          echo ✅ Installation successful!
+          echo.
+          echo 📋 Usage:
+          echo   shai-hulud-detector.exe C:\path\to\scan
+          echo   shai-hulud-detector.exe --paranoid C:\path\to\scan
+          echo   shai-hulud-detector.exe --packages custom.txt C:\path\to\scan
+          echo.
+          echo 🛡️  Ready to detect Shai-Hulud and crypto theft attacks!
+          echo     (Embedded database with 571+ compromised packages)
+          EOF
+
+      - name: Create archive (tar.gz)
+        if: matrix.archive == 'tar.gz'
+        run: |
+          cd release
+          tar -czf shai-hulud-detector-${{ github.ref_name }}-${{ matrix.name }}.tar.gz ${{ github.ref_name }}
+
+      - name: Create archive (zip)
+        if: matrix.archive == 'zip'
+        run: |
+          cd release
+          7z a shai-hulud-detector-${{ github.ref_name }}-${{ matrix.name }}.zip ${{ github.ref_name }}
+
+      - name: Generate checksums
+        shell: bash
+        run: |
+          cd release
+          if [ "${{ matrix.archive }}" = "tar.gz" ]; then
+            shasum -a 256 shai-hulud-detector-${{ github.ref_name }}-${{ matrix.name }}.tar.gz > shai-hulud-detector-${{ github.ref_name }}-${{ matrix.name }}.tar.gz.sha256
+          else
+            shasum -a 256 shai-hulud-detector-${{ github.ref_name }}-${{ matrix.name }}.zip > shai-hulud-detector-${{ github.ref_name }}-${{ matrix.name }}.zip.sha256
+          fi
+
+      - name: Upload Release Asset (tar.gz)
+        if: matrix.archive == 'tar.gz'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./release/shai-hulud-detector-${{ github.ref_name }}-${{ matrix.name }}.tar.gz
+          asset_name: shai-hulud-detector-${{ github.ref_name }}-${{ matrix.name }}.tar.gz
+          asset_content_type: application/gzip
+
+      - name: Upload Release Asset (zip)
+        if: matrix.archive == 'zip'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./release/shai-hulud-detector-${{ github.ref_name }}-${{ matrix.name }}.zip
+          asset_name: shai-hulud-detector-${{ github.ref_name }}-${{ matrix.name }}.zip
+          asset_content_type: application/zip
+
+      - name: Upload Checksum (tar.gz)
+        if: matrix.archive == 'tar.gz'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./release/shai-hulud-detector-${{ github.ref_name }}-${{ matrix.name }}.tar.gz.sha256
+          asset_name: shai-hulud-detector-${{ github.ref_name }}-${{ matrix.name }}.tar.gz.sha256
+          asset_content_type: text/plain
+
+      - name: Upload Checksum (zip)
+        if: matrix.archive == 'zip'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./release/shai-hulud-detector-${{ github.ref_name }}-${{ matrix.name }}.zip.sha256
+          asset_name: shai-hulud-detector-${{ github.ref_name }}-${{ matrix.name }}.zip.sha256
+          asset_content_type: text/plain
