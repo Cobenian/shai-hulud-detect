@@ -23,8 +23,9 @@ pub struct CompromisedPackage {
 
 impl Config {
     pub fn new(paranoid_mode: bool, packages_source: Option<String>) -> Result<Self> {
-        let malicious_hash = "46faab8ab153fae6e80e7cca38eab363075bb524edd79e42269217a083628f09".to_string();
-        
+        let malicious_hash =
+            "46faab8ab153fae6e80e7cca38eab363075bb524edd79e42269217a083628f09".to_string();
+
         let compromised_namespaces = [
             "@crowdstrike",
             "@art-ws",
@@ -58,38 +59,49 @@ impl Config {
         })
     }
 
-    fn load_compromised_packages(packages_source: Option<String>) -> Result<Vec<CompromisedPackage>> {
+    fn load_compromised_packages(
+        packages_source: Option<String>,
+    ) -> Result<Vec<CompromisedPackage>> {
         let content = match packages_source {
             Some(source) => {
                 if source.starts_with("http://") || source.starts_with("https://") {
                     // Download from URL
-                    println!("{}", format!("📦 Downloading compromised packages from: {}", source).blue());
+                    println!(
+                        "{}",
+                        format!("📦 Downloading compromised packages from: {}", source).blue()
+                    );
                     Self::download_packages_from_url(&source)?
                 } else {
                     // Read from file path
-                    println!("{}", format!("📦 Loading compromised packages from: {}", source).blue());
+                    println!(
+                        "{}",
+                        format!("📦 Loading compromised packages from: {}", source).blue()
+                    );
                     fs::read_to_string(&source)
                         .with_context(|| format!("Failed to read packages file: {}", source))?
                 }
             }
             None => {
                 // Default behavior - use embedded packages
-                println!("{}", "📦 Using embedded compromised packages database".green());
+                println!(
+                    "{}",
+                    "📦 Using embedded compromised packages database".green()
+                );
                 EMBEDDED_PACKAGES.to_string()
             }
         };
-        
+
         let mut packages = Vec::new();
         let mut count = 0;
-        
+
         for line in content.lines() {
             let line = line.trim();
-            
+
             // Skip comments and empty lines
             if line.starts_with('#') || line.is_empty() {
                 continue;
             }
-            
+
             // Parse package:version format
             if let Some((name, version)) = line.split_once(':') {
                 // Validate format
@@ -102,31 +114,39 @@ impl Config {
                 }
             }
         }
-        
-        println!("{}", format!("📦 Loaded {} compromised packages", count).green());
+
+        println!(
+            "{}",
+            format!("📦 Loaded {} compromised packages", count).green()
+        );
         Ok(packages)
     }
 
     fn download_packages_from_url(url: &str) -> Result<String> {
         let response = reqwest::blocking::get(url)
             .with_context(|| format!("Failed to download from URL: {}", url))?;
-        
+
         if !response.status().is_success() {
-            return Err(anyhow::anyhow!("HTTP error {}: Failed to download from {}", response.status(), url));
+            return Err(anyhow::anyhow!(
+                "HTTP error {}: Failed to download from {}",
+                response.status(),
+                url
+            ));
         }
-        
-        let content = response.text()
+
+        let content = response
+            .text()
             .with_context(|| format!("Failed to read response from URL: {}", url))?;
-        
+
         Ok(content)
     }
 
     fn is_valid_package_version(name: &str, version: &str) -> bool {
         // Basic validation for package name and version format
-        !name.is_empty() && 
-        !version.is_empty() &&
-        version.chars().any(|c| c.is_ascii_digit()) &&
-        version.contains('.')
+        !name.is_empty()
+            && !version.is_empty()
+            && version.chars().any(|c| c.is_ascii_digit())
+            && version.contains('.')
     }
 
     fn get_fallback_packages() -> Vec<CompromisedPackage> {

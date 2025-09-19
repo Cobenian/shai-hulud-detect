@@ -70,27 +70,44 @@ impl ScanFindings {
     }
 
     pub fn has_high_risk_issues(&self) -> bool {
-        self.findings.iter().any(|f| f.risk_level == RiskLevel::High)
+        self.findings
+            .iter()
+            .any(|f| f.risk_level == RiskLevel::High)
     }
 
     pub fn high_risk_count(&self) -> usize {
-        self.findings.iter().filter(|f| f.risk_level == RiskLevel::High).count()
+        self.findings
+            .iter()
+            .filter(|f| f.risk_level == RiskLevel::High)
+            .count()
     }
 
     pub fn medium_risk_count(&self) -> usize {
-        self.findings.iter().filter(|f| f.risk_level == RiskLevel::Medium).count()
+        self.findings
+            .iter()
+            .filter(|f| f.risk_level == RiskLevel::Medium)
+            .count()
     }
 
     pub fn low_risk_count(&self) -> usize {
-        self.findings.iter().filter(|f| f.risk_level == RiskLevel::Low).count()
+        self.findings
+            .iter()
+            .filter(|f| f.risk_level == RiskLevel::Low)
+            .count()
     }
 
     pub fn findings_by_risk(&self, risk_level: RiskLevel) -> Vec<&Finding> {
-        self.findings.iter().filter(|f| f.risk_level == risk_level).collect()
+        self.findings
+            .iter()
+            .filter(|f| f.risk_level == risk_level)
+            .collect()
     }
 
     pub fn findings_by_category(&self, category: FindingCategory) -> Vec<&Finding> {
-        self.findings.iter().filter(|f| std::mem::discriminant(&f.category) == std::mem::discriminant(&category)).collect()
+        self.findings
+            .iter()
+            .filter(|f| std::mem::discriminant(&f.category) == std::mem::discriminant(&category))
+            .collect()
     }
 }
 

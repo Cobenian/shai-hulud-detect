@@ -23,19 +23,25 @@ impl ReportGenerator {
         // Report findings by category and risk level
         self.report_high_risk_findings(&high_risk_findings);
         self.report_medium_risk_findings(&medium_risk_findings);
-        
+
         // Generate summary
         self.generate_summary(findings, &low_risk_findings);
     }
 
     fn print_header(&self) {
-        println!("{}", "==============================================".blue());
+        println!(
+            "{}",
+            "==============================================".blue()
+        );
         if self.config.paranoid_mode {
             println!("{}", "  SHAI-HULUD + PARANOID SECURITY REPORT".blue());
         } else {
             println!("{}", "      SHAI-HULUD DETECTION REPORT".blue());
         }
-        println!("{}", "==============================================".blue());
+        println!(
+            "{}",
+            "==============================================".blue()
+        );
     }
 
     fn report_high_risk_findings(&self, findings: &[&Finding]) {
@@ -46,24 +52,27 @@ impl ReportGenerator {
         // Group findings by category
         let mut categories = std::collections::HashMap::new();
         for finding in findings {
-            categories.entry(&finding.category).or_insert_with(Vec::new).push(*finding);
+            categories
+                .entry(&finding.category)
+                .or_insert_with(Vec::new)
+                .push(*finding);
         }
 
         for (category, category_findings) in categories {
             self.print_category_header(category, RiskLevel::High);
-            
+
             for finding in category_findings {
                 println!("   - {}", finding.description);
                 println!("     Found in: {}", finding.file_path.display());
-                
+
                 if let Some(details) = &finding.details {
                     println!("     Details: {}", details);
                 }
-                
+
                 self.show_investigation_commands(category, &finding.file_path);
                 println!();
             }
-            
+
             self.print_category_notes(category);
         }
     }
@@ -76,7 +85,10 @@ impl ReportGenerator {
         // Group findings by category
         let mut categories = std::collections::HashMap::new();
         for finding in findings {
-            categories.entry(&finding.category).or_insert_with(Vec::new).push(*finding);
+            categories
+                .entry(&finding.category)
+                .or_insert_with(Vec::new)
+                .push(*finding);
         }
 
         for (category, category_findings) in categories {
@@ -88,11 +100,11 @@ impl ReportGenerator {
             };
 
             self.print_category_header(category, RiskLevel::Medium);
-            
+
             for finding in display_findings {
                 println!("   - {}", finding.description);
                 println!("     Found in: {}", finding.file_path.display());
-                
+
                 if let Some(details) = &finding.details {
                     println!("     Details: {}", details);
                 }
@@ -100,12 +112,14 @@ impl ReportGenerator {
             }
 
             if self.is_paranoid_category(category) && category_findings.len() > 5 {
-                println!("   - ... and {} more {} warnings (truncated for brevity)", 
-                    category_findings.len() - 5, 
-                    category.display_name().to_lowercase());
+                println!(
+                    "   - ... and {} more {} warnings (truncated for brevity)",
+                    category_findings.len() - 5,
+                    category.display_name().to_lowercase()
+                );
                 println!();
             }
-            
+
             self.print_category_notes(category);
         }
     }
@@ -119,7 +133,7 @@ impl ReportGenerator {
 
         let risk_text = format!("{:?}", risk_level).to_uppercase();
         let category_name = category.display_name();
-        
+
         let paranoid_suffix = if self.is_paranoid_category(category) {
             " (PARANOID)"
         } else {
@@ -127,10 +141,34 @@ impl ReportGenerator {
         };
 
         match color {
-            "red" => println!("{}", format!("{} {} RISK: {}{}:", emoji, risk_text, category_name, paranoid_suffix).red()),
-            "yellow" => println!("{}", format!("{} {} RISK{}: {}:", emoji, risk_text, paranoid_suffix, category_name).yellow()),
-            "blue" => println!("{}", format!("{} {} RISK{}: {}:", emoji, risk_text, paranoid_suffix, category_name).blue()),
-            _ => println!("{} {} RISK{}: {}:", emoji, risk_text, paranoid_suffix, category_name),
+            "red" => println!(
+                "{}",
+                format!(
+                    "{} {} RISK: {}{}:",
+                    emoji, risk_text, category_name, paranoid_suffix
+                )
+                .red()
+            ),
+            "yellow" => println!(
+                "{}",
+                format!(
+                    "{} {} RISK{}: {}:",
+                    emoji, risk_text, paranoid_suffix, category_name
+                )
+                .yellow()
+            ),
+            "blue" => println!(
+                "{}",
+                format!(
+                    "{} {} RISK{}: {}:",
+                    emoji, risk_text, paranoid_suffix, category_name
+                )
+                .blue()
+            ),
+            _ => println!(
+                "{} {} RISK{}: {}:",
+                emoji, risk_text, paranoid_suffix, category_name
+            ),
         }
     }
 
@@ -196,7 +234,10 @@ impl ReportGenerator {
     }
 
     fn is_paranoid_category(&self, category: &FindingCategory) -> bool {
-        matches!(category, FindingCategory::Typosquatting | FindingCategory::NetworkExfiltration)
+        matches!(
+            category,
+            FindingCategory::Typosquatting | FindingCategory::NetworkExfiltration
+        )
     }
 
     fn generate_summary(&self, findings: &ScanFindings, low_risk_findings: &[&Finding]) {
@@ -205,58 +246,114 @@ impl ReportGenerator {
         let low_risk_count = low_risk_findings.len();
         let total_issues = high_risk_count + medium_risk_count;
 
-        println!("{}", "==============================================".blue());
+        println!(
+            "{}",
+            "==============================================".blue()
+        );
 
         if total_issues == 0 {
-            println!("{}", "✅ No indicators of Shai-Hulud compromise detected.".green());
-            println!("{}", "Your system appears clean from this specific attack.".green());
+            println!(
+                "{}",
+                "✅ No indicators of Shai-Hulud compromise detected.".green()
+            );
+            println!(
+                "{}",
+                "Your system appears clean from this specific attack.".green()
+            );
 
             if low_risk_count > 0 {
                 println!();
                 println!("{}", "ℹ️  LOW RISK FINDINGS (informational only):".blue());
                 for finding in low_risk_findings.iter().take(5) {
-                    println!("   - {}: {}", finding.category.display_name(), finding.description);
+                    println!(
+                        "   - {}: {}",
+                        finding.category.display_name(),
+                        finding.description
+                    );
                 }
                 if low_risk_count > 5 {
                     println!("   - ... and {} more low risk findings", low_risk_count - 5);
                 }
-                println!("   {}", "NOTE: These are likely legitimate framework code or dependencies.".blue());
+                println!(
+                    "   {}",
+                    "NOTE: These are likely legitimate framework code or dependencies.".blue()
+                );
             }
         } else {
             println!("{}", "🔍 SUMMARY:".red());
-            println!("   {}", format!("High Risk Issues: {}", high_risk_count).red());
-            println!("   {}", format!("Medium Risk Issues: {}", medium_risk_count).yellow());
+            println!(
+                "   {}",
+                format!("High Risk Issues: {}", high_risk_count).red()
+            );
+            println!(
+                "   {}",
+                format!("Medium Risk Issues: {}", medium_risk_count).yellow()
+            );
             if low_risk_count > 0 {
-                println!("   {}", format!("Low Risk (informational): {}", low_risk_count).blue());
+                println!(
+                    "   {}",
+                    format!("Low Risk (informational): {}", low_risk_count).blue()
+                );
             }
-            println!("   {}", format!("Total Critical Issues: {}", total_issues).blue());
+            println!(
+                "   {}",
+                format!("Total Critical Issues: {}", total_issues).blue()
+            );
             println!();
 
             println!("{}", "⚠️  IMPORTANT:".yellow());
-            println!("   {}", "- High risk issues likely indicate actual compromise".yellow());
-            println!("   {}", "- Medium risk issues require manual investigation".yellow());
-            println!("   {}", "- Low risk issues are likely false positives from legitimate code".yellow());
-            
+            println!(
+                "   {}",
+                "- High risk issues likely indicate actual compromise".yellow()
+            );
+            println!(
+                "   {}",
+                "- Medium risk issues require manual investigation".yellow()
+            );
+            println!(
+                "   {}",
+                "- Low risk issues are likely false positives from legitimate code".yellow()
+            );
+
             if self.config.paranoid_mode {
                 println!("   {}", "- Issues marked (PARANOID) are general security checks, not Shai-Hulud specific".yellow());
             }
-            
-            println!("   {}", "- Consider running additional security scans".yellow());
-            println!("   {}", "- Review your npm audit logs and package history".yellow());
+
+            println!(
+                "   {}",
+                "- Consider running additional security scans".yellow()
+            );
+            println!(
+                "   {}",
+                "- Review your npm audit logs and package history".yellow()
+            );
 
             if low_risk_count > 0 && total_issues < 5 {
                 println!();
-                println!("{}", "ℹ️  LOW RISK FINDINGS (likely false positives):".blue());
+                println!(
+                    "{}",
+                    "ℹ️  LOW RISK FINDINGS (likely false positives):".blue()
+                );
                 for finding in low_risk_findings.iter().take(5) {
-                    println!("   - {}: {}", finding.category.display_name(), finding.description);
+                    println!(
+                        "   - {}: {}",
+                        finding.category.display_name(),
+                        finding.description
+                    );
                 }
                 if low_risk_count > 5 {
                     println!("   - ... and {} more low risk findings", low_risk_count - 5);
                 }
-                println!("   {}", "NOTE: These are typically legitimate framework patterns.".blue());
+                println!(
+                    "   {}",
+                    "NOTE: These are typically legitimate framework patterns.".blue()
+                );
             }
         }
 
-        println!("{}", "==============================================".blue());
+        println!(
+            "{}",
+            "==============================================".blue()
+        );
     }
 }
