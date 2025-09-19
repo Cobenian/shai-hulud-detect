@@ -265,7 +265,8 @@ jobs:
           cd release
           7z a shai-hulud-detector-${{ needs.create-release.outputs.tag_name }}-${{ matrix.name }}.zip ${{ needs.create-release.outputs.tag_name }}
 
-      - name: Generate checksums
+      - name: Generate checksums (Unix)
+        if: matrix.os != 'windows-latest'
         shell: bash
         run: |
           cd release
@@ -274,6 +275,19 @@ jobs:
           else
             shasum -a 256 shai-hulud-detector-${{ needs.create-release.outputs.tag_name }}-${{ matrix.name }}.zip > shai-hulud-detector-${{ needs.create-release.outputs.tag_name }}-${{ matrix.name }}.zip.sha256
           fi
+
+      - name: Generate checksums (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          cd release
+          if ("${{ matrix.archive }}" -eq "tar.gz") {
+            $hash = Get-FileHash -Algorithm SHA256 "shai-hulud-detector-${{ needs.create-release.outputs.tag_name }}-${{ matrix.name }}.tar.gz"
+            "$($hash.Hash.ToLower())  shai-hulud-detector-${{ needs.create-release.outputs.tag_name }}-${{ matrix.name }}.tar.gz" | Out-File -Encoding ASCII "shai-hulud-detector-${{ needs.create-release.outputs.tag_name }}-${{ matrix.name }}.tar.gz.sha256"
+          } else {
+            $hash = Get-FileHash -Algorithm SHA256 "shai-hulud-detector-${{ needs.create-release.outputs.tag_name }}-${{ matrix.name }}.zip"
+            "$($hash.Hash.ToLower())  shai-hulud-detector-${{ needs.create-release.outputs.tag_name }}-${{ matrix.name }}.zip" | Out-File -Encoding ASCII "shai-hulud-detector-${{ needs.create-release.outputs.tag_name }}-${{ matrix.name }}.zip.sha256"
+          }
 
       - name: Upload Release Asset (tar.gz)
         if: matrix.archive == 'tar.gz'
