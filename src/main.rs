@@ -14,19 +14,23 @@ use detector::ShaiHuludDetector;
 #[derive(Parser)]
 #[command(name = "shai-hulud-detector")]
 #[command(about = "Shai-Hulud NPM Supply Chain Attack Detection Tool")]
-#[command(version = "0.1.0")]
-struct Cli {
-    /// Enable additional security checks (typosquatting, network patterns)
-    #[arg(long, help = "Enable paranoid mode with additional security checks")]
+#[command(version)]
+struct Args {
+    /// Enable paranoid mode for comprehensive security scanning
+    #[arg(short, long)]
     paranoid: bool,
 
-    /// Directory to scan for indicators of compromise
-    #[arg(help = "Directory to scan")]
+    /// Path or URL to compromised packages file
+    #[arg(long, value_name = "PATH_OR_URL")]
+    packages: Option<String>,
+
+    /// Directory to scan for Shai-Hulud indicators
+    #[arg(value_name = "DIRECTORY")]
     directory: PathBuf,
 }
 
 fn main() -> anyhow::Result<()> {
-    let cli = Cli::parse();
+    let cli = Args::parse();
 
     // Validate directory exists
     if !cli.directory.exists() {
@@ -40,7 +44,7 @@ fn main() -> anyhow::Result<()> {
     }
 
     // Load configuration
-    let config = Config::new(cli.paranoid)?;
+    let config = Config::new(cli.paranoid, cli.packages)?;
 
     // Create detector instance
     let mut detector = ShaiHuludDetector::new(config);

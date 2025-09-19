@@ -49,6 +49,10 @@ cargo build --release
 
 # For comprehensive security scanning
 ./target/release/shai-hulud-detector --paranoid /path/to/your/project
+
+# Use custom packages file or URL
+./target/release/shai-hulud-detector --packages ./my-packages.txt /path/to/your/project
+./target/release/shai-hulud-detector --packages https://example.com/packages.txt /path/to/your/project
 ```
 
 **Performance Benefits:**
@@ -56,6 +60,12 @@ cargo build --release
 - 🔧 **Modern CLI** with better argument parsing
 - 🛡️ **Type safety** and structured error handling
 - 📦 **Single binary** - no external dependencies
+
+**Advanced Features:**
+- 🌐 **Remote package lists**: Download compromised packages from URLs
+- 📁 **Flexible file paths**: Support for relative and absolute paths
+- 🔄 **Auto-fallback**: Automatically downloads from GitHub if local file missing
+- 🎯 **Always up-to-date**: Use latest package lists from remote sources
 
 ### Bash Version (Original)
 
@@ -183,6 +193,8 @@ Check these security advisories regularly for newly discovered compromised packa
 | **Startup Time** | ~2-3 seconds | ~0.5 seconds | 🦀 Rust |
 | **Error Handling** | Basic exit codes | Structured Result<T> | 🦀 Rust |
 | **CLI Interface** | Basic | Modern (clap) | 🦀 Rust |
+| **Remote Package Lists** | Not supported | URL + file support | 🦀 Rust |
+| **Auto-fallback** | Not supported | GitHub fallback | 🦀 Rust |
 | **Maintainability** | Complex at scale | Modular architecture | 🦀 Rust |
 | **Crypto-Theft Detection** | Complete | Implemented | 🐚 Bash |
 | **Typosquatting Detection** | Basic | Enhanced | 🦀 Rust |
