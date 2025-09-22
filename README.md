@@ -32,7 +32,7 @@ This detector covers multiple npm supply chain attacks from September 2025:
 
 The script detects indicators from both attacks to provide comprehensive protection against these sophisticated supply chain compromises.
 
-## Quick Start
+## Quick Start - Bash Version
 
 ```bash
 # Clone the repository (required for compromised package list)
@@ -47,6 +47,28 @@ chmod +x shai-hulud-detector.sh
 
 # For comprehensive security scanning
 ./shai-hulud-detector.sh --paranoid /path/to/your/project
+```
+
+## Quick Start - Deno Version
+
+You must have [Deno](https://deno.land/) installed and available on PATH to run the Deno version.
+
+It will be run with the following permissions:
+- `--allow-read`: To read files in the target directory
+
+```bash
+# Clone the repository (required for compromised package list)
+git clone https://github.com/username/shai-hulud-detector.git
+cd shai-hulud-detector
+
+# Make the script executable
+chmod +x shai-hulud-detector.ts
+
+# Scan your project for Shai-Hulud indicators
+./shai-hulud-detector.ts /path/to/your/project
+
+# For comprehensive security scanning
+./shai-hulud-detector.ts --paranoid /path/to/your/project
 ```
 
 ## What it Detects
