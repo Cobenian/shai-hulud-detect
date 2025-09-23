@@ -1,8 +1,8 @@
-#!/usr/bin/env -S deno run --allow-read 
+#!/usr/bin/env -S deno run --allow-read
 
 // Shai-Hulud NPM Supply Chain Attack Detection Script
 // Detects indicators of compromise from the September 2025 npm attack
-// Usage: deno run --allow-read --allow-run shai-hulud-detector.ts <directory_to_scan>
+// Usage: deno run --allow-read shai-hulud-detector.ts <directory_to_scan>
 
 // Color codes for output
 
@@ -1129,6 +1129,29 @@ function usage(): void {
     console.log("  deno run --allow-read --allow-run shai-hulud-detector.ts --paranoid /path/to/your/project         # Core + advanced security checks");
     Deno.exit(1);
 }
+// Show a processing indicator while a promise is pending
+async function showProcessingIndicatorForPromise(promise: Promise<unknown>, prefix?: string): Promise<void> {
+    function timeoutPromise(ms: number): Promise<"timeout"> {
+        return new Promise<"timeout">((resolve) => {
+            setTimeout(() => {
+                resolve("timeout");
+            }, ms);
+        });
+    }
+
+    let counter = 0;
+    const symbols = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+    process.stdout.write((prefix ? prefix + " " : "") + symbols[0]);
+    while (await Promise.race([promise, timeoutPromise(200)]) === "timeout") {
+        process.stdout.clearLine(0);
+        process.stdout.cursorTo(0);
+        process.stdout.write((prefix ? prefix + " " : "") + symbols[counter % symbols.length] + " ");
+        counter++;
+    }
+    
+    process.stdout.clearLine(0);
+    process.stdout.cursorTo(0);
+}
 
 async function main(): Promise<void> {
     let paranoidMode = false;
@@ -1187,9 +1210,9 @@ async function main(): Promise<void> {
         printStatus(COLORS.BLUE, `Scanning directory: ${scanDir}`);
     }
     console.log();
-    
+
     // Run core Shai-Hulud detection checks (async for performance)
-    await Promise.all([
+    const parallelCheck: Promise<void[]> = Promise.all([
         checkWorkflowFiles(scanDir),
         checkPostinstallHooks(scanDir),
         checkContent(scanDir),
@@ -1199,7 +1222,7 @@ async function main(): Promise<void> {
         checkShaiHuludRepos(scanDir),
         checkPackageIntegrity(scanDir)
     ]);
-    
+    await showProcessingIndicatorForPromise(parallelCheck, "🔍");
     // These need to run sequentially due to progress indicators
     await checkPackages(scanDir);
     await checkFileHashes(scanDir);
