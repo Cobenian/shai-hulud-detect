@@ -26,6 +26,13 @@ MALICIOUS_HASHLIST=(
     "aba1fcbd15c6ba6d9b96e34cec287660fff4a31632bf76f2a766c499f55ca1ee" # test-cases/multi-hash-detection/file2.js
 )
 
+PARALLELISM=4
+if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+  PARALLELISM=$(nproc)
+elif [[ "$OSTYPE" == "darwin"* ]]; then
+  PARALLELISM=$(sysctl -n hw.ncpu)
+fi
+
 # Load compromised packages from external file
 # This allows for easier maintenance and updates as new compromised packages are discovered
 # Currently contains 571+ confirmed package versions from multiple September 2025 npm attacks
@@ -104,12 +111,13 @@ NETWORK_EXFILTRATION_WARNINGS=()
 
 # Usage function
 usage() {
-    echo "Usage: $0 [--paranoid] <directory_to_scan>"
+    echo "Usage: $0 [--paranoid] [--parallelism N] <directory_to_scan>"
     echo
     echo "OPTIONS:"
-    echo "  --paranoid    Enable additional security checks (typosquatting, network patterns)"
-    echo "                These are general security features, not specific to Shai-Hulud"
-    echo
+    echo "  --paranoid         Enable additional security checks (typosquatting, network patterns)"
+    echo "                     These are general security features, not specific to Shai-Hulud"
+    echo "  --parallelism N    Set the number of threads to use for parallelized steps (current: ${PARALLELISM})"
+    echo ""
     echo "EXAMPLES:"
     echo "  $0 /path/to/your/project                    # Core Shai-Hulud detection only"
     echo "  $0 --paranoid /path/to/your/project         # Core + advanced security checks"
@@ -161,22 +169,23 @@ check_file_hashes() {
 
     local filesChecked
     filesChecked=0
-    while IFS= read -r -d '' file; do
-        if [[ -f "$file" && -r "$file" ]]; then
-            local file_hash
-            file_hash=$(shasum -a 256 "$file" 2>/dev/null | cut -d' ' -f1)
 
-            # Check for malicious files
-            for malicious_hash in "${MALICIOUS_HASHLIST[@]}"; do
-                if [[ "$malicious_hash" == "$file_hash" ]]; then
-                    MALICIOUS_HASHES+=("$file:$file_hash")
-                fi
-            done
-        fi
+    while IFS=" " read -r file_hash file; do
+        if [ -z "${file_hash}" ]; then continue; fi
+
+        # Check for malicious files
+        for malicious_hash in "${MALICIOUS_HASHLIST[@]}"; do
+            if [[ "$malicious_hash" == "$file_hash" ]]; then
+                MALICIOUS_HASHES+=("$file:$file_hash")
+            fi
+        done
+
         filesChecked=$((filesChecked+1))
         echo -ne "\r\033[K$filesChecked / $filesCount checked ($((filesChecked*100/filesCount)) %)"
-
-    done < <(find "$scan_dir" -type f \( -name "*.js" -o -name "*.ts" -o -name "*.json" \) -print0 2>/dev/null)
+    done < <(\
+      find "$scan_dir" -type f \( -name "*.js" -o -name "*.ts" -o -name "*.json" \) -print0 2>/dev/null |\
+      xargs -0 -P ${PARALLELISM} -I. shasum -a 256 . 2>/dev/null
+    )
     echo -ne "\r\033[K"
 }
 
@@ -1335,10 +1344,18 @@ main() {
         case $1 in
             --paranoid)
                 paranoid_mode=true
-                shift
                 ;;
             --help|-h)
                 usage
+                ;;
+            --parallelism)
+                re='^[0-9]+$'
+                if ! [[ $2 =~ $re ]] ; then
+                    echo "${RED}error: Not a number${NC}" >&2;
+                    usage
+                fi
+                PARALLELISM=$2
+                shift
                 ;;
             -*)
                 echo "Unknown option: $1"
@@ -1351,9 +1368,9 @@ main() {
                     echo "Too many arguments"
                     usage
                 fi
-                shift
                 ;;
         esac
+        shift
     done
 
     if [[ -z "$scan_dir" ]]; then
