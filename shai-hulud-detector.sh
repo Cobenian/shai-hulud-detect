@@ -45,6 +45,8 @@ load_compromised_packages() {
     if [[ -f "$packages_file" ]]; then
         # Read packages from file, skipping comments and empty lines
         while IFS= read -r line; do
+            # Trim potential Windows carriage returns
+            line="${line%$'\r'}"
             # Skip comments and empty lines
             [[ "$line" =~ ^[[:space:]]*# ]] && continue
             [[ -z "${line// }" ]] && continue
