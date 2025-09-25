@@ -54,6 +54,7 @@ const COMPROMISED_NAMESPACES = [
 const WORKFLOW_FILES: string[] = [];
 const MALICIOUS_HASHES: string[] = [];
 const COMPROMISED_FOUND: string[] = [];
+const SUSPICIOUS_FOUND: string[] = [];
 const SUSPICIOUS_CONTENT: string[] = [];
 const CRYPTO_PATTERNS: string[] = [];
 const GIT_BRANCHES: string[] = [];
@@ -259,8 +260,15 @@ async function checkPackages(scanDir: string): Promise<void> {
                     // Extract version more precisely
                     const regex = new RegExp(`"${packageName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}":\\s*"([^"]+)"`);
                     const match = content.match(regex);
-                    if (match && match[1] === maliciousVersion) {
-                        COMPROMISED_FOUND.push(`${packageFile}:${packageName}@${maliciousVersion}`);
+                    if (match) {
+                        const foundVersion = match[1];
+                        if (foundVersion === maliciousVersion) {
+                            // Exact match - definitely compromised
+                            COMPROMISED_FOUND.push(`${packageFile}:${packageName}@${maliciousVersion}`);
+                        } else if (semverMatch(maliciousVersion, foundVersion)) {
+                            // Semver pattern match - potentially compromised
+                            SUSPICIOUS_FOUND.push(`${packageFile}:${packageName}@${foundVersion}`);
+                        }
                     }
                 }
             }
@@ -810,6 +818,82 @@ async function checkNetworkExfiltration(scanDir: string): Promise<void> {
     await Promise.all(promises);
 }
 
+function semverParseInto(version: string): {major: number, minor: number, patch: number, special: string} {
+    const RE = /[^0-9]*([0-9]*)[.]([0-9]*)[.]([0-9]*)([0-9A-Za-z-]*)/;
+    const match = version.match(RE);
+    return {
+        major: parseInt(match?.[1] || '0'),
+        minor: parseInt(match?.[2] || '0'),
+        patch: parseInt(match?.[3] || '0'),
+        special: match?.[4] || ''
+    };
+}
+
+function semverMatch(testSubject: string, testPattern: string): boolean {
+    // Always matches
+    if (testPattern === '*') return true;
+    
+    const subject = semverParseInto(testSubject);
+    
+    // Handle multi-variant patterns (split on '||')
+    const patterns = testPattern.split('||').map(p => p.trim());
+    
+    for (const pattern of patterns) {
+        if (pattern === '*') return true;
+        
+        const parsed = semverParseInto(pattern);
+        
+        if (pattern.startsWith('^')) {
+            // Major must match
+            const patternParsed = semverParseInto(pattern.slice(1));
+            if (subject.major === patternParsed.major &&
+                (subject.minor > patternParsed.minor || 
+                 (subject.minor === patternParsed.minor && subject.patch >= patternParsed.patch))) {
+                return true;
+            }
+        } else if (pattern.startsWith('~')) {
+            // Major+minor must match
+            const patternParsed = semverParseInto(pattern.slice(1));
+            if (subject.major === patternParsed.major &&
+                subject.minor === patternParsed.minor &&
+                subject.patch >= patternParsed.patch) {
+                return true;
+            }
+        } else {
+            // Exact match
+            if (subject.major === parsed.major &&
+                subject.minor === parsed.minor &&
+                subject.patch === parsed.patch &&
+                subject.special === parsed.special) {
+                return true;
+            }
+        }
+    }
+    
+    return false;
+}
+
+// Show a processing indicator while a promise is pending
+async function showProcessingIndicator(promise: Promise<unknown>, prefix?: string): Promise<void> {
+    let counter = 0;
+    const symbols = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+    
+    const intervalId = setInterval(() => {
+        process.stdout.clearLine(0);
+        process.stdout.cursorTo(0);
+        process.stdout.write((prefix ? prefix + " " : "") + symbols[counter % symbols.length] + " ");
+        counter++;
+    }, 200);
+    
+    try {
+        await promise;
+    } finally {
+        clearInterval(intervalId);
+        process.stdout.clearLine(0);
+        process.stdout.cursorTo(0);
+    }
+}
+
 function generateReport(paranoidMode: boolean): void {
     console.log();
     printStatus(COLORS.BLUE, "==============================================");
@@ -858,6 +942,20 @@ function generateReport(paranoidMode: boolean): void {
         }
         console.log(`   ${COLORS.YELLOW}NOTE: These specific package versions are known to be compromised.${COLORS.NC}`);
         console.log(`   ${COLORS.YELLOW}You should immediately update or remove these packages.${COLORS.NC}`);
+        console.log();
+    }
+    
+    // Report suspicious packages
+    if (SUSPICIOUS_FOUND.length > 0) {
+        printStatus(COLORS.YELLOW, "⚠️  MEDIUM RISK: Suspicious package versions detected:");
+        for (const entry of SUSPICIOUS_FOUND) {
+            const [filePath, packageInfo] = entry.split(':');
+            console.log(`   - Package: ${packageInfo}`);
+            console.log(`     Found in: ${filePath}`);
+            showFilePreview(filePath, `MEDIUM RISK: Contains package version that could match compromised version: ${packageInfo}`);
+            mediumRisk++;
+        }
+        console.log(`   ${COLORS.YELLOW}NOTE: Manual review required to determine if these are malicious.${COLORS.NC}`);
         console.log();
     }
     
@@ -1211,18 +1309,21 @@ async function main(): Promise<void> {
     }
     console.log();
 
-    // Run core Shai-Hulud detection checks (async for performance)
-    const parallelCheck: Promise<void[]> = Promise.all([
-        checkWorkflowFiles(scanDir),
-        checkPostinstallHooks(scanDir),
-        checkContent(scanDir),
-        checkCryptoTheftPatterns(scanDir),
-        checkTrufflehogActivity(scanDir),
-        checkGitBranches(scanDir),
-        checkShaiHuludRepos(scanDir),
-        checkPackageIntegrity(scanDir)
-    ]);
-    await showProcessingIndicatorForPromise(parallelCheck, "🔍");
+    // Run core Shai-Hulud detection checks with enhanced progress indicators
+    await showProcessingIndicator(
+        Promise.all([
+            checkWorkflowFiles(scanDir),
+            checkPostinstallHooks(scanDir),
+            checkContent(scanDir),
+            checkCryptoTheftPatterns(scanDir),
+            checkTrufflehogActivity(scanDir),
+            checkGitBranches(scanDir),
+            checkShaiHuludRepos(scanDir),
+            checkPackageIntegrity(scanDir)
+        ]),
+        "🔍"
+    );
+    
     // These need to run sequentially due to progress indicators
     await checkPackages(scanDir);
     await checkFileHashes(scanDir);
