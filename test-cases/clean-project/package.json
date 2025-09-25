@@ -5,7 +5,7 @@
   "dependencies": {
     "react": "^18.0.0",
     "lodash": "^4.17.21",
-    "@ctrl/tinycolor": "3.0.0"
+    "color": "^3.2.0"
   },
   "devDependencies": {
     "typescript": "^4.9.0",

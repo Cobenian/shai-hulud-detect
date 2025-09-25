@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.0] - 2025-09-24
+
+### Added
+- **Semver Pattern Matching**: Merged PR #28 adding intelligent semver pattern matching to detect packages that could become compromised on `npm update`
+- **Parallel Processing**: Merged PR #27 adding parallel hash scanning with ~20% performance improvement using `xargs -P`
+- **Enhanced Test Coverage**: Added new test cases for semver matching and namespace warning scenarios
+- **Cross-platform Compatibility**: Fixed macOS compatibility issues by removing `-readable` flag from find commands
+
+### Changed
+- **Risk Level Adjustment**: Changed namespace warnings from MEDIUM to LOW risk to reduce false positive alarm fatigue
+- **Test Case Improvements**: Updated clean-project test to use `color` package instead of `@ctrl/tinycolor` to ensure truly clean test results
+- Improved semver matching algorithm to detect packages at risk during dependency updates using caret (^) and tilde (~) patterns
+- Enhanced parallel processing for faster malicious file hash detection across large codebases
+
+### Fixed
+- Fixed test case expectations to match actual script output in README documentation
+- Resolved false positive namespace warnings in clean test environments
+- Fixed macOS compatibility issues with BSD vs GNU command differences
+
+### Security
+- Improved detection of packages that could become compromised during routine dependency updates
+- Enhanced early warning system for packages matching compromised version patterns
+- Better risk stratification with LOW/MEDIUM/HIGH risk classifications
+
+### Technical Details
+- Added `semver_match()` function with intentional argument ordering to check if malicious versions could match package.json patterns
+- Implemented parallel hash scanning using `xargs -P $(nproc || echo 4)` for optimal CPU utilization
+- Created comprehensive test cases covering both namespace warnings and semver pattern matching scenarios
+- Updated documentation to reflect new test cases and expected outputs
+
 ## [2.2.2] - 2025-09-21
 
 ### Added

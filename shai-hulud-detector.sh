@@ -97,6 +97,7 @@ COMPROMISED_NAMESPACES=(
 WORKFLOW_FILES=()
 MALICIOUS_HASHES=()
 COMPROMISED_FOUND=()
+SUSPICIOUS_FOUND=()
 SUSPICIOUS_CONTENT=()
 CRYPTO_PATTERNS=()
 GIT_BRANCHES=()
@@ -254,6 +255,97 @@ transform_pnpm_yaml() {
     echo "}"
 }
 
+# Origin: https://github.com/cloudflare/semver_bash/blob/6cc9ce10/semver.sh
+semverParseInto() {
+  local RE='[^0-9]*\([0-9]*\)[.]\([0-9]*\)[.]\([0-9]*\)\([0-9A-Za-z-]*\)'
+  #MAJOR
+  eval $2=$(echo $1 | sed -e "s/$RE/\1/")
+  #MINOR
+  eval $3=$(echo $1 | sed -e "s/$RE/\2/")
+  #MINO)
+  eval $4=$(echo $1 | sed -e "s/$RE/\3/")
+  #SPECIAL
+  eval $5=$(echo $1 | sed -e "s/$RE/\4/")
+}
+
+# Checks if test_version could match test_pattern
+# Multi-version patterns are split on '||', so "1.1.0 || 1.2.0" checks for both "1.1.0" and "1.2.0"
+# These match
+#   subject  pattern
+#   "1.1.2"  "*"
+#   "1.1.2"  "1.1.2"
+#   "1.1.2"  "~1.1.0"
+#   "1.1.2"  "^1.0.0"
+# These DO NOT match
+#   subject  pattern
+#   "1.1.2"  "1.1.1"
+#   "1.1.2"  "~1.1.3"
+#   "1.1.2"  "~1.2.0"
+#   "1.1.2"  "^1.1.3"
+#   "1.1.2"  "^1.2.0"
+#   "1.1.2"  "^2.0.0"
+#   "1.1.2"  "^0.0.0"
+semver_match() {
+    local test_subject=$1
+    local test_pattern=$2
+
+    # Always matches
+    if [[ "*" == "${test_pattern}" ]]; then
+        return 0
+    fi
+
+    # Destructure subject
+    local subject_major=0
+    local subject_minor=0
+    local subject_patch=0
+    local subject_special=0
+    semverParseInto ${test_subject} subject_major subject_minor subject_patch subject_special
+
+    # Handle multi-variant patterns
+    while IFS= read -r pattern; do
+        pattern="${pattern#"${pattern%%[![:space:]]*}"}"
+        pattern="${pattern%"${pattern##*[![:space:]]}"}"
+        # Always matches
+        if [[ "*" == "${pattern}" ]]; then
+            return 0
+        fi
+        local pattern_major=0
+        local pattern_minor=0
+        local pattern_patch=0
+        local pattern_special=0
+        case "${pattern}" in
+            ^*) # Major must match
+                semverParseInto ${pattern:1} pattern_major pattern_minor pattern_patch pattern_special
+                [[ "${subject_major}"  ==  "${pattern_major}"   ]] || continue
+                [[ "${subject_minor}" -ge  "${pattern_minor}"   ]] || continue
+                if [[ "${subject_minor}" == "${pattern_minor}"   ]]; then
+                    [[ "${subject_patch}"   -ge "${pattern_patch}"   ]] || continue
+                fi
+                return 0 # Match
+                ;;
+            ~*) # Major+minor must match
+                semverParseInto ${pattern:1} pattern_major pattern_minor pattern_patch pattern_special
+                [[ "${subject_major}"   ==  "${pattern_major}"   ]] || continue
+                [[ "${subject_minor}"   ==  "${pattern_minor}"   ]] || continue
+                [[ "${subject_patch}"   -ge "${pattern_patch}"   ]] || continue
+                return 0 # Match
+                ;;
+            *) # Exact match
+                semverParseInto ${pattern} pattern_major pattern_minor pattern_patch pattern_special
+                [[ "${subject_major}"  -eq "${pattern_major}"   ]] || continue
+                [[ "${subject_minor}"  -eq "${pattern_minor}"   ]] || continue
+                [[ "${subject_patch}"  -eq "${pattern_patch}"   ]] || continue
+                [[ "${subject_special}" == "${pattern_special}" ]] || continue
+                return 0 # MATCH
+                ;;
+        esac
+        # Splits '||' into newlines with sed
+    done < <(echo "${test_pattern}" | sed 's/||/\n/g')
+
+    # Fallthrough = no match
+    return 1;
+}
+
 # Check package.json files for compromised packages
 check_packages() {
     local scan_dir=$1
@@ -266,35 +358,39 @@ check_packages() {
     local filesChecked
     filesChecked=0
     while IFS= read -r -d '' package_file; do
-        if [[ -f "$package_file" && -r "$package_file" ]]; then
-            # Check for specific compromised packages
-            for package_info in "${COMPROMISED_PACKAGES[@]}"; do
-                local package_name="${package_info%:*}"
-                local malicious_version="${package_info#*:}"
+        if [ ! -r "${package_file}" ]; then continue; fi
 
-                # Check both dependencies and devDependencies sections
-                if grep -q "\"$package_name\":" "$package_file" 2>/dev/null; then
-                    local found_version
-                    found_version=$(grep -A1 "\"$package_name\":" "$package_file" 2>/dev/null | grep -o '"[0-9]\+\.[0-9]\+\.[0-9]\+"' 2>/dev/null | tr -d '"' | head -1 2>/dev/null) || true
-                    if [[ -n "$found_version" && "$found_version" == "$malicious_version" ]]; then
-                        COMPROMISED_FOUND+=("$package_file:$package_name@$malicious_version")
-                    fi
+        while IFS=: read -r package_name package_version; do
+            package_version=$(echo "${package_version}" | cut -d'"' -f2)
+            package_name=$(echo "${package_name}" | cut -d'"' -f2)
+
+            for malicious_info in "${COMPROMISED_PACKAGES[@]}"; do
+                local malicious_name="${malicious_info%:*}"
+                local malicious_version="${malicious_info#*:}"
+
+                [[ "${package_name}" == "${malicious_name}" ]] || continue
+
+                if [[ "${package_version}" == "${malicious_version}" ]]; then
+                    # Exact match, certainly compromised
+                    COMPROMISED_FOUND+=("$package_file:$package_name@$package_version")
+                elif semver_match "${malicious_version}" "${package_version}"; then
+                    # Semver pattern match, /maybe/ compromised
+                    SUSPICIOUS_FOUND+=("$package_file:$package_name@$package_version")
                 fi
             done
+        done < <(awk '/"dependencies":|"devDependencies":/{flag=1;next}/}/{flag=0}flag' "${package_file}")
 
-            # Check for suspicious namespaces
-            for namespace in "${COMPROMISED_NAMESPACES[@]}"; do
-                if grep -q "\"$namespace/" "$package_file" 2>/dev/null; then
-                    NAMESPACE_WARNINGS+=("$package_file:Contains packages from compromised namespace: $namespace")
-                fi
-            done
-
-        fi
+        # Check for suspicious namespaces
+        for namespace in "${COMPROMISED_NAMESPACES[@]}"; do
+            if grep -q "\"$namespace/" "$package_file" 2>/dev/null; then
+                NAMESPACE_WARNINGS+=("$package_file:Contains packages from compromised namespace: $namespace")
+            fi
+        done
 
         filesChecked=$((filesChecked+1))
         echo -ne "\r\033[K$filesChecked / $filesCount checked ($((filesChecked*100/filesCount)) %)"
 
-    done < <(find "$scan_dir" -name "package.json" -print0 2>/dev/null)
+    done < <(find "$scan_dir" -name "package.json" -type f -print0 2>/dev/null)
     echo -ne "\r\033[K"
 }
 
@@ -1030,6 +1126,21 @@ generate_report() {
         echo
     fi
 
+    # Report suspicious packages
+    if [[ ${#SUSPICIOUS_FOUND[@]} -gt 0 ]]; then
+        print_status "$YELLOW" "⚠️  MEDIUM RISK: Suspicious package versions detected:"
+        for entry in "${SUSPICIOUS_FOUND[@]}"; do
+            local file_path="${entry%:*}"
+            local package_info="${entry#*:}"
+            echo "   - Package: $package_info"
+            echo "     Found in: $file_path"
+            show_file_preview "$file_path" "MEDIUM RISK: Contains package version that could match compromised version: $package_info"
+            medium_risk=$((medium_risk+1))
+        done
+        echo -e "   ${YELLOW}NOTE: Manual review required to determine if these are malicious.${NC}"
+        echo
+    fi
+
     # Report suspicious content
     if [[ ${#SUSPICIOUS_CONTENT[@]} -gt 0 ]]; then
         print_status "$YELLOW" "⚠️  MEDIUM RISK: Suspicious content patterns:"
@@ -1206,21 +1317,12 @@ generate_report() {
         echo
     fi
 
-    # Report namespace warnings
-    if [[ ${#NAMESPACE_WARNINGS[@]} -gt 0 ]]; then
-        print_status "$YELLOW" "⚠️  MEDIUM RISK: Packages from compromised namespaces:"
-        for entry in "${NAMESPACE_WARNINGS[@]}"; do
-            local file_path="${entry%%:*}"
-            local namespace_info="${entry#*:}"
-            echo "   - Warning: $namespace_info"
-            echo "     Found in: $file_path"
-            show_file_preview "$file_path" "Contains packages from compromised namespace"
-            medium_risk=$((medium_risk+1))
-        done
-        echo -e "   ${YELLOW}NOTE: These namespaces have been compromised but specific versions may vary.${NC}"
-        echo -e "   ${YELLOW}Check package versions against known compromise lists.${NC}"
-        echo
-    fi
+    # Store namespace warnings as LOW risk findings for later reporting
+    for entry in "${NAMESPACE_WARNINGS[@]}"; do
+        local file_path="${entry%%:*}"
+        local namespace_info="${entry#*:}"
+        LOW_RISK_FINDINGS+=("Namespace warning: $namespace_info (found in $(basename "$file_path"))")
+    done
 
     # Report package integrity issues
     if [[ ${#INTEGRITY_ISSUES[@]} -gt 0 ]]; then

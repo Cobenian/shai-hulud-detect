@@ -1,0 +1,13 @@
+{
+  "name": "semver-matching-test",
+  "version": "1.0.0",
+  "description": "Test case for semver matching - packages with ranges that could match compromised versions",
+  "dependencies": {
+    "react": "^18.0.0",
+    "@operato/board": "~9.0.35",
+    "@ctrl/tinycolor": "^4.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^4.9.0"
+  }
+}

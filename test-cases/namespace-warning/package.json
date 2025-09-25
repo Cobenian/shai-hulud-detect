@@ -1,0 +1,13 @@
+{
+  "name": "namespace-warning-test",
+  "version": "1.0.0",
+  "description": "Test case for namespace warnings - contains packages from compromised namespaces but safe versions",
+  "dependencies": {
+    "react": "^18.0.0",
+    "@ctrl/tinycolor": "3.0.0",
+    "@operato/utils": "1.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^4.9.0"
+  }
+}

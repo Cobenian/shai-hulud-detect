@@ -84,7 +84,10 @@ chmod +x shai-hulud-detector.ts
 ### Medium Risk Indicators
 - **Suspicious content patterns**: References to `webhook.site` and the malicious endpoint `bb8ca5f6-4175-45d2-b042-fc9ebb8170b7`
 - **Suspicious git branches**: Branches named "shai-hulud"
-- **Compromised namespaces**: Packages from namespaces known to be affected (@ctrl, @crowdstrike, @art-ws, @ngx, @nativescript-community)
+- **Semver pattern matching**: Packages that could become compromised during `npm update` due to caret (^) or tilde (~) version patterns
+
+### Low Risk Indicators
+- **Namespace warnings**: Packages from namespaces known to be affected (@ctrl, @crowdstrike, @art-ws, @ngx, @nativescript-community) but at safe versions
 
 ## Compromised Packages Detected
 
@@ -142,11 +145,11 @@ Check these security advisories regularly for newly discovered compromised packa
 
 ## Latest Updates
 
+- **2025-09-24 v2.3.0**: **Semver Matching & Improved Warnings** - Merged PR #28 adding semver pattern matching to detect packages that could become compromised on update. Merged PR #27 for parallelized hash scanning with cross-platform support. Changed namespace warnings from MEDIUM to LOW risk to reduce false positives. Fixed test cases and added new test scenarios for semver matching and namespace warnings
 - **2025-09-21 v2.2.2**: **Progress Display & Cross-platform Support** - Merged PR #19 for real-time file scanning progress with percentage completion. Merged PR #26 adding comprehensive test cases for all 7 hash variants. Merged PR #25 for cross-platform file age detection. Added pnpm-lock.yaml support and enhanced error handling to prevent script hangs
 - **2025-09-19 v2.2.1**: **Missing Socket.dev Packages Added** - Added 34 additional compromised packages from Socket.dev analysis that were previously missed, including @ctrl packages (9), @nativescript-community packages (8), @rxap packages (2), and 15 standalone packages. Total coverage now includes all known compromised packages from multiple security sources
 - **2025-09-19 v2.2.0**: **Multi-Hash Detection** - Added detection for all 7 Shai-Hulud worm variants (V1-V7) using comprehensive hash analysis from Socket.dev research. Enhanced malicious file detection from single hash to complete worm evolution timeline covering September 14-16, 2025 attack campaign
 - **2025-09-19 v2.1.0**: **Enhanced Error Handling & pnpm Support** - Added robust error handling for grep pipelines to prevent script hangs (PR #13). Added pnpm-lock.yaml support with YAML-to-JSON transformation for full lockfile coverage. Improved reliability across different shell environments
-- **2025-09-18 v2.0.0**: **Multi-Attack Coverage** - Added 26 packages from Chalk/Debug crypto theft attack (571+ total). Now covers cryptocurrency wallet replacement patterns, XMLHttpRequest hijacking, and malicious function detection. Added JFrog and Aikido blog references as primary sources
 
 *For complete version history, see [CHANGELOG.md](CHANGELOG.md)*
 
@@ -212,6 +215,12 @@ The repository includes test cases to validate the script:
 
 # Test on mixed project (should show medium risk issues)
 ./shai-hulud-detector.sh test-cases/mixed-project
+
+# Test namespace warnings (should show LOW risk namespace warnings only)
+./shai-hulud-detector.sh test-cases/namespace-warning
+
+# Test semver matching (should show MEDIUM risk for packages that could match compromised versions)
+./shai-hulud-detector.sh test-cases/semver-matching
 
 # Test legitimate crypto libraries (should show MEDIUM risk only)
 ./shai-hulud-detector.sh test-cases/legitimate-crypto
