@@ -694,76 +694,85 @@ get_lockfile_version() {
     local package_name="$1"
     local package_dir="$2"
 
-    # Check for package-lock.json first (most common)
-    if [[ -f "$package_dir/package-lock.json" ]]; then
-        # Use the existing logic from check_package_integrity for block-based parsing
-        local found_version
-        found_version=$(awk -v pkg="node_modules/$package_name" '
-            $0 ~ "\"" pkg "\":" { in_block=1; brace_count=1 }
-            in_block && /\{/ && !($0 ~ "\"" pkg "\":") { brace_count++ }
-            in_block && /\}/ {
-                brace_count--
-                if (brace_count <= 0) { in_block=0 }
-            }
-            in_block && /\s*"version":/ {
-                # Extract version value between quotes
-                split($0, parts, "\"")
-                for (i in parts) {
-                    if (parts[i] ~ /^[0-9]/) {
-                        print parts[i]
-                        exit
+    # Search upward for lockfiles (supports packages in node_modules subdirectories)
+    local current_dir="$package_dir"
+
+    # Traverse up the directory tree until we find a lockfile or reach root
+    while [[ "$current_dir" != "/" && "$current_dir" != "." && -n "$current_dir" ]]; do
+        # Check for package-lock.json first (most common)
+        if [[ -f "$current_dir/package-lock.json" ]]; then
+            # Use the existing logic from check_package_integrity for block-based parsing
+            local found_version
+            found_version=$(awk -v pkg="node_modules/$package_name" '
+                $0 ~ "\"" pkg "\":" { in_block=1; brace_count=1 }
+                in_block && /\{/ && !($0 ~ "\"" pkg "\":") { brace_count++ }
+                in_block && /\}/ {
+                    brace_count--
+                    if (brace_count <= 0) { in_block=0 }
+                }
+                in_block && /\s*"version":/ {
+                    # Extract version value between quotes
+                    split($0, parts, "\"")
+                    for (i in parts) {
+                        if (parts[i] ~ /^[0-9]/) {
+                            print parts[i]
+                            exit
+                        }
                     }
                 }
-            }
-        ' "$package_dir/package-lock.json" 2>/dev/null)
+            ' "$current_dir/package-lock.json" 2>/dev/null)
 
-        if [[ -n "$found_version" ]]; then
-            echo "$found_version"
-            return
+            if [[ -n "$found_version" ]]; then
+                echo "$found_version"
+                return
+            fi
         fi
-    fi
 
-    # Check for yarn.lock
-    if [[ -f "$package_dir/yarn.lock" ]]; then
-        # Yarn.lock format: package-name@version:
-        local found_version
-        found_version=$(grep "^\"\\?$package_name@" "$package_dir/yarn.lock" 2>/dev/null | head -1 | sed 's/.*@\([^"]*\).*/\1/' 2>/dev/null)
-        if [[ -n "$found_version" ]]; then
-            echo "$found_version"
-            return
+        # Check for yarn.lock
+        if [[ -f "$current_dir/yarn.lock" ]]; then
+            # Yarn.lock format: package-name@version:
+            local found_version
+            found_version=$(grep "^\"\\?$package_name@" "$current_dir/yarn.lock" 2>/dev/null | head -1 | sed 's/.*@\([^"]*\).*/\1/' 2>/dev/null)
+            if [[ -n "$found_version" ]]; then
+                echo "$found_version"
+                return
+            fi
         fi
-    fi
 
-    # Check for pnpm-lock.yaml
-    if [[ -f "$package_dir/pnpm-lock.yaml" ]]; then
-        # Use transform_pnpm_yaml and then parse like package-lock.json
-        local temp_lockfile
-        temp_lockfile=$(mktemp "${TMPDIR:-/tmp}/pnpm-parse.XXXXXXXX")
-        TEMP_FILES+=("$temp_lockfile")
+        # Check for pnpm-lock.yaml
+        if [[ -f "$current_dir/pnpm-lock.yaml" ]]; then
+            # Use transform_pnpm_yaml and then parse like package-lock.json
+            local temp_lockfile
+            temp_lockfile=$(mktemp "${TMPDIR:-/tmp}/pnpm-parse.XXXXXXXX")
+            TEMP_FILES+=("$temp_lockfile")
 
-        transform_pnpm_yaml "$package_dir/pnpm-lock.yaml" > "$temp_lockfile" 2>/dev/null
+            transform_pnpm_yaml "$current_dir/pnpm-lock.yaml" > "$temp_lockfile" 2>/dev/null
 
-        local found_version
-        found_version=$(awk -v pkg="$package_name" '
-            $0 ~ "\"" pkg "\"" { in_block=1; brace_count=1 }
-            in_block && /\{/ && !($0 ~ "\"" pkg "\"") { brace_count++ }
-            in_block && /\}/ {
-                brace_count--
-                if (brace_count <= 0) { in_block=0 }
-            }
-            in_block && /\s*"version":/ {
-                gsub(/.*"version":\s*"/, "")
-                gsub(/".*/, "")
-                print $0
-                exit
-            }
-        ' "$temp_lockfile" 2>/dev/null)
+            local found_version
+            found_version=$(awk -v pkg="$package_name" '
+                $0 ~ "\"" pkg "\"" { in_block=1; brace_count=1 }
+                in_block && /\{/ && !($0 ~ "\"" pkg "\"") { brace_count++ }
+                in_block && /\}/ {
+                    brace_count--
+                    if (brace_count <= 0) { in_block=0 }
+                }
+                in_block && /\s*"version":/ {
+                    gsub(/.*"version":\s*"/, "")
+                    gsub(/".*/, "")
+                    print $0
+                    exit
+                }
+            ' "$temp_lockfile" 2>/dev/null)
 
-        if [[ -n "$found_version" ]]; then
-            echo "$found_version"
-            return
+            if [[ -n "$found_version" ]]; then
+                echo "$found_version"
+                return
+            fi
         fi
-    fi
+
+        # Move to parent directory
+        current_dir=$(dirname "$current_dir")
+    done
 
     # No lockfile or package not found
     echo ""
