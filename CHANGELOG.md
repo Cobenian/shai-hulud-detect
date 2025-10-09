@@ -5,6 +5,23 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.2] - 2025-10-03
+
+### Fixed
+- **GitHub Issue #42 Node Modules Lockfile Detection**: Fixed remaining lockfile detection issue where packages in node_modules subdirectories were not properly checked against root lockfiles
+- **Upward Lockfile Search**: Enhanced `get_lockfile_version()` function to search parent directories for lockfiles instead of only checking same directory as package.json
+- **Node Modules Package Protection**: Packages found in `node_modules/*/package.json` now correctly show LOW RISK when root lockfile pins them to safe versions
+
+### Changed
+- **Lockfile Detection Logic**: Modified lockfile search to traverse upward through directory tree until finding lockfile or reaching filesystem root
+- **Cross-Directory Lockfile Support**: Lockfile detection now works for packages at any directory depth within a project
+
+### Technical Details
+- Searches upward from package.json directory using `dirname` traversal until lockfile found or root reached
+- Supports all lockfile types (package-lock.json, yarn.lock, pnpm-lock.yaml) at any parent directory level
+- Maintains backward compatibility for root-level packages
+- Zero performance impact for projects without nested package.json files
+
 ## [2.6.1] - 2025-10-03
 
 ### Fixed
