@@ -5,6 +5,28 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.3] - 2025-10-03
+
+### Fixed
+- **Critical Security Vulnerability**: Fixed lockfile upward search that could access parent directories outside scan boundary, preventing potential malicious lockfile attacks
+- **Directory Boundary Enforcement**: Added security boundary checking to prevent upward search from accessing lockfiles above the original scan directory
+- **Information Leakage Prevention**: Blocked potential access to unrelated project lockfiles in parent directories
+
+### Security Impact
+- **Prevents Malicious Parent Lockfile Attacks**: Attackers can no longer place malicious lockfiles in parent directories to influence scan results
+- **Blocks Information Leakage**: Upward search now respects project boundaries and won't access unrelated parent directory lockfiles
+- **Maintains User Privacy**: Scanner no longer accesses lockfiles outside the intended project scope
+
+### Changed
+- **Lockfile Search Boundary**: Enhanced `get_lockfile_version()` function with scan directory boundary parameter to limit upward search scope
+- **Security-First Design**: Added boundary validation using regex pattern matching to ensure search stays within project boundaries
+
+### Technical Details
+- Added `scan_boundary` parameter to `get_lockfile_version()` function signature
+- Implemented boundary check: `if [[ ! "$current_dir/" =~ ^"$scan_boundary"/ && "$current_dir" != "$scan_boundary" ]]; then break; fi`
+- Updated call sites to pass scan directory as boundary parameter
+- Preserves all existing functionality within proper security boundaries
+
 ## [2.6.2] - 2025-10-03
 
 ### Fixed

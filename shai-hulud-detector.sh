@@ -448,7 +448,7 @@ check_packages() {
                     local package_dir
                     package_dir=$(dirname "$package_file")
                     local actual_version
-                    actual_version=$(get_lockfile_version "$package_name" "$package_dir")
+                    actual_version=$(get_lockfile_version "$package_name" "$package_dir" "$scan_dir")
 
                     if [[ -n "$actual_version" ]]; then
                         # Found actual version in lockfile
@@ -687,18 +687,23 @@ is_legitimate_pattern() {
 
 # Function: get_lockfile_version
 # Purpose: Extract actual installed version from lockfile for a specific package
-# Args: $1 = package_name, $2 = package_json_dir (directory containing package.json)
+# Args: $1 = package_name, $2 = package_json_dir (directory containing package.json), $3 = scan_boundary (original scan directory)
 # Modifies: None
 # Returns: Echoes installed version or empty string if not found
 get_lockfile_version() {
     local package_name="$1"
     local package_dir="$2"
+    local scan_boundary="$3"
 
     # Search upward for lockfiles (supports packages in node_modules subdirectories)
     local current_dir="$package_dir"
 
-    # Traverse up the directory tree until we find a lockfile or reach root
+    # Traverse up the directory tree until we find a lockfile, reach root, or hit scan boundary
     while [[ "$current_dir" != "/" && "$current_dir" != "." && -n "$current_dir" ]]; do
+        # SECURITY: Don't search above the original scan directory boundary
+        if [[ ! "$current_dir/" =~ ^"$scan_boundary"/ && "$current_dir" != "$scan_boundary" ]]; then
+            break
+        fi
         # Check for package-lock.json first (most common)
         if [[ -f "$current_dir/package-lock.json" ]]; then
             # Use the existing logic from check_package_integrity for block-based parsing
