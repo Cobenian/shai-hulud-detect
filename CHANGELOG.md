@@ -5,6 +5,45 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.3] - 2025-10-03
+
+### Fixed
+- **Critical Security Vulnerability**: Fixed lockfile upward search that could access parent directories outside scan boundary, preventing potential malicious lockfile attacks
+- **Directory Boundary Enforcement**: Added security boundary checking to prevent upward search from accessing lockfiles above the original scan directory
+- **Information Leakage Prevention**: Blocked potential access to unrelated project lockfiles in parent directories
+
+### Security Impact
+- **Prevents Malicious Parent Lockfile Attacks**: Attackers can no longer place malicious lockfiles in parent directories to influence scan results
+- **Blocks Information Leakage**: Upward search now respects project boundaries and won't access unrelated parent directory lockfiles
+- **Maintains User Privacy**: Scanner no longer accesses lockfiles outside the intended project scope
+
+### Changed
+- **Lockfile Search Boundary**: Enhanced `get_lockfile_version()` function with scan directory boundary parameter to limit upward search scope
+- **Security-First Design**: Added boundary validation using regex pattern matching to ensure search stays within project boundaries
+
+### Technical Details
+- Added `scan_boundary` parameter to `get_lockfile_version()` function signature
+- Implemented boundary check: `if [[ ! "$current_dir/" =~ ^"$scan_boundary"/ && "$current_dir" != "$scan_boundary" ]]; then break; fi`
+- Updated call sites to pass scan directory as boundary parameter
+- Preserves all existing functionality within proper security boundaries
+
+## [2.6.2] - 2025-10-03
+
+### Fixed
+- **GitHub Issue #42 Node Modules Lockfile Detection**: Fixed remaining lockfile detection issue where packages in node_modules subdirectories were not properly checked against root lockfiles
+- **Upward Lockfile Search**: Enhanced `get_lockfile_version()` function to search parent directories for lockfiles instead of only checking same directory as package.json
+- **Node Modules Package Protection**: Packages found in `node_modules/*/package.json` now correctly show LOW RISK when root lockfile pins them to safe versions
+
+### Changed
+- **Lockfile Detection Logic**: Modified lockfile search to traverse upward through directory tree until finding lockfile or reaching filesystem root
+- **Cross-Directory Lockfile Support**: Lockfile detection now works for packages at any directory depth within a project
+
+### Technical Details
+- Searches upward from package.json directory using `dirname` traversal until lockfile found or root reached
+- Supports all lockfile types (package-lock.json, yarn.lock, pnpm-lock.yaml) at any parent directory level
+- Maintains backward compatibility for root-level packages
+- Zero performance impact for projects without nested package.json files
+
 ## [2.6.1] - 2025-10-03
 
 ### Fixed
