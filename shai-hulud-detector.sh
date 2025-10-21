@@ -1264,14 +1264,15 @@ check_network_exfiltration() {
             if [[ "$file" != *"package-lock.json"* && "$file" != *"yarn.lock"* && "$file" != *"/vendor/"* && "$file" != *"/node_modules/"* ]]; then
                 for domain in "${suspicious_domains[@]}"; do
                     # Use word boundaries and URL patterns to avoid false positives like "timeZone" containing "t.me"
-                    if grep -qE "https?://[^[:space:]]*$domain|[[:space:]]$domain[[:space:]/\"\']" "$file" 2>/dev/null; then
+                    # Updated pattern to catch property values like hostname: 'webhook.site'
+                    if grep -qE "https?://[^[:space:]]*$domain|[[:space:]:,\"\']$domain[[:space:]/\"\',;]" "$file" 2>/dev/null; then
                         # Additional check - make sure it's not just a comment or documentation
                         local suspicious_usage
-                        suspicious_usage=$(grep -E "https?://[^[:space:]]*$domain|[[:space:]]$domain[[:space:]/\"\']" "$file" 2>/dev/null | grep -vE "^[[:space:]]*#|^[[:space:]]*//" 2>/dev/null | head -1 2>/dev/null) || true
+                        suspicious_usage=$(grep -E "https?://[^[:space:]]*$domain|[[:space:]:,\"\']$domain[[:space:]/\"\',;]" "$file" 2>/dev/null | grep -vE "^[[:space:]]*#|^[[:space:]]*//" 2>/dev/null | head -1 2>/dev/null) || true
                         if [[ -n "$suspicious_usage" ]]; then
                             # Get line number and context
                             local line_info
-                            line_info=$(grep -nE "https?://[^[:space:]]*$domain|[[:space:]]$domain[[:space:]/\"\']" "$file" 2>/dev/null | grep -vE "^[[:space:]]*#|^[[:space:]]*//" 2>/dev/null | head -1 2>/dev/null) || true
+                            line_info=$(grep -nE "https?://[^[:space:]]*$domain|[[:space:]:,\"\']$domain[[:space:]/\"\',;]" "$file" 2>/dev/null | grep -vE "^[[:space:]]*#|^[[:space:]]*//" 2>/dev/null | head -1 2>/dev/null) || true
                             local line_num
                             line_num=$(echo "$line_info" | cut -d: -f1 2>/dev/null) || true
 
