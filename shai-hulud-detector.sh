@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # Shai-Hulud NPM Supply Chain Attack Detection Script
-# Detects indicators of compromise from the September 2025 npm attack
+# Detects indicators of compromise from September 2025 and November 2025 npm attacks
+# Includes detection for "Shai-Hulud: The Second Coming" (fake Bun runtime attack)
 # Usage: ./shai-hulud-detector.sh <directory_to_scan>
 
 set -eo pipefail
@@ -135,6 +136,16 @@ TYPOSQUATTING_WARNINGS=()
 NETWORK_EXFILTRATION_WARNINGS=()
 LOCKFILE_SAFE_VERSIONS=()
 
+# November 2025 "Shai-Hulud: The Second Coming" attack patterns
+BUN_SETUP_FILES=()
+BUN_ENVIRONMENT_FILES=()
+NEW_WORKFLOW_FILES=()
+GITHUB_SHA1HULUD_RUNNERS=()
+PREINSTALL_BUN_PATTERNS=()
+SECOND_COMING_REPOS=()
+ACTIONS_SECRETS_FILES=()
+TRUFFLEHOG_PATTERNS=()
+
 # Function: usage
 # Purpose: Display help message and exit
 # Args: None
@@ -220,6 +231,116 @@ check_workflow_files() {
             WORKFLOW_FILES+=("$file")
         fi
     done < <(find "$scan_dir" -name "shai-hulud-workflow.yml" 2>/dev/null)
+}
+
+# Function: check_bun_attack_files
+# Purpose: Detect November 2025 "Shai-Hulud: The Second Coming" Bun attack files
+# Args: $1 = scan_dir (directory to scan)
+# Modifies: BUN_SETUP_FILES, BUN_ENVIRONMENT_FILES (global arrays)
+# Returns: Populates arrays with paths to suspicious Bun-related malicious files
+check_bun_attack_files() {
+    local scan_dir=$1
+    print_status "$BLUE" "🔍 Checking for November 2025 Bun attack files..."
+
+    # Look for setup_bun.js files (fake Bun runtime installation)
+    while IFS= read -r file; do
+        if [[ -f "$file" ]]; then
+            BUN_SETUP_FILES+=("$file")
+        fi
+    done < <(find "$scan_dir" -name "setup_bun.js" 2>/dev/null)
+
+    # Look for bun_environment.js files (10MB+ obfuscated payload)
+    while IFS= read -r file; do
+        if [[ -f "$file" ]]; then
+            BUN_ENVIRONMENT_FILES+=("$file")
+        fi
+    done < <(find "$scan_dir" -name "bun_environment.js" 2>/dev/null)
+}
+
+# Function: check_new_workflow_patterns
+# Purpose: Detect November 2025 new workflow file patterns and actionsSecrets.json
+# Args: $1 = scan_dir (directory to scan)
+# Modifies: NEW_WORKFLOW_FILES, ACTIONS_SECRETS_FILES (global arrays)
+# Returns: Populates arrays with paths to new attack pattern files
+check_new_workflow_patterns() {
+    local scan_dir=$1
+    print_status "$BLUE" "🔍 Checking for new workflow patterns..."
+
+    # Look for formatter_123456789.yml workflow files
+    while IFS= read -r file; do
+        if [[ -f "$file" ]]; then
+            NEW_WORKFLOW_FILES+=("$file")
+        fi
+    done < <(find "$scan_dir" -name "formatter_*.yml" -path "*/.github/workflows/*" 2>/dev/null)
+
+    # Look for actionsSecrets.json files (double Base64 encoded secrets)
+    while IFS= read -r file; do
+        if [[ -f "$file" ]]; then
+            ACTIONS_SECRETS_FILES+=("$file")
+        fi
+    done < <(find "$scan_dir" -name "actionsSecrets.json" 2>/dev/null)
+}
+
+# Function: check_preinstall_bun_patterns
+# Purpose: Detect fake Bun runtime preinstall patterns in package.json files
+# Args: $1 = scan_dir (directory to scan)
+# Modifies: PREINSTALL_BUN_PATTERNS (global array)
+# Returns: Populates array with files containing suspicious preinstall patterns
+check_preinstall_bun_patterns() {
+    local scan_dir=$1
+    print_status "$BLUE" "🔍 Checking for fake Bun preinstall patterns..."
+
+    # Look for package.json files with suspicious "preinstall": "node setup_bun.js" pattern
+    while IFS= read -r file; do
+        if [[ -f "$file" ]]; then
+            # Check if the file contains the malicious preinstall pattern
+            if grep -q '"preinstall"[[:space:]]*:[[:space:]]*"node setup_bun\.js"' "$file" 2>/dev/null; then
+                PREINSTALL_BUN_PATTERNS+=("$file")
+            fi
+        fi
+    done < <(find "$scan_dir" -name "package.json" 2>/dev/null)
+}
+
+# Function: check_github_actions_runner
+# Purpose: Detect SHA1HULUD GitHub Actions runners in workflow files
+# Args: $1 = scan_dir (directory to scan)
+# Modifies: GITHUB_SHA1HULUD_RUNNERS (global array)
+# Returns: Populates array with workflow files containing SHA1HULUD runner references
+check_github_actions_runner() {
+    local scan_dir=$1
+    print_status "$BLUE" "🔍 Checking for SHA1HULUD GitHub Actions runners..."
+
+    # Look for workflow files containing SHA1HULUD runner names
+    while IFS= read -r file; do
+        if [[ -f "$file" ]]; then
+            # Check for SHA1HULUD runner references in YAML files
+            if grep -qi "SHA1HULUD" "$file" 2>/dev/null; then
+                GITHUB_SHA1HULUD_RUNNERS+=("$file")
+            fi
+        fi
+    done < <(find "$scan_dir" -name "*.yml" -o -name "*.yaml" 2>/dev/null)
+}
+
+# Function: check_second_coming_repos
+# Purpose: Detect repository descriptions with "Sha1-Hulud: The Second Coming" pattern
+# Args: $1 = scan_dir (directory to scan)
+# Modifies: SECOND_COMING_REPOS (global array)
+# Returns: Populates array with git repositories matching the description pattern
+check_second_coming_repos() {
+    local scan_dir=$1
+    print_status "$BLUE" "🔍 Checking for 'Second Coming' repository descriptions..."
+
+    # Look for git repositories with the malicious description
+    while IFS= read -r repo_dir; do
+        if [[ -d "$repo_dir/.git" ]]; then
+            # Check git config for repository description
+            local description
+            description=$(git -C "$repo_dir" config --get --local --null repository.description 2>/dev/null | tr -d '\0')
+            if [[ "$description" == *"Sha1-Hulud: The Second Coming"* ]]; then
+                SECOND_COMING_REPOS+=("$repo_dir")
+            fi
+        fi
+    done < <(find "$scan_dir" -type d -name ".git" | sed 's|/.git$||' 2>/dev/null)
 }
 
 # Function: check_file_hashes
@@ -886,6 +1007,25 @@ check_trufflehog_activity() {
                         ;;
                 esac
             fi
+
+            # November 2025 specific TruffleHog patterns from "The Second Coming" attack
+            if grep -l "TruffleHog.*scan.*credential\|download.*trufflehog\|trufflehog.*env\|trufflehog.*AWS\|trufflehog.*NPM_TOKEN" "$file" >/dev/null 2>&1; then
+                # Look for specific patterns indicating automated TruffleHog credential harvesting
+                if [[ "$content_sample" == *"download"* ]] && [[ "$content_sample" == *"trufflehog"* ]] && [[ "$content_sample" == *"scan"* ]]; then
+                    TRUFFLEHOG_ACTIVITY+=("$file:HIGH:November 2025 pattern - Automated TruffleHog download and credential scanning")
+                elif [[ "$content_sample" == *"GitHub Action"* ]] && [[ "$content_sample" == *"trufflehog"* ]]; then
+                    TRUFFLEHOG_ACTIVITY+=("$file:HIGH:November 2025 pattern - TruffleHog in GitHub Actions for credential theft")
+                elif [[ "$content_sample" == *"environment"* ]] && [[ "$content_sample" == *"token"* ]] && [[ "$content_sample" == *"trufflehog"* ]]; then
+                    TRUFFLEHOG_ACTIVITY+=("$file:HIGH:November 2025 pattern - TruffleHog environment token harvesting")
+                else
+                    TRUFFLEHOG_ACTIVITY+=("$file:MEDIUM:Potential November 2025 TruffleHog attack pattern")
+                fi
+            fi
+
+            # Check for specific command execution patterns used in November 2025 attack
+            if grep -l "curl.*trufflehog\|wget.*trufflehog\|bunExecutable.*trufflehog" "$file" >/dev/null 2>&1; then
+                TRUFFLEHOG_ACTIVITY+=("$file:HIGH:November 2025 pattern - Dynamic TruffleHog download via curl/wget/Bun")
+            fi
         fi
     done < <(find "$scan_dir" -type f \( -name "*.js" -o -name "*.py" -o -name "*.sh" -o -name "*.json" \) -print0 2>/dev/null)
 }
@@ -1420,6 +1560,70 @@ generate_report() {
         done
     fi
 
+    # Report November 2025 "Shai-Hulud: The Second Coming" attack files
+    if [[ ${#BUN_SETUP_FILES[@]} -gt 0 ]]; then
+        print_status "$RED" "🚨 HIGH RISK: November 2025 Bun attack setup files detected:"
+        for file in "${BUN_SETUP_FILES[@]}"; do
+            echo "   - $file"
+            show_file_preview "$file" "HIGH RISK: setup_bun.js - Fake Bun runtime installation malware"
+            high_risk=$((high_risk+1))
+        done
+    fi
+
+    if [[ ${#BUN_ENVIRONMENT_FILES[@]} -gt 0 ]]; then
+        print_status "$RED" "🚨 HIGH RISK: November 2025 Bun environment payload detected:"
+        for file in "${BUN_ENVIRONMENT_FILES[@]}"; do
+            echo "   - $file"
+            show_file_preview "$file" "HIGH RISK: bun_environment.js - 10MB+ obfuscated credential harvesting payload"
+            high_risk=$((high_risk+1))
+        done
+    fi
+
+    if [[ ${#NEW_WORKFLOW_FILES[@]} -gt 0 ]]; then
+        print_status "$RED" "🚨 HIGH RISK: November 2025 malicious workflow files detected:"
+        for file in "${NEW_WORKFLOW_FILES[@]}"; do
+            echo "   - $file"
+            show_file_preview "$file" "HIGH RISK: formatter_*.yml - Malicious GitHub Actions workflow"
+            high_risk=$((high_risk+1))
+        done
+    fi
+
+    if [[ ${#ACTIONS_SECRETS_FILES[@]} -gt 0 ]]; then
+        print_status "$RED" "🚨 HIGH RISK: Actions secrets exfiltration files detected:"
+        for file in "${ACTIONS_SECRETS_FILES[@]}"; do
+            echo "   - $file"
+            show_file_preview "$file" "HIGH RISK: actionsSecrets.json - Double Base64 encoded secrets exfiltration"
+            high_risk=$((high_risk+1))
+        done
+    fi
+
+    if [[ ${#PREINSTALL_BUN_PATTERNS[@]} -gt 0 ]]; then
+        print_status "$RED" "🚨 HIGH RISK: Fake Bun preinstall patterns detected:"
+        for file in "${PREINSTALL_BUN_PATTERNS[@]}"; do
+            echo "   - $file"
+            show_file_preview "$file" "HIGH RISK: package.json contains malicious preinstall: node setup_bun.js"
+            high_risk=$((high_risk+1))
+        done
+    fi
+
+    if [[ ${#GITHUB_SHA1HULUD_RUNNERS[@]} -gt 0 ]]; then
+        print_status "$RED" "🚨 HIGH RISK: SHA1HULUD GitHub Actions runners detected:"
+        for file in "${GITHUB_SHA1HULUD_RUNNERS[@]}"; do
+            echo "   - $file"
+            show_file_preview "$file" "HIGH RISK: GitHub Actions workflow contains SHA1HULUD runner references"
+            high_risk=$((high_risk+1))
+        done
+    fi
+
+    if [[ ${#SECOND_COMING_REPOS[@]} -gt 0 ]]; then
+        print_status "$RED" "🚨 HIGH RISK: 'Shai-Hulud: The Second Coming' repositories detected:"
+        for repo_dir in "${SECOND_COMING_REPOS[@]}"; do
+            echo "   - $repo_dir"
+            echo "     Repository description: Sha1-Hulud: The Second Coming."
+            high_risk=$((high_risk+1))
+        done
+    fi
+
     # Report compromised packages
     if [[ ${#COMPROMISED_FOUND[@]} -gt 0 ]]; then
         print_status "$RED" "🚨 HIGH RISK: Compromised package versions detected:"
@@ -1842,6 +2046,13 @@ main() {
     check_git_branches "$scan_dir"
     check_shai_hulud_repos "$scan_dir"
     check_package_integrity "$scan_dir"
+
+    # November 2025 "Shai-Hulud: The Second Coming" attack detection
+    check_bun_attack_files "$scan_dir"
+    check_new_workflow_patterns "$scan_dir"
+    check_preinstall_bun_patterns "$scan_dir"
+    check_github_actions_runner "$scan_dir"
+    check_second_coming_repos "$scan_dir"
 
     # Run additional security checks only in paranoid mode
     if [[ "$paranoid_mode" == "true" ]]; then
