@@ -43,8 +43,8 @@ Covers multiple npm supply chain attacks from September 2025 and November 2025:
 
 ```bash
 # Clone the repository
-git clone https://github.com/username/shai-hulud-detector.git
-cd shai-hulud-detector
+git clone https://github.com/username/shai-hulud-detect.git
+cd shai-hulud-detect
 
 # Make the script executable
 chmod +x shai-hulud-detector.sh
