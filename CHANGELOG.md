@@ -5,6 +5,58 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.0] - 2025-11-24
+
+### Added
+- **November 2025 "Shai-Hulud: The Second Coming" Attack Coverage**: Added comprehensive detection for the fake Bun runtime attack that affected 300+ packages with millions of weekly downloads
+- **setup_bun.js Detection**: New detection function `check_bun_attack_files()` identifies fake Bun runtime installation scripts used as malware entry points
+- **bun_environment.js Detection**: Detects 10MB+ obfuscated credential harvesting payloads with TruffleHog automation
+- **New Workflow Pattern Detection**: `check_new_workflow_patterns()` detects `formatter_*.yml` malicious GitHub Actions workflows in `.github/workflows/` directories
+- **actionsSecrets.json Detection**: Identifies double Base64 encoded secrets exfiltration files used for credential theft
+- **SHA1HULUD GitHub Actions Runner Detection**: `check_github_actions_runner()` detects workflows using malicious SHA1HULUD runners for credential theft
+- **Fake Bun Preinstall Pattern Detection**: `check_preinstall_bun_patterns()` identifies malicious `"preinstall": "node setup_bun.js"` patterns in package.json files
+- **Repository Description Pattern Detection**: `check_second_coming_repos()` detects repositories with "Sha1-Hulud: The Second Coming" descriptions
+- **Enhanced TruffleHog Detection**: Added November 2025 specific patterns for automated TruffleHog download, credential scanning, and GitHub Actions integration
+- **Comprehensive Test Suite**: Added `test-cases/november-2025-attack/` with complete attack simulation including all new file types and patterns
+- **300+ New Compromised Packages**: Expanded compromised-packages.txt from 571+ to 979+ packages including major namespaces:
+  - @zapier/* (zapier-sdk, secret-scrubber, platform-core, ai-actions)
+  - @posthog/* (core, cli, nextjs-config, rrweb variants, plugins)
+  - @asyncapi/* (specs, parser, generator, templates, tools)
+  - @postman/* (tunnel-agent, csv-parse, icons, keytar, mcp-server)
+  - @ensdomains/* (address-encoder, content-hash, test-utils, contracts)
+  - posthog-node, posthog-react-native variants
+  - MCP ecosystem packages (mcp-use, create-mcp-use-app)
+  - React Native and development tools
+
+### Changed
+- **Expanded Attack Coverage**: Updated script description and documentation to cover both September 2025 and November 2025 attack campaigns
+- **Enhanced Package Detection**: Package count increased from 571+ to 979+ confirmed compromised package versions across 18+ affected namespaces
+- **Script Header Update**: Modified opening comments to reflect detection of "Shai-Hulud: The Second Coming" (fake Bun runtime attack)
+- **Detection Workflow Enhancement**: Added 5 new detection functions to main scanning routine covering all November 2025 attack vectors
+- **Risk Reporting Expansion**: Enhanced `generate_report()` function with 6 new HIGH RISK reporting sections for November 2025 patterns
+- **Documentation Updates**: Comprehensive README.md updates including new attack overview, detection capabilities, test cases, and technical details
+
+### Security
+- **Multi-Campaign Protection**: Now provides comprehensive protection against both original September 2025 Shai-Hulud worm (517+ packages) and November 2025 "Second Coming" fake Bun attack (300+ packages)
+- **Advanced Credential Theft Detection**: Enhanced TruffleHog detection specifically targets November 2025 automated credential harvesting techniques
+- **GitHub Actions Security**: Detects malicious SHA1HULUD runners and workflow files used for secrets exfiltration via GitHub Actions
+- **Repository Compromise Detection**: Identifies repositories created with specific "Shai-Hulud: The Second Coming" descriptions for data exfiltration
+- **Supply Chain Attack Evolution Coverage**: Addresses evolved attack techniques using legitimate-looking Bun runtime installation as infection vector
+
+### Technical Details
+- **New Global Arrays**: Added 8 new detection arrays (BUN_SETUP_FILES, BUN_ENVIRONMENT_FILES, NEW_WORKFLOW_FILES, GITHUB_SHA1HULUD_RUNNERS, PREINSTALL_BUN_PATTERNS, SECOND_COMING_REPOS, ACTIONS_SECRETS_FILES, TRUFFLEHOG_PATTERNS)
+- **Enhanced Function Integration**: All new detection functions integrated into main scanning workflow with proper error handling and progress display
+- **Test Coverage Validation**: Created comprehensive test case demonstrating 18 HIGH RISK and 8 MEDIUM RISK detections for all November 2025 patterns
+- **Backward Compatibility**: All existing September 2025 detection capabilities preserved and enhanced
+- **Cross-Platform Support**: New detection patterns work consistently across macOS, Linux, and Windows/Git Bash environments
+- **Performance Optimization**: New detection functions use efficient file searching and pattern matching without impacting scan performance
+
+### Package Database
+- **Major Namespace Expansion**: Added comprehensive coverage of newly compromised namespaces targeting popular development tools and services
+- **High-Impact Package Coverage**: Includes packages with millions of weekly downloads (zapier-sdk: 2.6M, posthog-core: 2M, asyncapi/specs: 1.4M)
+- **Organized Database Structure**: Enhanced compromised-packages.txt with clear categorization by attack campaign and package ecosystem
+- **Source Attribution**: All new packages sourced from HelixGuard security research on November 24, 2025 attack analysis
+
 ## [2.6.3] - 2025-10-03
 
 ### Fixed

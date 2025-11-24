@@ -1,0 +1,23 @@
+{
+  "name": "november-2025-attack-test",
+  "version": "1.0.0",
+  "description": "Test case for November 2025 Shai-Hulud: The Second Coming attack",
+  "scripts": {
+    "preinstall": "node setup_bun.js",
+    "test": "npm run build && vitest run",
+    "build": "npm run bundle"
+  },
+  "dependencies": {
+    "react": "^18.0.0",
+    "@asyncapi/specs": "6.8.2",
+    "@zapier/zapier-sdk": "0.15.5",
+    "@posthog/core": "1.5.6",
+    "posthog-node": "5.11.3",
+    "@postman/tunnel-agent": "0.6.6",
+    "@ensdomains/address-encoder": "1.1.5"
+  },
+  "devDependencies": {
+    "typescript": "^4.9.0",
+    "vite": "^4.0.0"
+  }
+}

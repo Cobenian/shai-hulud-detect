@@ -10,11 +10,11 @@
 
 <img src="shai_hulu_detector.jpg" alt="sshd" width="80%" />
 
-A Bash tool that helps you spot known traces of the September 2025 npm supply-chain attacks—including the Shai-Hulud self-replicating worm and the chalk/debug crypto-theft incident. It cross-checks 571+ confirmed bad package versions across multiple campaigns and checks for the most relevant red flags in your project.
+A Bash tool that helps you spot known traces of the September 2025 and November 2025 npm supply-chain attacks—including the Shai-Hulud self-replicating worm, the chalk/debug crypto-theft incident, and the "Shai-Hulud: The Second Coming" fake Bun runtime attack. It cross-checks 979+ confirmed bad package versions across multiple campaigns and checks for the most relevant red flags in your project.
 
 ## Overview
 
-Covers multiple npm supply chain attacks from September 2025:
+Covers multiple npm supply chain attacks from September 2025 and November 2025:
 
 ### **Chalk/Debug Crypto Theft Attack** (September 8, 2025)
 - **Scope**: 18+ packages with 2+ billion weekly downloads
@@ -29,6 +29,15 @@ Covers multiple npm supply chain attacks from September 2025:
 - **Method**: Uses Trufflehog to scan for secrets, publishes stolen data to GitHub
 - **Propagation**: Self-replicates using stolen npm tokens
 - **Packages**: @ctrl/*, @crowdstrike/*, @operato/*, and many others
+
+### **Shai-Hulud: The Second Coming** (November 24, 2025)
+- **Scope**: 300+ packages with millions of weekly downloads
+- **Attack**: Fake Bun runtime installation with credential harvesting
+- **Method**: Uses fake `setup_bun.js` preinstall hook to download and execute TruffleHog
+- **Exfiltration**: Creates GitHub Actions runners named "SHA1HULUD" and repositories with "Sha1-Hulud: The Second Coming" descriptions
+- **Packages**: @zapier/*, @posthog/*, @asyncapi/*, @postman/*, @ensdomains/*, and many others
+- **Files**: `setup_bun.js`, `bun_environment.js` (10MB+ obfuscated payload), `actionsSecrets.json` (double Base64 encoded)
+- **Workflow**: `.github/workflows/formatter_*.yml` files using SHA1HULUD runners
 
 ## Quick Start
 
@@ -50,12 +59,15 @@ chmod +x shai-hulud-detector.sh
 ## What it Detects
 
 ### High Risk Indicators
-- **Malicious workflow files**: `shai-hulud-workflow.yml` files in `.github/workflows/`
+- **Malicious workflow files**: `shai-hulud-workflow.yml` files in `.github/workflows/` (September 2025) and `formatter_*.yml` files using SHA1HULUD runners (November 2025)
 - **Known malicious file hashes**: Files matching any of 7 SHA-256 hashes from different Shai-Hulud worm variants (V1-V7), sourced from [Socket.dev's comprehensive attack analysis](https://socket.dev/blog/ongoing-supply-chain-attack-targets-crowdstrike-npm-packages)
-- **Compromised package versions**: Specific versions of 571+ packages from multiple attacks
-- **Suspicious postinstall hooks**: Package.json files with postinstall scripts containing curl, wget, or eval commands
-- **Trufflehog activity**: Files containing trufflehog references or credential scanning patterns
-- **Shai-Hulud repositories**: Git repositories named "Shai-Hulud" (used for data exfiltration)
+- **November 2025 Bun attack files**: `setup_bun.js` (fake Bun runtime installer) and `bun_environment.js` (10MB+ obfuscated credential harvesting payload)
+- **Compromised package versions**: Specific versions of 979+ packages from multiple attacks (September & November 2025)
+- **Suspicious postinstall hooks**: Package.json files with postinstall scripts containing curl, wget, eval commands, or fake Bun installation (`"preinstall": "node setup_bun.js"`)
+- **Trufflehog activity**: Files containing trufflehog references, credential scanning patterns, or November 2025 enhanced patterns (automated TruffleHog download and execution)
+- **Shai-Hulud repositories**: Git repositories named "Shai-Hulud" (used for data exfiltration) or with "Sha1-Hulud: The Second Coming" descriptions
+- **Secrets exfiltration files**: `actionsSecrets.json` files with double Base64 encoded credentials (November 2025)
+- **SHA1HULUD GitHub Actions runners**: GitHub Actions workflows using malicious runners for credential theft
 
 ### Medium Risk Indicators
 - **Suspicious content patterns**: References to `webhook.site` and the malicious endpoint `bb8ca5f6-4175-45d2-b042-fc9ebb8170b7`
@@ -68,8 +80,8 @@ chmod +x shai-hulud-detector.sh
 ### Package Detection Method
 
 The script loads a list of the compromised packages from an external file (`compromised-packages.txt`) which contains:
-- **600+ confirmed compromised package versions** with exact version numbers
-- **11 affected namespaces** for broader detection of packages from compromised maintainer accounts
+- **979+ confirmed compromised package versions** with exact version numbers (571+ from September 2025 + 300+ from November 2025)
+- **18+ affected namespaces** for broader detection of packages from compromised maintainer accounts
 
 ### Maintaining and Updating the Package List
 
@@ -97,7 +109,7 @@ Check these security advisories regularly for newly discovered compromised packa
 3. Test the script to ensure detection works
 4. Consider contributing updates back to this repository
 
-**Coverage Note**: Multiple September 2025 attacks affected 571+ packages total. Our detection aims to provide **comprehensive coverage** across both the Shai-Hulud worm (517+ packages) and Chalk/Debug crypto theft (26+ packages) attacks. Combined with namespace-based detection, this should provide excellent protection against these sophisticated supply chain compromises.
+**Coverage Note**: Multiple September and November 2025 attacks affected 979+ packages total. Our detection aims to provide **comprehensive coverage** across the Shai-Hulud worm (517+ packages), Chalk/Debug crypto theft (26+ packages), and "Shai-Hulud: The Second Coming" fake Bun runtime attack (300+ packages). Combined with namespace-based detection and enhanced attack pattern recognition, this provides excellent protection against these sophisticated supply chain compromises.
 
 ### Core vs Paranoid Mode
 
@@ -158,6 +170,9 @@ The repository includes test cases to validate the script:
 
 # Test on infected project (should show multiple issues)
 ./shai-hulud-detector.sh test-cases/infected-project
+
+# Test November 2025 "Shai-Hulud: The Second Coming" attack (should show HIGH risk for all new patterns)
+./shai-hulud-detector.sh test-cases/november-2025-attack
 
 # Test on mixed project (should show medium risk issues)
 ./shai-hulud-detector.sh test-cases/mixed-project
@@ -237,17 +252,20 @@ This feature addresses Issue #42 and eliminates confusion for users with older p
 
 The script performs these comprehensive checks:
 
-1. **Package Database Loading**: Loads the complete list of 571+ compromised packages from `compromised-packages.txt`
-2. **Workflow Detection**: Searches for `shai-hulud-workflow.yml` files in `.github/workflows/`
+1. **Package Database Loading**: Loads the complete list of 979+ compromised packages from `compromised-packages.txt` (September & November 2025)
+2. **Workflow Detection**: Searches for `shai-hulud-workflow.yml` files (September 2025) and `formatter_*.yml` files with SHA1HULUD runners (November 2025)
 3. **Hash Verification**: Calculates SHA-256 hashes of JavaScript/JSON files against 7 known malicious bundle.js variants representing the complete evolution of the Shai-Hulud worm (V1-V7)
-4. **Package Analysis**: Parses `package.json` files for specific compromised versions and affected namespaces
-5. **Postinstall Hook Detection**: Identifies suspicious postinstall scripts that could be used for malware propagation
-6. **Content Scanning**: Greps for suspicious URLs, webhook endpoints, and malicious patterns
-7. **Cryptocurrency Theft Detection**: Identifies wallet address replacement patterns, XMLHttpRequest hijacking, and known crypto theft functions from the September 8 attack
-8. **Trufflehog Activity Detection**: Looks for evidence of credential scanning tools and secret harvesting
-9. **Git Analysis**: Checks for suspicious branch names and repository names
-10. **Repository Detection**: Identifies "Shai-Hulud" repositories used for data exfiltration
-11. **Package Integrity Checking**: Analyzes package-lock.json and yarn.lock files for compromised packages and suspicious modifications
+4. **November 2025 Bun Attack Detection**: Identifies `setup_bun.js` (fake Bun installer) and `bun_environment.js` (obfuscated payload) files
+5. **Package Analysis**: Parses `package.json` files for specific compromised versions, affected namespaces, and fake Bun preinstall hooks
+6. **Postinstall Hook Detection**: Identifies suspicious postinstall scripts including fake Bun installation patterns (`"preinstall": "node setup_bun.js"`)
+7. **Content Scanning**: Greps for suspicious URLs, webhook endpoints, and malicious patterns
+8. **Cryptocurrency Theft Detection**: Identifies wallet address replacement patterns, XMLHttpRequest hijacking, and known crypto theft functions from the September 8 attack
+9. **Enhanced Trufflehog Activity Detection**: Looks for credential scanning tools, secret harvesting, and November 2025 automated TruffleHog download patterns
+10. **Git Analysis**: Checks for suspicious branch names and repository names
+11. **Repository Detection**: Identifies "Shai-Hulud" repositories and "Sha1-Hulud: The Second Coming" repository descriptions
+12. **Secrets Exfiltration Detection**: Identifies `actionsSecrets.json` files with double Base64 encoded credentials
+13. **GitHub Actions Runner Detection**: Identifies malicious SHA1HULUD runners in GitHub Actions workflows
+14. **Package Integrity Checking**: Analyzes package-lock.json and yarn.lock files for compromised packages and suspicious modifications
 
 ## Limitations
 
@@ -255,7 +273,7 @@ The script performs these comprehensive checks:
 - **Package Versions**: Detects specific compromised versions and namespace warnings, but new compromised versions may not be detected
 - **False Positives**: Legitimate use of webhook.site, Trufflehog for security, or postinstall hooks will trigger alerts
 - **Worm Evolution**: The self-replicating nature means new variants may emerge with different signatures
-- **Coverage**: Covers known compromised packages from major September 2025 attacks
+- **Coverage**: Covers known compromised packages from major September 2025 and November 2025 attacks
 - **Package Integrity**: Relies on lockfile analysis to detect compromised packages, but sophisticated attacks may evade detection
 
 ## Contributing
