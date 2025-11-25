@@ -550,6 +550,36 @@ semver_match() {
                 [[ "${subject_patch}"   -ge "${pattern_patch}"   ]] || continue
                 return 0 # Match
                 ;;
+            *x*) # Wildcard pattern (4.x, 1.2.x, etc.)
+                # Parse pattern components, handling 'x' wildcards specially
+                local pattern_parts
+                IFS='.' read -ra pattern_parts <<< "${pattern}"
+                local subject_parts
+                IFS='.' read -ra subject_parts <<< "${test_subject}"
+
+                # Check each component, skip comparison for 'x' wildcards
+                for i in 0 1 2; do
+                    if [[ ${i} -lt ${#pattern_parts[@]} && ${i} -lt ${#subject_parts[@]} ]]; then
+                        local pattern_part="${pattern_parts[i]}"
+                        local subject_part="${subject_parts[i]}"
+
+                        # Skip wildcard components
+                        if [[ "${pattern_part}" == "x" ]]; then
+                            continue
+                        fi
+
+                        # Extract numeric part (remove any non-numeric suffix)
+                        pattern_part=$(echo "${pattern_part}" | sed 's/[^0-9].*//')
+                        subject_part=$(echo "${subject_part}" | sed 's/[^0-9].*//')
+
+                        # Compare numeric parts
+                        if [[ "${subject_part}" != "${pattern_part}" ]]; then
+                            continue 2  # Continue outer loop (try next pattern)
+                        fi
+                    fi
+                done
+                return 0 # Match
+                ;;
             *) # Exact match
                 semverParseInto ${pattern} pattern_major pattern_minor pattern_patch pattern_special
                 [[ "${subject_major}"  -eq "${pattern_major}"   ]] || continue

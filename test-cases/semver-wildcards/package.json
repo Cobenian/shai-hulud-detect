@@ -1,0 +1,13 @@
+{
+  "name": "semver-wildcards-test",
+  "version": "1.0.0",
+  "description": "Test case for GitHub issue #56 - semver wildcard parsing with 4.x syntax",
+  "dependencies": {
+    "some-package": "4.x",
+    "another-package": "1.2.x",
+    "wildcard-package": "x.x.x"
+  },
+  "devDependencies": {
+    "test-package": "2.x"
+  }
+}
