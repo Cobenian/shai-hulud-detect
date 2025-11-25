@@ -5,6 +5,27 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.2] - 2025-11-25
+
+### Fixed
+- **Semver Wildcard Parsing**: Fixed syntax error when processing wildcard version patterns like "4.x" in package.json files (resolves GitHub issue #56)
+- **PostHog Package Detection**: Added missing posthog-js:1.297.3 to compromised packages list - was confirmed affected in "Shai-Hulud: The Second Coming" attack (resolves GitHub issue #60)
+
+### Changed
+- **Semver Pattern Matching**: Enhanced semver_match() function to handle npm-style wildcard version ranges (4.x, 1.2.x, x.x.x patterns)
+- **Package Detection Coverage**: Improved detection accuracy by including previously missing PostHog packages from November 2025 supply chain attack
+
+### Security
+- **Enhanced Package Detection**: Wildcard version patterns no longer cause script crashes, ensuring comprehensive package scanning continues
+- **Supply Chain Coverage**: Added detection for PostHog security incident affecting posthog-js 1.297.3 that was part of major npm compromise
+
+### Technical Details
+- **Wildcard Pattern Logic**: Added new `*x*` case in semver_match() function to parse and compare version components while skipping 'x' wildcards
+- **Arithmetic Error Prevention**: Replaced problematic arithmetic comparisons with string parsing for wildcard version components
+- **Backwards Compatibility**: All existing semver patterns (exact, caret ^, tilde ~) continue to work unchanged
+- **Test Coverage**: Added comprehensive test suite with 20 test cases validating wildcard patterns and existing functionality
+- **Package List Update**: Added posthog-js:1.297.3 to compromised-packages.txt in alphabetical order for proper detection
+
 ## [2.7.1] - 2025-11-24
 
 ### Fixed
