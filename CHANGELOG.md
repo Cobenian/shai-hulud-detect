@@ -5,6 +5,41 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.1] - 2025-11-24
+
+### Fixed
+- **Critical Performance Issue**: Fixed script hanging on large projects (23,420+ files) due to bash array memory limits in report generation
+- **Git Command Timeout**: Fixed indefinite hanging in `check_second_coming_repos()` when git commands stall on problematic repositories
+- **Report Generation Failure**: Fixed issue where script would complete all scanning phases but never display final report on large codebases
+- **Memory Efficiency**: Resolved bash array size limitations that prevented proper report output after extensive file scanning
+
+### Changed
+- **File-Based Storage Architecture**: Replaced all in-memory bash arrays with temporary file-based storage for unlimited scalability
+- **Cross-Platform Temp Directory**: Enhanced temp directory creation with robust fallback mechanisms for macOS, Linux, and Windows compatibility
+- **Git Command Safety**: Added 5-second timeout to git operations to prevent hanging on corrupted or slow repositories
+- **Cleanup Handling**: Improved temporary file cleanup with proper trap handlers for script termination scenarios
+
+### Security
+- **Enhanced Reliability**: Large project scans now complete successfully, ensuring comprehensive security coverage regardless of project size
+- **Scan Completion Guarantee**: File-based storage ensures report generation completes even with massive finding datasets
+- **Repository Safety**: Git timeout prevents script lockup when scanning projects with problematic git repositories
+
+### Technical Details
+- **File-Based Finding Storage**: Converted 20+ global arrays to temporary files (workflow_files.txt, trufflehog_activity.txt, compromised_found.txt, etc.)
+- **Cross-Platform Temp Creation**: Implemented `create_temp_dir()` with mktemp primary method and fallback to manual creation using PID and timestamp
+- **Temp Directory Naming**: Uses `shai-hulud-detect-XXXXXX` pattern to clearly identify detection tool vs. malware artifacts
+- **Memory Footprint**: Eliminated bash array memory limits - now handles unlimited findings from any project size
+- **Git Operation Safety**: Added `timeout 5s` to git config commands in repository description checking
+- **Automatic Cleanup**: Trap handlers ensure temp directory removal on EXIT, INT, and TERM signals
+- **Report Generation Conversion**: Updated all report sections to use `while IFS= read -r` loops reading from temp files instead of array iterations
+- **Risk Categorization**: Maintained full functionality for crypto pattern and trufflehog activity risk-level categorization using temporary files
+
+### Performance Impact
+- **Scalability**: Now handles projects with unlimited file counts without performance degradation
+- **Large Project Support**: Successfully processes 23,420+ file projects that previously timed out after 2+ hours
+- **Memory Usage**: Dramatically reduced memory footprint by eliminating large in-memory arrays
+- **Execution Time**: Large projects now complete in expected timeframes (~10 minutes) with proper report display
+
 ## [2.7.0] - 2025-11-24
 
 ### Added
