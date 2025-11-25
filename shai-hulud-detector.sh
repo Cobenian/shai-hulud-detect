@@ -335,7 +335,7 @@ check_second_coming_repos() {
         if [[ -d "$repo_dir/.git" ]]; then
             # Check git config for repository description
             local description
-            description=$(git -C "$repo_dir" config --get --local --null repository.description 2>/dev/null | tr -d '\0')
+            description=$(git -C "$repo_dir" config --get --local --null --default "" repository.description 2>/dev/null | tr -d '\0')
             if [[ "$description" == *"Sha1-Hulud: The Second Coming"* ]]; then
                 SECOND_COMING_REPOS+=("$repo_dir")
             fi
