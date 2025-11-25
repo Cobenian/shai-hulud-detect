@@ -7,25 +7,74 @@
 
 set -eo pipefail
 
-# Array to track temp files for cleanup
-TEMP_FILES=()
+# Global temp directory for file-based storage
+TEMP_DIR=""
 
-# Function: cleanup
-# Purpose: Clean up temporary files on script exit, interrupt, or termination
+# Function: create_temp_dir
+# Purpose: Create cross-platform temporary directory for findings storage
+# Args: None
+# Modifies: TEMP_DIR (global variable)
+# Returns: 0 on success, exits on failure
+create_temp_dir() {
+    local temp_base="${TMPDIR:-${TMP:-${TEMP:-/tmp}}}"
+
+    if command -v mktemp >/dev/null 2>&1; then
+        # Try mktemp with our preferred pattern
+        TEMP_DIR=$(mktemp -d -t shai-hulud-detect-XXXXXX 2>/dev/null) || \
+        TEMP_DIR=$(mktemp -d 2>/dev/null) || \
+        TEMP_DIR="$temp_base/shai-hulud-detect-$$-$(date +%s)"
+    else
+        # Fallback for systems without mktemp (rare with bash)
+        TEMP_DIR="$temp_base/shai-hulud-detect-$$-$(date +%s)"
+    fi
+
+    mkdir -p "$TEMP_DIR" || {
+        echo "Error: Cannot create temporary directory"
+        exit 1
+    }
+
+    # Create findings files
+    touch "$TEMP_DIR/workflow_files.txt"
+    touch "$TEMP_DIR/malicious_hashes.txt"
+    touch "$TEMP_DIR/compromised_found.txt"
+    touch "$TEMP_DIR/suspicious_found.txt"
+    touch "$TEMP_DIR/suspicious_content.txt"
+    touch "$TEMP_DIR/crypto_patterns.txt"
+    touch "$TEMP_DIR/git_branches.txt"
+    touch "$TEMP_DIR/postinstall_hooks.txt"
+    touch "$TEMP_DIR/trufflehog_activity.txt"
+    touch "$TEMP_DIR/shai_hulud_repos.txt"
+    touch "$TEMP_DIR/namespace_warnings.txt"
+    touch "$TEMP_DIR/low_risk_findings.txt"
+    touch "$TEMP_DIR/integrity_issues.txt"
+    touch "$TEMP_DIR/typosquatting_warnings.txt"
+    touch "$TEMP_DIR/network_exfiltration_warnings.txt"
+    touch "$TEMP_DIR/lockfile_safe_versions.txt"
+    touch "$TEMP_DIR/bun_setup_files.txt"
+    touch "$TEMP_DIR/bun_environment_files.txt"
+    touch "$TEMP_DIR/new_workflow_files.txt"
+    touch "$TEMP_DIR/github_sha1hulud_runners.txt"
+    touch "$TEMP_DIR/preinstall_bun_patterns.txt"
+    touch "$TEMP_DIR/second_coming_repos.txt"
+    touch "$TEMP_DIR/actions_secrets_files.txt"
+    touch "$TEMP_DIR/trufflehog_patterns.txt"
+}
+
+# Function: cleanup_temp_files
+# Purpose: Clean up temporary directory on script exit, interrupt, or termination
 # Args: None (uses $? for exit code)
-# Modifies: Removes files tracked in TEMP_FILES array
+# Modifies: Removes temp directory and all contents
 # Returns: Exits with original script exit code
-cleanup() {
+cleanup_temp_files() {
     local exit_code=$?
-    # Clean up temp files
-    for temp_file in "${TEMP_FILES[@]}"; do
-        [[ -f "$temp_file" ]] && rm -f "$temp_file"
-    done
+    if [[ -n "$TEMP_DIR" && -d "$TEMP_DIR" ]]; then
+        rm -rf "$TEMP_DIR"
+    fi
     exit $exit_code
 }
 
 # Set trap for cleanup on exit, interrupt, or termination
-trap cleanup EXIT INT TERM
+trap cleanup_temp_files EXIT INT TERM
 
 # Color codes for output
 RED='\033[0;31m'
@@ -118,33 +167,16 @@ COMPROMISED_NAMESPACES=(
     "@yoobic"
 )
 
-# Global arrays to store findings with risk levels
-WORKFLOW_FILES=()
-MALICIOUS_HASHES=()
-COMPROMISED_FOUND=()
-SUSPICIOUS_FOUND=()
-SUSPICIOUS_CONTENT=()
-CRYPTO_PATTERNS=()
-GIT_BRANCHES=()
-POSTINSTALL_HOOKS=()
-TRUFFLEHOG_ACTIVITY=()
-SHAI_HULUD_REPOS=()
-NAMESPACE_WARNINGS=()
-LOW_RISK_FINDINGS=()
-INTEGRITY_ISSUES=()
-TYPOSQUATTING_WARNINGS=()
-NETWORK_EXFILTRATION_WARNINGS=()
-LOCKFILE_SAFE_VERSIONS=()
-
-# November 2025 "Shai-Hulud: The Second Coming" attack patterns
-BUN_SETUP_FILES=()
-BUN_ENVIRONMENT_FILES=()
-NEW_WORKFLOW_FILES=()
-GITHUB_SHA1HULUD_RUNNERS=()
-PREINSTALL_BUN_PATTERNS=()
-SECOND_COMING_REPOS=()
-ACTIONS_SECRETS_FILES=()
-TRUFFLEHOG_PATTERNS=()
+# File-based storage for findings (replaces global arrays for memory efficiency)
+# Files created in create_temp_dir() function:
+# - workflow_files.txt, malicious_hashes.txt, compromised_found.txt
+# - suspicious_found.txt, suspicious_content.txt, crypto_patterns.txt
+# - git_branches.txt, postinstall_hooks.txt, trufflehog_activity.txt
+# - shai_hulud_repos.txt, namespace_warnings.txt, low_risk_findings.txt
+# - integrity_issues.txt, typosquatting_warnings.txt, network_exfiltration_warnings.txt
+# - lockfile_safe_versions.txt, bun_setup_files.txt, bun_environment_files.txt
+# - new_workflow_files.txt, github_sha1hulud_runners.txt, preinstall_bun_patterns.txt
+# - second_coming_repos.txt, actions_secrets_files.txt, trufflehog_patterns.txt
 
 # Function: usage
 # Purpose: Display help message and exit
@@ -228,7 +260,7 @@ check_workflow_files() {
     # Look specifically for shai-hulud-workflow.yml files
     while IFS= read -r file; do
         if [[ -f "$file" ]]; then
-            WORKFLOW_FILES+=("$file")
+            echo "$file" >> "$TEMP_DIR/workflow_files.txt"
         fi
     done < <(find "$scan_dir" -name "shai-hulud-workflow.yml" 2>/dev/null)
 }
@@ -245,14 +277,14 @@ check_bun_attack_files() {
     # Look for setup_bun.js files (fake Bun runtime installation)
     while IFS= read -r file; do
         if [[ -f "$file" ]]; then
-            BUN_SETUP_FILES+=("$file")
+            echo "$file" >> "$TEMP_DIR/bun_setup_files.txt"
         fi
     done < <(find "$scan_dir" -name "setup_bun.js" 2>/dev/null)
 
     # Look for bun_environment.js files (10MB+ obfuscated payload)
     while IFS= read -r file; do
         if [[ -f "$file" ]]; then
-            BUN_ENVIRONMENT_FILES+=("$file")
+            echo "$file" >> "$TEMP_DIR/bun_environment_files.txt"
         fi
     done < <(find "$scan_dir" -name "bun_environment.js" 2>/dev/null)
 }
@@ -269,14 +301,14 @@ check_new_workflow_patterns() {
     # Look for formatter_123456789.yml workflow files
     while IFS= read -r file; do
         if [[ -f "$file" ]]; then
-            NEW_WORKFLOW_FILES+=("$file")
+            echo "$file" >> "$TEMP_DIR/new_workflow_files.txt"
         fi
     done < <(find "$scan_dir" -name "formatter_*.yml" -path "*/.github/workflows/*" 2>/dev/null)
 
     # Look for actionsSecrets.json files (double Base64 encoded secrets)
     while IFS= read -r file; do
         if [[ -f "$file" ]]; then
-            ACTIONS_SECRETS_FILES+=("$file")
+            echo "$file" >> "$TEMP_DIR/actions_secrets_files.txt"
         fi
     done < <(find "$scan_dir" -name "actionsSecrets.json" 2>/dev/null)
 }
@@ -295,7 +327,7 @@ check_preinstall_bun_patterns() {
         if [[ -f "$file" ]]; then
             # Check if the file contains the malicious preinstall pattern
             if grep -q '"preinstall"[[:space:]]*:[[:space:]]*"node setup_bun\.js"' "$file" 2>/dev/null; then
-                PREINSTALL_BUN_PATTERNS+=("$file")
+                echo "$file" >> "$TEMP_DIR/preinstall_bun_patterns.txt"
             fi
         fi
     done < <(find "$scan_dir" -name "package.json" 2>/dev/null)
@@ -315,7 +347,7 @@ check_github_actions_runner() {
         if [[ -f "$file" ]]; then
             # Check for SHA1HULUD runner references in YAML files
             if grep -qi "SHA1HULUD" "$file" 2>/dev/null; then
-                GITHUB_SHA1HULUD_RUNNERS+=("$file")
+                echo "$file" >> "$TEMP_DIR/github_sha1hulud_runners.txt"
             fi
         fi
     done < <(find "$scan_dir" -name "*.yml" -o -name "*.yaml" 2>/dev/null)
@@ -333,12 +365,14 @@ check_second_coming_repos() {
     # Look for git repositories with the malicious description
     while IFS= read -r repo_dir; do
         if [[ -d "$repo_dir/.git" ]]; then
-            # Check git config for repository description
+            # Check git config for repository description with timeout
             local description
-            description=$(git -C "$repo_dir" config --get --local --null --default "" repository.description 2>/dev/null | tr -d '\0')
-            if [[ "$description" == *"Sha1-Hulud: The Second Coming"* ]]; then
-                SECOND_COMING_REPOS+=("$repo_dir")
+            if description=$(timeout 5s git -C "$repo_dir" config --get --local --null repository.description 2>/dev/null | tr -d '\0'); then
+                if [[ "$description" == *"Sha1-Hulud: The Second Coming"* ]]; then
+                    echo "$repo_dir" >> "$TEMP_DIR/second_coming_repos.txt"
+                fi
             fi
+            # Skip repositories where git command times out or fails
         fi
     done < <(find "$scan_dir" -type d -name ".git" | sed 's|/.git$||' 2>/dev/null)
 }
@@ -366,7 +400,7 @@ check_file_hashes() {
         # Check for malicious files
         for malicious_hash in "${MALICIOUS_HASHLIST[@]}"; do
             if [[ "$malicious_hash" == "$file_hash" ]]; then
-                MALICIOUS_HASHES+=("$file:$file_hash")
+                echo "$file:$file_hash" >> "$TEMP_DIR/malicious_hashes.txt"
             fi
         done
 
@@ -563,7 +597,7 @@ check_packages() {
 
                 if [[ "${package_version}" == "${malicious_version}" ]]; then
                     # Exact match, certainly compromised
-                    COMPROMISED_FOUND+=("$package_file:$package_name@$package_version")
+                    echo "$package_file:$package_name@$package_version" >> "$TEMP_DIR/compromised_found.txt"
                 elif semver_match "${malicious_version}" "${package_version}"; then
                     # Semver pattern match - check lockfile for actual installed version
                     local package_dir
@@ -575,14 +609,14 @@ check_packages() {
                         # Found actual version in lockfile
                         if [[ "$actual_version" == "$malicious_version" ]]; then
                             # Actual installed version is compromised
-                            COMPROMISED_FOUND+=("$package_file:$package_name@$actual_version")
+                            echo "$package_file:$package_name@$actual_version" >> "$TEMP_DIR/compromised_found.txt"
                         else
                             # Lockfile has safe version but package.json range could update to compromised
-                            LOCKFILE_SAFE_VERSIONS+=("$package_file:$package_name@$package_version (locked to $actual_version - safe)")
+                            echo "$package_file:$package_name@$package_version (locked to $actual_version - safe)" >> "$TEMP_DIR/lockfile_safe_versions.txt"
                         fi
                     else
                         # No lockfile or package not found - potential risk on install/update
-                        SUSPICIOUS_FOUND+=("$package_file:$package_name@$package_version")
+                        echo "$package_file:$package_name@$package_version" >> "$TEMP_DIR/suspicious_found.txt"
                     fi
                 fi
             done
@@ -591,7 +625,7 @@ check_packages() {
         # Check for suspicious namespaces
         for namespace in "${COMPROMISED_NAMESPACES[@]}"; do
             if grep -q "\"$namespace/" "$package_file" 2>/dev/null; then
-                NAMESPACE_WARNINGS+=("$package_file:Contains packages from compromised namespace: $namespace")
+                echo "$package_file:Contains packages from compromised namespace: $namespace" >> "$TEMP_DIR/namespace_warnings.txt"
             fi
         done
 
@@ -620,7 +654,7 @@ check_postinstall_hooks() {
 
                 # Check for suspicious patterns in postinstall commands
                 if [[ -n "$postinstall_cmd" ]] && ([[ "$postinstall_cmd" == *"curl"* ]] || [[ "$postinstall_cmd" == *"wget"* ]] || [[ "$postinstall_cmd" == *"node -e"* ]] || [[ "$postinstall_cmd" == *"eval"* ]]); then
-                    POSTINSTALL_HOOKS+=("$package_file:Suspicious postinstall: $postinstall_cmd")
+                    echo "$package_file:Suspicious postinstall: $postinstall_cmd" >> "$TEMP_DIR/postinstall_hooks.txt"
                 fi
             fi
         fi
@@ -640,10 +674,10 @@ check_content() {
     while IFS= read -r -d '' file; do
         if [[ -f "$file" && -r "$file" ]]; then
             if grep -l "webhook\.site" "$file" >/dev/null 2>&1; then
-                SUSPICIOUS_CONTENT+=("$file:webhook.site reference")
+                echo "$file:webhook.site reference" >> "$TEMP_DIR/suspicious_content.txt"
             fi
             if grep -l "bb8ca5f6-4175-45d2-b042-fc9ebb8170b7" "$file" >/dev/null 2>&1; then
-                SUSPICIOUS_CONTENT+=("$file:malicious webhook endpoint")
+                echo "$file:malicious webhook endpoint" >> "$TEMP_DIR/suspicious_content.txt"
             fi
         fi
     done < <(find "$scan_dir" -type f \( -name "*.js" -o -name "*.ts" -o -name "*.json" -o -name "*.yml" -o -name "*.yaml" \) -print0 2>/dev/null)
@@ -662,7 +696,7 @@ check_crypto_theft_patterns() {
     while IFS= read -r -d '' file; do
         if grep -q "0x[a-fA-F0-9]\{40\}" "$file" 2>/dev/null; then
             if grep -q -E "ethereum|wallet|address|crypto" "$file" 2>/dev/null; then
-                CRYPTO_PATTERNS+=("$file:Ethereum wallet address patterns detected")
+                echo "$file:Ethereum wallet address patterns detected" >> "$TEMP_DIR/crypto_patterns.txt"
             fi
         fi
 
@@ -672,43 +706,43 @@ check_crypto_theft_patterns() {
             if [[ "$file" == *"/react-native/Libraries/Network/"* ]] || [[ "$file" == *"/next/dist/compiled/"* ]]; then
                 # Check if there are also crypto patterns in the same file
                 if grep -q -E "0x[a-fA-F0-9]{40}|checkethereumw|runmask|webhook\.site|npmjs\.help" "$file" 2>/dev/null; then
-                    CRYPTO_PATTERNS+=("$file:XMLHttpRequest prototype modification with crypto patterns detected - HIGH RISK")
+                    echo "$file:XMLHttpRequest prototype modification with crypto patterns detected - HIGH RISK" >> "$TEMP_DIR/crypto_patterns.txt"
                 else
-                    CRYPTO_PATTERNS+=("$file:XMLHttpRequest prototype modification detected in framework code - LOW RISK")
+                    echo "$file:XMLHttpRequest prototype modification detected in framework code - LOW RISK" >> "$TEMP_DIR/crypto_patterns.txt"
                 fi
             else
                 # Check if there are also crypto patterns in the same file
                 if grep -q -E "0x[a-fA-F0-9]{40}|checkethereumw|runmask|webhook\.site|npmjs\.help" "$file" 2>/dev/null; then
-                    CRYPTO_PATTERNS+=("$file:XMLHttpRequest prototype modification with crypto patterns detected - HIGH RISK")
+                    echo "$file:XMLHttpRequest prototype modification with crypto patterns detected - HIGH RISK" >> "$TEMP_DIR/crypto_patterns.txt"
                 else
-                    CRYPTO_PATTERNS+=("$file:XMLHttpRequest prototype modification detected - MEDIUM RISK")
+                    echo "$file:XMLHttpRequest prototype modification detected - MEDIUM RISK" >> "$TEMP_DIR/crypto_patterns.txt"
                 fi
             fi
         fi
 
         # Check for specific malicious functions from chalk/debug attack
         if grep -q -E "checkethereumw|runmask|newdlocal|_0x19ca67" "$file" 2>/dev/null; then
-            CRYPTO_PATTERNS+=("$file:Known crypto theft function names detected")
+            echo "$file:Known crypto theft function names detected" >> "$TEMP_DIR/crypto_patterns.txt"
         fi
 
         # Check for known attacker wallets
         if grep -q -E "0xFc4a4858bafef54D1b1d7697bfb5c52F4c166976|1H13VnQJKtT4HjD5ZFKaaiZEetMbG7nDHx|TB9emsCq6fQw6wRk4HBxxNnU6Hwt1DnV67" "$file" 2>/dev/null; then
-            CRYPTO_PATTERNS+=("$file:Known attacker wallet address detected - HIGH RISK")
+            echo "$file:Known attacker wallet address detected - HIGH RISK" >> "$TEMP_DIR/crypto_patterns.txt"
         fi
 
         # Check for npmjs.help phishing domain
         if grep -q "npmjs\.help" "$file" 2>/dev/null; then
-            CRYPTO_PATTERNS+=("$file:Phishing domain npmjs.help detected")
+            echo "$file:Phishing domain npmjs.help detected" >> "$TEMP_DIR/crypto_patterns.txt"
         fi
 
         # Check for javascript obfuscation patterns
         if grep -q "javascript-obfuscator" "$file" 2>/dev/null; then
-            CRYPTO_PATTERNS+=("$file:JavaScript obfuscation detected")
+            echo "$file:JavaScript obfuscation detected" >> "$TEMP_DIR/crypto_patterns.txt"
         fi
 
         # Check for cryptocurrency address regex patterns
         if grep -q -E "ethereum.*0x\[a-fA-F0-9\]|bitcoin.*\[13\]\[a-km-zA-HJ-NP-Z1-9\]" "$file" 2>/dev/null; then
-            CRYPTO_PATTERNS+=("$file:Cryptocurrency regex patterns detected")
+            echo "$file:Cryptocurrency regex patterns detected" >> "$TEMP_DIR/crypto_patterns.txt"
         fi
     done < <(find "$scan_dir" -type f \( -name "*.js" -o -name "*.ts" -o -name "*.json" \) -print0 2>/dev/null)
 }
@@ -732,7 +766,7 @@ check_git_branches() {
                 branch_name=$(basename "$branch_file")
                 local commit_hash
                 commit_hash=$(cat "$branch_file" 2>/dev/null)
-                GIT_BRANCHES+=("$repo_dir:Branch '$branch_name' (commit: ${commit_hash:0:8}...)")
+                echo "$repo_dir:Branch '$branch_name' (commit: ${commit_hash:0:8}...)" >> "$TEMP_DIR/git_branches.txt"
             done < <(find "$git_dir/refs/heads" -name "*shai-hulud*" -type f 2>/dev/null)
         fi
     done < <(find "$scan_dir" -name ".git" -type d -print0 2>/dev/null)
@@ -916,7 +950,7 @@ check_trufflehog_activity() {
     # Look for trufflehog binary files (always HIGH RISK)
     while IFS= read -r binary_file; do
         if [[ -f "$binary_file" ]]; then
-            TRUFFLEHOG_ACTIVITY+=("$binary_file:HIGH:Trufflehog binary found")
+            echo "$binary_file:HIGH:Trufflehog binary found" >> "$TEMP_DIR/trufflehog_activity.txt"
         fi
     done < <(find "$scan_dir" -name "*trufflehog*" -type f 2>/dev/null)
 
@@ -935,14 +969,14 @@ check_trufflehog_activity() {
                         ;;
                     "node_modules"|"type_definitions"|"build_output")
                         # Framework code mentioning trufflehog is suspicious but not high risk
-                        TRUFFLEHOG_ACTIVITY+=("$file:MEDIUM:Contains trufflehog references in $context")
+                        echo "$file:MEDIUM:Contains trufflehog references in $context" >> "$TEMP_DIR/trufflehog_activity.txt"
                         ;;
                     *)
                         # Source code with trufflehog references needs investigation
                         if [[ "$content_sample" == *"subprocess"* ]] && [[ "$content_sample" == *"curl"* ]]; then
-                            TRUFFLEHOG_ACTIVITY+=("$file:HIGH:Suspicious trufflehog execution pattern")
+                            echo "$file:HIGH:Suspicious trufflehog execution pattern" >> "$TEMP_DIR/trufflehog_activity.txt"
                         else
-                            TRUFFLEHOG_ACTIVITY+=("$file:MEDIUM:Contains trufflehog references in source code")
+                            echo "$file:MEDIUM:Contains trufflehog references in source code" >> "$TEMP_DIR/trufflehog_activity.txt"
                         fi
                         ;;
                 esac
@@ -957,21 +991,21 @@ check_trufflehog_activity() {
                         ;;
                     "node_modules")
                         # Package manager code mentioning credentials might be legitimate
-                        TRUFFLEHOG_ACTIVITY+=("$file:LOW:Credential patterns in node_modules")
+                        echo "$file:LOW:Credential patterns in node_modules" >> "$TEMP_DIR/trufflehog_activity.txt"
                         ;;
                     "configuration")
                         # Config files mentioning credentials might be legitimate
                         if [[ "$content_sample" == *"DefinePlugin"* ]] || [[ "$content_sample" == *"webpack"* ]]; then
                             continue  # webpack config is legitimate
                         fi
-                        TRUFFLEHOG_ACTIVITY+=("$file:MEDIUM:Credential patterns in configuration")
+                        echo "$file:MEDIUM:Credential patterns in configuration" >> "$TEMP_DIR/trufflehog_activity.txt"
                         ;;
                     *)
                         # Source code mentioning credentials + exfiltration is suspicious
                         if [[ "$content_sample" == *"webhook.site"* ]] || [[ "$content_sample" == *"curl"* ]] || [[ "$content_sample" == *"https.request"* ]]; then
-                            TRUFFLEHOG_ACTIVITY+=("$file:HIGH:Credential patterns with potential exfiltration")
+                            echo "$file:HIGH:Credential patterns with potential exfiltration" >> "$TEMP_DIR/trufflehog_activity.txt"
                         else
-                            TRUFFLEHOG_ACTIVITY+=("$file:MEDIUM:Contains credential scanning patterns")
+                            echo "$file:MEDIUM:Contains credential scanning patterns" >> "$TEMP_DIR/trufflehog_activity.txt"
                         fi
                         ;;
                 esac
@@ -989,7 +1023,7 @@ check_trufflehog_activity() {
                         if is_legitimate_pattern "$file" "$content_sample"; then
                             continue
                         fi
-                        TRUFFLEHOG_ACTIVITY+=("$file:LOW:Environment variable access in $context")
+                        echo "$file:LOW:Environment variable access in $context" >> "$TEMP_DIR/trufflehog_activity.txt"
                         ;;
                     "configuration")
                         # Config files using env vars is normal
@@ -998,10 +1032,10 @@ check_trufflehog_activity() {
                     *)
                         # Only flag if combined with suspicious patterns
                         if [[ "$content_sample" == *"webhook.site"* ]] && [[ "$content_sample" == *"exfiltrat"* ]]; then
-                            TRUFFLEHOG_ACTIVITY+=("$file:HIGH:Environment scanning with exfiltration")
+                            echo "$file:HIGH:Environment scanning with exfiltration" >> "$TEMP_DIR/trufflehog_activity.txt"
                         elif [[ "$content_sample" == *"scan"* ]] || [[ "$content_sample" == *"harvest"* ]] || [[ "$content_sample" == *"steal"* ]]; then
                             if ! is_legitimate_pattern "$file" "$content_sample"; then
-                                TRUFFLEHOG_ACTIVITY+=("$file:MEDIUM:Potentially suspicious environment variable access")
+                                echo "$file:MEDIUM:Potentially suspicious environment variable access" >> "$TEMP_DIR/trufflehog_activity.txt"
                             fi
                         fi
                         ;;
@@ -1012,19 +1046,19 @@ check_trufflehog_activity() {
             if grep -l "TruffleHog.*scan.*credential\|download.*trufflehog\|trufflehog.*env\|trufflehog.*AWS\|trufflehog.*NPM_TOKEN" "$file" >/dev/null 2>&1; then
                 # Look for specific patterns indicating automated TruffleHog credential harvesting
                 if [[ "$content_sample" == *"download"* ]] && [[ "$content_sample" == *"trufflehog"* ]] && [[ "$content_sample" == *"scan"* ]]; then
-                    TRUFFLEHOG_ACTIVITY+=("$file:HIGH:November 2025 pattern - Automated TruffleHog download and credential scanning")
+                    echo "$file:HIGH:November 2025 pattern - Automated TruffleHog download and credential scanning" >> "$TEMP_DIR/trufflehog_activity.txt"
                 elif [[ "$content_sample" == *"GitHub Action"* ]] && [[ "$content_sample" == *"trufflehog"* ]]; then
-                    TRUFFLEHOG_ACTIVITY+=("$file:HIGH:November 2025 pattern - TruffleHog in GitHub Actions for credential theft")
+                    echo "$file:HIGH:November 2025 pattern - TruffleHog in GitHub Actions for credential theft" >> "$TEMP_DIR/trufflehog_activity.txt"
                 elif [[ "$content_sample" == *"environment"* ]] && [[ "$content_sample" == *"token"* ]] && [[ "$content_sample" == *"trufflehog"* ]]; then
-                    TRUFFLEHOG_ACTIVITY+=("$file:HIGH:November 2025 pattern - TruffleHog environment token harvesting")
+                    echo "$file:HIGH:November 2025 pattern - TruffleHog environment token harvesting" >> "$TEMP_DIR/trufflehog_activity.txt"
                 else
-                    TRUFFLEHOG_ACTIVITY+=("$file:MEDIUM:Potential November 2025 TruffleHog attack pattern")
+                    echo "$file:MEDIUM:Potential November 2025 TruffleHog attack pattern" >> "$TEMP_DIR/trufflehog_activity.txt"
                 fi
             fi
 
             # Check for specific command execution patterns used in November 2025 attack
             if grep -l "curl.*trufflehog\|wget.*trufflehog\|bunExecutable.*trufflehog" "$file" >/dev/null 2>&1; then
-                TRUFFLEHOG_ACTIVITY+=("$file:HIGH:November 2025 pattern - Dynamic TruffleHog download via curl/wget/Bun")
+                echo "$file:HIGH:November 2025 pattern - Dynamic TruffleHog download via curl/wget/Bun" >> "$TEMP_DIR/trufflehog_activity.txt"
             fi
         fi
     done < <(find "$scan_dir" -type f \( -name "*.js" -o -name "*.py" -o -name "*.sh" -o -name "*.json" \) -print0 2>/dev/null)
@@ -1047,18 +1081,18 @@ check_shai_hulud_repos() {
         local repo_name
         repo_name=$(basename "$repo_dir")
         if [[ "$repo_name" == *"shai-hulud"* ]] || [[ "$repo_name" == *"Shai-Hulud"* ]]; then
-            SHAI_HULUD_REPOS+=("$repo_dir:Repository name contains 'Shai-Hulud'")
+            echo "$repo_dir:Repository name contains 'Shai-Hulud'" >> "$TEMP_DIR/shai_hulud_repos.txt"
         fi
 
         # Check for migration pattern repositories (new IoC)
         if [[ "$repo_name" == *"-migration"* ]]; then
-            SHAI_HULUD_REPOS+=("$repo_dir:Repository name contains migration pattern")
+            echo "$repo_dir:Repository name contains migration pattern" >> "$TEMP_DIR/shai_hulud_repos.txt"
         fi
 
         # Check for GitHub remote URLs containing shai-hulud
         if [[ -f "$git_dir/config" ]]; then
             if grep -q "shai-hulud\|Shai-Hulud" "$git_dir/config" 2>/dev/null; then
-                SHAI_HULUD_REPOS+=("$repo_dir:Git remote contains 'Shai-Hulud'")
+                echo "$repo_dir:Git remote contains 'Shai-Hulud'" >> "$TEMP_DIR/shai_hulud_repos.txt"
             fi
         fi
 
@@ -1067,7 +1101,7 @@ check_shai_hulud_repos() {
             local content_sample
             content_sample=$(head -5 "$repo_dir/data.json" 2>/dev/null)
             if [[ "$content_sample" == *"eyJ"* ]] && [[ "$content_sample" == *"=="* ]]; then
-                SHAI_HULUD_REPOS+=("$repo_dir:Contains suspicious data.json (possible base64-encoded credentials)")
+                echo "$repo_dir:Contains suspicious data.json (possible base64-encoded credentials)" >> "$TEMP_DIR/shai_hulud_repos.txt"
             fi
         fi
     done < <(find "$scan_dir" -name ".git" -type d -print0 2>/dev/null)
@@ -1133,7 +1167,7 @@ check_package_integrity() {
                 fi
 
                 if [[ -n "$found_version" && "$found_version" == "$malicious_version" ]]; then
-                    INTEGRITY_ISSUES+=("$org_file:Compromised package in lockfile: $package_name@$malicious_version")
+                    echo "$org_file:Compromised package in lockfile: $package_name@$malicious_version" >> "$TEMP_DIR/integrity_issues.txt"
                 fi
             done
 
@@ -1151,7 +1185,7 @@ check_package_integrity() {
 
                 # Flag if lockfile with @ctrl packages was modified in the last 30 days
                 if [[ $age_diff -lt 2592000 ]]; then  # 30 days in seconds
-                    INTEGRITY_ISSUES+=("$org_file:Recently modified lockfile contains @ctrl packages (potential worm activity)")
+                    echo "$org_file:Recently modified lockfile contains @ctrl packages (potential worm activity)" >> "$TEMP_DIR/integrity_issues.txt"
                 fi
             fi
 
@@ -1231,7 +1265,7 @@ check_typosquatting() {
                 if [[ $has_unicode -eq 1 ]]; then
                     # Simplified check - if it contains non-standard characters, flag it
                     if ! already_warned "$package_name" "$package_file"; then
-                        TYPOSQUATTING_WARNINGS+=("$package_file:Potential Unicode/homoglyph characters in package: $package_name")
+                        echo "$package_file:Potential Unicode/homoglyph characters in package: $package_name" >> "$TEMP_DIR/typosquatting_warnings.txt"
                         warned_packages+=("$package_file:$package_name")
                     fi
                 fi
@@ -1247,7 +1281,7 @@ check_typosquatting() {
                     local target="${confusable#*:}"
                     if echo "$package_name" | grep -q "$pattern"; then
                         if ! already_warned "$package_name" "$package_file"; then
-                            TYPOSQUATTING_WARNINGS+=("$package_file:Potential typosquatting pattern '$pattern' in package: $package_name")
+                            echo "$package_file:Potential typosquatting pattern '$pattern' in package: $package_name" >> "$TEMP_DIR/typosquatting_warnings.txt"
                             warned_packages+=("$package_file:$package_name")
                         fi
                     fi
@@ -1278,7 +1312,7 @@ check_typosquatting() {
                             # Additional check - avoid common legitimate variations
                             if [[ "$package_name" != *"-"* && "$popular" != *"-"* ]]; then
                                 if ! already_warned "$package_name" "$package_file"; then
-                                    TYPOSQUATTING_WARNINGS+=("$package_file:Potential typosquatting of '$popular': $package_name (1 character difference)")
+                                    echo "$package_file:Potential typosquatting of '$popular': $package_name (1 character difference)" >> "$TEMP_DIR/typosquatting_warnings.txt"
                                     warned_packages+=("$package_file:$package_name")
                                 fi
                             fi
@@ -1292,7 +1326,7 @@ check_typosquatting() {
                             local test_name="${popular:0:$i}${popular:$((i+1))}"
                             if [[ "$package_name" == "$test_name" ]]; then
                                 if ! already_warned "$package_name" "$package_file"; then
-                                    TYPOSQUATTING_WARNINGS+=("$package_file:Potential typosquatting of '$popular': $package_name (missing character)")
+                                    echo "$package_file:Potential typosquatting of '$popular': $package_name (missing character)" >> "$TEMP_DIR/typosquatting_warnings.txt"
                                     warned_packages+=("$package_file:$package_name")
                                 fi
                                 break
@@ -1306,7 +1340,7 @@ check_typosquatting() {
                             local test_name="${package_name:0:$i}${package_name:$((i+1))}"
                             if [[ "$test_name" == "$popular" ]]; then
                                 if ! already_warned "$package_name" "$package_file"; then
-                                    TYPOSQUATTING_WARNINGS+=("$package_file:Potential typosquatting of '$popular': $package_name (extra character)")
+                                    echo "$package_file:Potential typosquatting of '$popular': $package_name (extra character)" >> "$TEMP_DIR/typosquatting_warnings.txt"
                                     warned_packages+=("$package_file:$package_name")
                                 fi
                                 break
@@ -1341,7 +1375,7 @@ check_typosquatting() {
 
                                 if [[ $ns_diff -ge 1 && $ns_diff -le 2 ]]; then
                                     if ! already_warned "$package_name" "$package_file"; then
-                                        TYPOSQUATTING_WARNINGS+=("$package_file:Suspicious namespace variation: $namespace (similar to $suspicious)")
+                                        echo "$package_file:Suspicious namespace variation: $namespace (similar to $suspicious)" >> "$TEMP_DIR/typosquatting_warnings.txt"
                                         warned_packages+=("$package_file:$package_name")
                                     fi
                                 fi
@@ -1538,203 +1572,201 @@ generate_report() {
     local total_issues=0
 
     # Report malicious workflow files
-    if [[ ${#WORKFLOW_FILES[@]} -gt 0 ]]; then
+    if [[ -s "$TEMP_DIR/workflow_files.txt" ]]; then
         print_status "$RED" "🚨 HIGH RISK: Malicious workflow files detected:"
-        for file in "${WORKFLOW_FILES[@]}"; do
+        while IFS= read -r file; do
             echo "   - $file"
             show_file_preview "$file" "HIGH RISK: Known malicious workflow filename"
             high_risk=$((high_risk+1))
-        done
+        done < "$TEMP_DIR/workflow_files.txt"
     fi
 
     # Report malicious file hashes
-    if [[ ${#MALICIOUS_HASHES[@]} -gt 0 ]]; then
+    if [[ -s "$TEMP_DIR/malicious_hashes.txt" ]]; then
         print_status "$RED" "🚨 HIGH RISK: Files with known malicious hashes:"
-        for entry in "${MALICIOUS_HASHES[@]}"; do
+        while IFS= read -r entry; do
             local file_path="${entry%:*}"
             local hash="${entry#*:}"
             echo "   - $file_path"
             echo "     Hash: $hash"
             show_file_preview "$file_path" "HIGH RISK: File matches known malicious SHA-256 hash"
             high_risk=$((high_risk+1))
-        done
+        done < "$TEMP_DIR/malicious_hashes.txt"
     fi
 
     # Report November 2025 "Shai-Hulud: The Second Coming" attack files
-    if [[ ${#BUN_SETUP_FILES[@]} -gt 0 ]]; then
+    if [[ -s "$TEMP_DIR/bun_setup_files.txt" ]]; then
         print_status "$RED" "🚨 HIGH RISK: November 2025 Bun attack setup files detected:"
-        for file in "${BUN_SETUP_FILES[@]}"; do
+        while IFS= read -r file; do
             echo "   - $file"
             show_file_preview "$file" "HIGH RISK: setup_bun.js - Fake Bun runtime installation malware"
             high_risk=$((high_risk+1))
-        done
+        done < "$TEMP_DIR/bun_setup_files.txt"
     fi
 
-    if [[ ${#BUN_ENVIRONMENT_FILES[@]} -gt 0 ]]; then
+    if [[ -s "$TEMP_DIR/bun_environment_files.txt" ]]; then
         print_status "$RED" "🚨 HIGH RISK: November 2025 Bun environment payload detected:"
-        for file in "${BUN_ENVIRONMENT_FILES[@]}"; do
+        while IFS= read -r file; do
             echo "   - $file"
             show_file_preview "$file" "HIGH RISK: bun_environment.js - 10MB+ obfuscated credential harvesting payload"
             high_risk=$((high_risk+1))
-        done
+        done < "$TEMP_DIR/bun_environment_files.txt"
     fi
 
-    if [[ ${#NEW_WORKFLOW_FILES[@]} -gt 0 ]]; then
+    if [[ -s "$TEMP_DIR/new_workflow_files.txt" ]]; then
         print_status "$RED" "🚨 HIGH RISK: November 2025 malicious workflow files detected:"
-        for file in "${NEW_WORKFLOW_FILES[@]}"; do
+        while IFS= read -r file; do
             echo "   - $file"
             show_file_preview "$file" "HIGH RISK: formatter_*.yml - Malicious GitHub Actions workflow"
             high_risk=$((high_risk+1))
-        done
+        done < "$TEMP_DIR/new_workflow_files.txt"
     fi
 
-    if [[ ${#ACTIONS_SECRETS_FILES[@]} -gt 0 ]]; then
+    if [[ -s "$TEMP_DIR/actions_secrets_files.txt" ]]; then
         print_status "$RED" "🚨 HIGH RISK: Actions secrets exfiltration files detected:"
-        for file in "${ACTIONS_SECRETS_FILES[@]}"; do
+        while IFS= read -r file; do
             echo "   - $file"
             show_file_preview "$file" "HIGH RISK: actionsSecrets.json - Double Base64 encoded secrets exfiltration"
             high_risk=$((high_risk+1))
-        done
+        done < "$TEMP_DIR/actions_secrets_files.txt"
     fi
 
-    if [[ ${#PREINSTALL_BUN_PATTERNS[@]} -gt 0 ]]; then
+    if [[ -s "$TEMP_DIR/preinstall_bun_patterns.txt" ]]; then
         print_status "$RED" "🚨 HIGH RISK: Fake Bun preinstall patterns detected:"
-        for file in "${PREINSTALL_BUN_PATTERNS[@]}"; do
+        while IFS= read -r file; do
             echo "   - $file"
             show_file_preview "$file" "HIGH RISK: package.json contains malicious preinstall: node setup_bun.js"
             high_risk=$((high_risk+1))
-        done
+        done < "$TEMP_DIR/preinstall_bun_patterns.txt"
     fi
 
-    if [[ ${#GITHUB_SHA1HULUD_RUNNERS[@]} -gt 0 ]]; then
+    if [[ -s "$TEMP_DIR/github_sha1hulud_runners.txt" ]]; then
         print_status "$RED" "🚨 HIGH RISK: SHA1HULUD GitHub Actions runners detected:"
-        for file in "${GITHUB_SHA1HULUD_RUNNERS[@]}"; do
+        while IFS= read -r file; do
             echo "   - $file"
             show_file_preview "$file" "HIGH RISK: GitHub Actions workflow contains SHA1HULUD runner references"
             high_risk=$((high_risk+1))
-        done
+        done < "$TEMP_DIR/github_sha1hulud_runners.txt"
     fi
 
-    if [[ ${#SECOND_COMING_REPOS[@]} -gt 0 ]]; then
+    if [[ -s "$TEMP_DIR/second_coming_repos.txt" ]]; then
         print_status "$RED" "🚨 HIGH RISK: 'Shai-Hulud: The Second Coming' repositories detected:"
-        for repo_dir in "${SECOND_COMING_REPOS[@]}"; do
+        while IFS= read -r repo_dir; do
             echo "   - $repo_dir"
             echo "     Repository description: Sha1-Hulud: The Second Coming."
             high_risk=$((high_risk+1))
-        done
+        done < "$TEMP_DIR/second_coming_repos.txt"
     fi
 
     # Report compromised packages
-    if [[ ${#COMPROMISED_FOUND[@]} -gt 0 ]]; then
+    if [[ -s "$TEMP_DIR/compromised_found.txt" ]]; then
         print_status "$RED" "🚨 HIGH RISK: Compromised package versions detected:"
-        for entry in "${COMPROMISED_FOUND[@]}"; do
+        while IFS= read -r entry; do
             local file_path="${entry%:*}"
             local package_info="${entry#*:}"
             echo "   - Package: $package_info"
             echo "     Found in: $file_path"
             show_file_preview "$file_path" "HIGH RISK: Contains compromised package version: $package_info"
             high_risk=$((high_risk+1))
-        done
+        done < "$TEMP_DIR/compromised_found.txt"
         echo -e "   ${YELLOW}NOTE: These specific package versions are known to be compromised.${NC}"
         echo -e "   ${YELLOW}You should immediately update or remove these packages.${NC}"
         echo
     fi
 
     # Report suspicious packages
-    if [[ ${#SUSPICIOUS_FOUND[@]} -gt 0 ]]; then
+    if [[ -s "$TEMP_DIR/suspicious_found.txt" ]]; then
         print_status "$YELLOW" "⚠️  MEDIUM RISK: Suspicious package versions detected:"
-        for entry in "${SUSPICIOUS_FOUND[@]}"; do
+        while IFS= read -r entry; do
             local file_path="${entry%:*}"
             local package_info="${entry#*:}"
             echo "   - Package: $package_info"
             echo "     Found in: $file_path"
             show_file_preview "$file_path" "MEDIUM RISK: Contains package version that could match compromised version: $package_info"
             medium_risk=$((medium_risk+1))
-        done
+        done < "$TEMP_DIR/suspicious_found.txt"
         echo -e "   ${YELLOW}NOTE: Manual review required to determine if these are malicious.${NC}"
         echo
     fi
 
     # Report lockfile-safe packages
-    if [[ ${#LOCKFILE_SAFE_VERSIONS[@]} -gt 0 ]]; then
+    if [[ -s "$TEMP_DIR/lockfile_safe_versions.txt" ]]; then
         print_status "$BLUE" "ℹ️  LOW RISK: Packages with safe lockfile versions:"
-        for entry in "${LOCKFILE_SAFE_VERSIONS[@]}"; do
+        while IFS= read -r entry; do
             local file_path="${entry%:*}"
             local package_info="${entry#*:}"
             echo "   - Package: $package_info"
             echo "     Found in: $file_path"
-        done
+        done < "$TEMP_DIR/lockfile_safe_versions.txt"
         echo -e "   ${BLUE}NOTE: These package.json ranges could match compromised versions, but lockfiles pin to safe versions.${NC}"
         echo -e "   ${BLUE}Your current installation is safe. Avoid running 'npm update' without reviewing changes.${NC}"
         echo
     fi
 
     # Report suspicious content
-    if [[ ${#SUSPICIOUS_CONTENT[@]} -gt 0 ]]; then
+    if [[ -s "$TEMP_DIR/suspicious_content.txt" ]]; then
         print_status "$YELLOW" "⚠️  MEDIUM RISK: Suspicious content patterns:"
-        for entry in "${SUSPICIOUS_CONTENT[@]}"; do
+        while IFS= read -r entry; do
             local file_path="${entry%:*}"
             local pattern="${entry#*:}"
             echo "   - Pattern: $pattern"
             echo "     Found in: $file_path"
             show_file_preview "$file_path" "Contains suspicious pattern: $pattern"
             medium_risk=$((medium_risk+1))
-        done
+        done < "$TEMP_DIR/suspicious_content.txt"
         echo -e "   ${YELLOW}NOTE: Manual review required to determine if these are malicious.${NC}"
         echo
     fi
 
     # Report cryptocurrency theft patterns
-    if [[ ${#CRYPTO_PATTERNS[@]} -gt 0 ]]; then
-        # Separate HIGH RISK, MEDIUM RISK, and LOW RISK crypto patterns
-        local crypto_high=()
-        local crypto_medium=()
-        local crypto_low=()
+    if [[ -s "$TEMP_DIR/crypto_patterns.txt" ]]; then
+        # Create temporary files for categorizing crypto patterns by risk level
+        local crypto_high_file="$TEMP_DIR/crypto_high_temp"
+        local crypto_medium_file="$TEMP_DIR/crypto_medium_temp"
 
-        for entry in "${CRYPTO_PATTERNS[@]}"; do
+        while IFS= read -r entry; do
             if [[ "$entry" == *"HIGH RISK"* ]] || [[ "$entry" == *"Known attacker wallet"* ]]; then
-                crypto_high+=("$entry")
+                echo "$entry" >> "$crypto_high_file"
             elif [[ "$entry" == *"LOW RISK"* ]]; then
-                crypto_low+=("$entry")
+                echo "Crypto pattern: $entry" >> "$TEMP_DIR/low_risk_findings.txt"
             else
-                crypto_medium+=("$entry")
+                echo "$entry" >> "$crypto_medium_file"
             fi
-        done
+        done < "$TEMP_DIR/crypto_patterns.txt"
 
         # Report HIGH RISK crypto patterns
-        if [[ ${#crypto_high[@]} -gt 0 ]]; then
+        if [[ -s "$crypto_high_file" ]]; then
             print_status "$RED" "🚨 HIGH RISK: Cryptocurrency theft patterns detected:"
-            for entry in "${crypto_high[@]}"; do
+            while IFS= read -r entry; do
                 echo "   - ${entry}"
                 high_risk=$((high_risk+1))
-            done
+            done < "$crypto_high_file"
             echo -e "   ${RED}NOTE: These patterns strongly indicate crypto theft malware from the September 8 attack.${NC}"
             echo -e "   ${RED}Immediate investigation and remediation required.${NC}"
             echo
         fi
 
         # Report MEDIUM RISK crypto patterns
-        if [[ ${#crypto_medium[@]} -gt 0 ]]; then
+        if [[ -s "$crypto_medium_file" ]]; then
             print_status "$YELLOW" "⚠️  MEDIUM RISK: Potential cryptocurrency manipulation patterns:"
-            for entry in "${crypto_medium[@]}"; do
+            while IFS= read -r entry; do
                 echo "   - ${entry}"
                 medium_risk=$((medium_risk+1))
-            done
+            done < "$crypto_medium_file"
             echo -e "   ${YELLOW}NOTE: These may be legitimate crypto tools or framework code.${NC}"
             echo -e "   ${YELLOW}Manual review recommended to determine if they are malicious.${NC}"
             echo
         fi
 
-        # Add LOW RISK crypto patterns to global LOW_RISK_FINDINGS for later reporting
-        for entry in "${crypto_low[@]}"; do
-            LOW_RISK_FINDINGS+=("Crypto pattern: ${entry}")
-        done
+        # Clean up temporary categorization files
+        [[ -f "$crypto_high_file" ]] && rm -f "$crypto_high_file"
+        [[ -f "$crypto_medium_file" ]] && rm -f "$crypto_medium_file"
     fi
 
     # Report git branches
-    if [[ ${#GIT_BRANCHES[@]} -gt 0 ]]; then
+    if [[ -s "$TEMP_DIR/git_branches.txt" ]]; then
         print_status "$YELLOW" "⚠️  MEDIUM RISK: Suspicious git branches:"
-        for entry in "${GIT_BRANCHES[@]}"; do
+        while IFS= read -r entry; do
             local repo_path="${entry%%:*}"
             local branch_info="${entry#*:}"
             echo "   - Repository: $repo_path"
@@ -1747,94 +1779,95 @@ generate_report() {
             echo -e "     ${BLUE}└─${NC}"
             echo
             medium_risk=$((medium_risk+1))
-        done
+        done < "$TEMP_DIR/git_branches.txt"
         echo -e "   ${YELLOW}NOTE: 'shai-hulud' branches may indicate compromise.${NC}"
         echo -e "   ${YELLOW}Use the commands above to investigate each branch.${NC}"
         echo
     fi
 
     # Report suspicious postinstall hooks
-    if [[ ${#POSTINSTALL_HOOKS[@]} -gt 0 ]]; then
+    if [[ -s "$TEMP_DIR/postinstall_hooks.txt" ]]; then
         print_status "$RED" "🚨 HIGH RISK: Suspicious postinstall hooks detected:"
-        for entry in "${POSTINSTALL_HOOKS[@]}"; do
+        while IFS= read -r entry; do
             local file_path="${entry%:*}"
             local hook_info="${entry#*:}"
             echo "   - Hook: $hook_info"
             echo "     Found in: $file_path"
             show_file_preview "$file_path" "HIGH RISK: Contains suspicious postinstall hook: $hook_info"
             high_risk=$((high_risk+1))
-        done
+        done < "$TEMP_DIR/postinstall_hooks.txt"
         echo -e "   ${YELLOW}NOTE: Postinstall hooks can execute arbitrary code during package installation.${NC}"
         echo -e "   ${YELLOW}Review these hooks carefully for malicious behavior.${NC}"
         echo
     fi
 
     # Report Trufflehog activity by risk level
-    local trufflehog_high=()
-    local trufflehog_medium=()
-    local trufflehog_low=()
+    if [[ -s "$TEMP_DIR/trufflehog_activity.txt" ]]; then
+        # Create temporary files for categorizing trufflehog findings by risk level
+        local trufflehog_high_file="$TEMP_DIR/trufflehog_high_temp"
+        local trufflehog_medium_file="$TEMP_DIR/trufflehog_medium_temp"
 
-    # Categorize Trufflehog findings by risk level
-    for entry in "${TRUFFLEHOG_ACTIVITY[@]}"; do
-        local file_path="${entry%%:*}"
-        local risk_level="${entry#*:}"
-        risk_level="${risk_level%%:*}"
-        local activity_info="${entry#*:*:}"
+        # Categorize Trufflehog findings by risk level
+        while IFS= read -r entry; do
+            local file_path="${entry%%:*}"
+            local risk_level="${entry#*:}"
+            risk_level="${risk_level%%:*}"
+            local activity_info="${entry#*:*:}"
 
-        case "$risk_level" in
-            "HIGH")
-                trufflehog_high+=("$file_path:$activity_info")
-                ;;
-            "MEDIUM")
-                trufflehog_medium+=("$file_path:$activity_info")
-                ;;
-            "LOW")
-                trufflehog_low+=("$file_path:$activity_info")
-                ;;
-        esac
-    done
+            case "$risk_level" in
+                "HIGH")
+                    echo "$file_path:$activity_info" >> "$trufflehog_high_file"
+                    ;;
+                "MEDIUM")
+                    echo "$file_path:$activity_info" >> "$trufflehog_medium_file"
+                    ;;
+                "LOW")
+                    echo "Trufflehog pattern: $file_path:$activity_info" >> "$TEMP_DIR/low_risk_findings.txt"
+                    ;;
+            esac
+        done < "$TEMP_DIR/trufflehog_activity.txt"
 
-    # Report HIGH RISK Trufflehog activity
-    if [[ ${#trufflehog_high[@]} -gt 0 ]]; then
-        print_status "$RED" "🚨 HIGH RISK: Trufflehog/secret scanning activity detected:"
-        for entry in "${trufflehog_high[@]}"; do
-            local file_path="${entry%:*}"
-            local activity_info="${entry#*:}"
-            echo "   - Activity: $activity_info"
-            echo "     Found in: $file_path"
-            show_file_preview "$file_path" "HIGH RISK: $activity_info"
-            high_risk=$((high_risk+1))
-        done
-        echo -e "   ${RED}NOTE: These patterns indicate likely malicious credential harvesting.${NC}"
-        echo -e "   ${RED}Immediate investigation and remediation required.${NC}"
-        echo
+        # Report HIGH RISK Trufflehog activity
+        if [[ -s "$trufflehog_high_file" ]]; then
+            print_status "$RED" "🚨 HIGH RISK: Trufflehog/secret scanning activity detected:"
+            while IFS= read -r entry; do
+                local file_path="${entry%:*}"
+                local activity_info="${entry#*:}"
+                echo "   - Activity: $activity_info"
+                echo "     Found in: $file_path"
+                show_file_preview "$file_path" "HIGH RISK: $activity_info"
+                high_risk=$((high_risk+1))
+            done < "$trufflehog_high_file"
+            echo -e "   ${RED}NOTE: These patterns indicate likely malicious credential harvesting.${NC}"
+            echo -e "   ${RED}Immediate investigation and remediation required.${NC}"
+            echo
+        fi
+
+        # Report MEDIUM RISK Trufflehog activity
+        if [[ -s "$trufflehog_medium_file" ]]; then
+            print_status "$YELLOW" "⚠️  MEDIUM RISK: Potentially suspicious secret scanning patterns:"
+            while IFS= read -r entry; do
+                local file_path="${entry%:*}"
+                local activity_info="${entry#*:}"
+                echo "   - Pattern: $activity_info"
+                echo "     Found in: $file_path"
+                show_file_preview "$file_path" "MEDIUM RISK: $activity_info"
+                medium_risk=$((medium_risk+1))
+            done < "$trufflehog_medium_file"
+            echo -e "   ${YELLOW}NOTE: These may be legitimate security tools or framework code.${NC}"
+            echo -e "   ${YELLOW}Manual review recommended to determine if they are malicious.${NC}"
+            echo
+        fi
+
+        # Clean up temporary categorization files
+        [[ -f "$trufflehog_high_file" ]] && rm -f "$trufflehog_high_file"
+        [[ -f "$trufflehog_medium_file" ]] && rm -f "$trufflehog_medium_file"
     fi
-
-    # Report MEDIUM RISK Trufflehog activity
-    if [[ ${#trufflehog_medium[@]} -gt 0 ]]; then
-        print_status "$YELLOW" "⚠️  MEDIUM RISK: Potentially suspicious secret scanning patterns:"
-        for entry in "${trufflehog_medium[@]}"; do
-            local file_path="${entry%:*}"
-            local activity_info="${entry#*:}"
-            echo "   - Pattern: $activity_info"
-            echo "     Found in: $file_path"
-            show_file_preview "$file_path" "MEDIUM RISK: $activity_info"
-            medium_risk=$((medium_risk+1))
-        done
-        echo -e "   ${YELLOW}NOTE: These may be legitimate security tools or framework code.${NC}"
-        echo -e "   ${YELLOW}Manual review recommended to determine if they are malicious.${NC}"
-        echo
-    fi
-
-    # Store LOW RISK findings for optional reporting
-    for entry in "${trufflehog_low[@]}"; do
-        LOW_RISK_FINDINGS+=("Trufflehog pattern: $entry")
-    done
 
     # Report Shai-Hulud repositories
-    if [[ ${#SHAI_HULUD_REPOS[@]} -gt 0 ]]; then
+    if [[ -s "$TEMP_DIR/shai_hulud_repos.txt" ]]; then
         print_status "$RED" "🚨 HIGH RISK: Shai-Hulud repositories detected:"
-        for entry in "${SHAI_HULUD_REPOS[@]}"; do
+        while IFS= read -r entry; do
             local repo_path="${entry%:*}"
             local repo_info="${entry#*:}"
             echo "   - Repository: $repo_path"
@@ -1847,41 +1880,45 @@ generate_report() {
             echo -e "     ${BLUE}└─${NC}"
             echo
             high_risk=$((high_risk+1))
-        done
+        done < "$TEMP_DIR/shai_hulud_repos.txt"
         echo -e "   ${YELLOW}NOTE: 'Shai-Hulud' repositories are created by the malware for exfiltration.${NC}"
         echo -e "   ${YELLOW}These should be deleted immediately after investigation.${NC}"
         echo
     fi
 
     # Store namespace warnings as LOW risk findings for later reporting
-    for entry in "${NAMESPACE_WARNINGS[@]}"; do
-        local file_path="${entry%%:*}"
-        local namespace_info="${entry#*:}"
-        LOW_RISK_FINDINGS+=("Namespace warning: $namespace_info (found in $(basename "$file_path"))")
-    done
+    if [[ -s "$TEMP_DIR/namespace_warnings.txt" ]]; then
+        while IFS= read -r entry; do
+            local file_path="${entry%%:*}"
+            local namespace_info="${entry#*:}"
+            echo "Namespace warning: $namespace_info (found in $(basename "$file_path"))" >> "$TEMP_DIR/low_risk_findings.txt"
+        done < "$TEMP_DIR/namespace_warnings.txt"
+    fi
 
     # Report package integrity issues
-    if [[ ${#INTEGRITY_ISSUES[@]} -gt 0 ]]; then
+    if [[ -s "$TEMP_DIR/integrity_issues.txt" ]]; then
         print_status "$YELLOW" "⚠️  MEDIUM RISK: Package integrity issues detected:"
-        for entry in "${INTEGRITY_ISSUES[@]}"; do
+        while IFS= read -r entry; do
             local file_path="${entry%%:*}"
             local issue_info="${entry#*:}"
             echo "   - Issue: $issue_info"
             echo "     Found in: $file_path"
             show_file_preview "$file_path" "Package integrity issue: $issue_info"
             medium_risk=$((medium_risk+1))
-        done
+        done < "$TEMP_DIR/integrity_issues.txt"
         echo -e "   ${YELLOW}NOTE: These issues may indicate tampering with package dependencies.${NC}"
         echo -e "   ${YELLOW}Verify package versions and regenerate lockfiles if necessary.${NC}"
         echo
     fi
 
     # Report typosquatting warnings (only in paranoid mode)
-    if [[ "$paranoid_mode" == "true" && ${#TYPOSQUATTING_WARNINGS[@]} -gt 0 ]]; then
+    if [[ "$paranoid_mode" == "true" && -s "$TEMP_DIR/typosquatting_warnings.txt" ]]; then
         print_status "$YELLOW" "⚠️  MEDIUM RISK (PARANOID): Potential typosquatting/homoglyph attacks detected:"
         local typo_count=0
-        for entry in "${TYPOSQUATTING_WARNINGS[@]}"; do
-            [[ $typo_count -ge 5 ]] && break
+        local total_typo_count
+        total_typo_count=$(wc -l < "$TEMP_DIR/typosquatting_warnings.txt")
+
+        while IFS= read -r entry && [[ $typo_count -lt 5 ]]; do
             local file_path="${entry%%:*}"
             local warning_info="${entry#*:}"
             echo "   - Warning: $warning_info"
@@ -1889,9 +1926,10 @@ generate_report() {
             show_file_preview "$file_path" "Potential typosquatting: $warning_info"
             medium_risk=$((medium_risk+1))
             typo_count=$((typo_count+1))
-        done
-        if [[ ${#TYPOSQUATTING_WARNINGS[@]} -gt 5 ]]; then
-            echo "   - ... and $((${#TYPOSQUATTING_WARNINGS[@]} - 5)) more typosquatting warnings (truncated for brevity)"
+        done < "$TEMP_DIR/typosquatting_warnings.txt"
+
+        if [[ $total_typo_count -gt 5 ]]; then
+            echo "   - ... and $((total_typo_count - 5)) more typosquatting warnings (truncated for brevity)"
         fi
         echo -e "   ${YELLOW}NOTE: These packages may be impersonating legitimate packages.${NC}"
         echo -e "   ${YELLOW}Verify package names carefully and check if they should be legitimate packages.${NC}"
@@ -1899,11 +1937,13 @@ generate_report() {
     fi
 
     # Report network exfiltration warnings (only in paranoid mode)
-    if [[ "$paranoid_mode" == "true" && ${#NETWORK_EXFILTRATION_WARNINGS[@]} -gt 0 ]]; then
+    if [[ "$paranoid_mode" == "true" && -s "$TEMP_DIR/network_exfiltration_warnings.txt" ]]; then
         print_status "$YELLOW" "⚠️  MEDIUM RISK (PARANOID): Network exfiltration patterns detected:"
         local net_count=0
-        for entry in "${NETWORK_EXFILTRATION_WARNINGS[@]}"; do
-            [[ $net_count -ge 5 ]] && break
+        local total_net_count
+        total_net_count=$(wc -l < "$TEMP_DIR/network_exfiltration_warnings.txt")
+
+        while IFS= read -r entry && [[ $net_count -lt 5 ]]; do
             local file_path="${entry%%:*}"
             local warning_info="${entry#*:}"
             echo "   - Warning: $warning_info"
@@ -1911,9 +1951,10 @@ generate_report() {
             show_file_preview "$file_path" "Network exfiltration pattern: $warning_info"
             medium_risk=$((medium_risk+1))
             net_count=$((net_count+1))
-        done
-        if [[ ${#NETWORK_EXFILTRATION_WARNINGS[@]} -gt 5 ]]; then
-            echo "   - ... and $((${#NETWORK_EXFILTRATION_WARNINGS[@]} - 5)) more network warnings (truncated for brevity)"
+        done < "$TEMP_DIR/network_exfiltration_warnings.txt"
+
+        if [[ $total_net_count -gt 5 ]]; then
+            echo "   - ... and $((total_net_count - 5)) more network warnings (truncated for brevity)"
         fi
         echo -e "   ${YELLOW}NOTE: These patterns may indicate data exfiltration or communication with C2 servers.${NC}"
         echo -e "   ${YELLOW}Review network connections and data flows carefully.${NC}"
@@ -1921,7 +1962,10 @@ generate_report() {
     fi
 
     total_issues=$((high_risk + medium_risk))
-    local low_risk_count=${#LOW_RISK_FINDINGS[@]}
+    local low_risk_count=0
+    if [[ -s "$TEMP_DIR/low_risk_findings.txt" ]]; then
+        low_risk_count=$(wc -l < "$TEMP_DIR/low_risk_findings.txt" 2>/dev/null || echo "0")
+    fi
 
     # Summary
     print_status "$BLUE" "=============================================="
@@ -1933,9 +1977,9 @@ generate_report() {
         if [[ $low_risk_count -gt 0 ]]; then
             echo
             print_status "$BLUE" "ℹ️  LOW RISK FINDINGS (informational only):"
-            for finding in "${LOW_RISK_FINDINGS[@]}"; do
+            while IFS= read -r finding; do
                 echo "   - $finding"
-            done
+            done < "$TEMP_DIR/low_risk_findings.txt"
             echo -e "   ${BLUE}NOTE: These are likely legitimate framework code or dependencies.${NC}"
         fi
     else
@@ -1960,9 +2004,9 @@ generate_report() {
         if [[ $low_risk_count -gt 0 ]] && [[ $total_issues -lt 5 ]]; then
             echo
             print_status "$BLUE" "ℹ️  LOW RISK FINDINGS (likely false positives):"
-            for finding in "${LOW_RISK_FINDINGS[@]}"; do
+            while IFS= read -r finding; do
                 echo "   - $finding"
-            done
+            done < "$TEMP_DIR/low_risk_findings.txt"
             echo -e "   ${BLUE}NOTE: These are typically legitimate framework patterns.${NC}"
         fi
     fi
@@ -1980,6 +2024,9 @@ main() {
 
     # Load compromised packages from external file
     load_compromised_packages
+
+    # Create temporary directory for file-based findings storage
+    create_temp_dir
 
     # Parse arguments
     while [[ $# -gt 0 ]]; do
