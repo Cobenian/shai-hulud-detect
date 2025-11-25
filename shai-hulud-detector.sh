@@ -367,7 +367,7 @@ check_second_coming_repos() {
         if [[ -d "$repo_dir/.git" ]]; then
             # Check git config for repository description with timeout
             local description
-            if description=$(timeout 5s git -C "$repo_dir" config --get --local --null repository.description 2>/dev/null | tr -d '\0'); then
+            if description=$(timeout 5s git -C "$repo_dir" config --get --local --null --default "" repository.description 2>/dev/null | tr -d '\0'); then
                 if [[ "$description" == *"Sha1-Hulud: The Second Coming"* ]]; then
                     echo "$repo_dir" >> "$TEMP_DIR/second_coming_repos.txt"
                 fi
