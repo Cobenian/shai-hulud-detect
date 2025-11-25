@@ -43,7 +43,7 @@ Covers multiple npm supply chain attacks from September 2025 and November 2025:
 
 ```bash
 # Clone the repository
-git clone https://github.com/Cobenian/shai-hulud-detect/fork
+git clone https://github.com/Cobenian/shai-hulud-detect
 cd shai-hulud-detect
 
 # Make the script executable
