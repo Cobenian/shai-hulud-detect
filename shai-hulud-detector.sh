@@ -10,6 +10,10 @@ set -eo pipefail
 # Global temp directory for file-based storage
 TEMP_DIR=""
 
+# Global variables for risk tracking (used for exit codes)
+high_risk=0
+medium_risk=0
+
 # Function: create_temp_dir
 # Purpose: Create cross-platform temporary directory for findings storage
 # Args: None
@@ -1792,9 +1796,11 @@ generate_report() {
     print_status "$BLUE" "=============================================="
     echo
 
-    local high_risk=0
-    local medium_risk=0
     local total_issues=0
+
+    # Reset global risk counters for this scan
+    high_risk=0
+    medium_risk=0
 
     # Report malicious workflow files
     if [[ -s "$TEMP_DIR/workflow_files.txt" ]]; then
@@ -2393,6 +2399,15 @@ main() {
 
     # Generate report
     generate_report "$paranoid_mode"
+
+    # Return appropriate exit code based on findings
+    if [[ $high_risk -gt 0 ]]; then
+        exit 1  # High risk findings detected
+    elif [[ $medium_risk -gt 0 ]]; then
+        exit 2  # Medium risk findings detected
+    else
+        exit 0  # Clean - no significant findings
+    fi
 }
 
 # Run main function with all arguments
