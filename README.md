@@ -396,7 +396,7 @@ We welcome contributions to improve any of the code, documentation, tests and pa
 
 1. **Fork the repository**
    ```bash
-   git clone https://github.com/yourusername/shai-hulud-detector.git
+   git clone https://github.com/Cobenian/shai-hulud-detect.git
    cd shai-hulud-detector
    ```
 
