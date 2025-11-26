@@ -1,0 +1,11 @@
+name: Legitimate CI Workflow
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Run tests
+        run: npm test
+      - name: Build
+        run: npm run build

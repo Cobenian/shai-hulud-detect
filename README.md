@@ -222,7 +222,57 @@ The repository includes test cases to validate the script:
 
 # Test clean project with paranoid mode (should show no issues - verifies no false positives)
 ./shai-hulud-detector.sh --paranoid test-cases/clean-project
+
+# Test semver wildcard parsing (should correctly handle 4.x, 1.2.x patterns without errors)
+./shai-hulud-detector.sh test-cases/semver-wildcards
+
+# Test discussion workflow detection (should show CRITICAL risk for malicious discussion-triggered workflows)
+./shai-hulud-detector.sh test-cases/discussion-workflows
+
+# Test GitHub Actions runner detection (should show CRITICAL risk for SHA1HULUD self-hosted runners)
+./shai-hulud-detector.sh test-cases/github-actions-runners
+
+# Test file hash verification (should validate benign files against malicious hashes)
+./shai-hulud-detector.sh test-cases/hash-verification
+
+# Test destructive pattern detection (should show CRITICAL risk for data destruction commands)
+./shai-hulud-detector.sh test-cases/destructive-patterns
 ```
+
+### New Detection Capabilities (v2.7.5)
+
+The latest version includes enhanced detection for previously undetected attack techniques from the Koi.ai "Second Coming" analysis:
+
+#### Semver Wildcard Support
+- **Test Case**: `test-cases/semver-wildcards/`
+- **Validates**: Proper parsing of version patterns like "4.x", "1.2.x", "x.x.x"
+- **Background**: Fixes parsing errors that occurred when the script encountered wildcard version patterns
+- **Expected**: Clean execution without syntax errors when processing wildcard patterns
+
+#### Discussion Workflow Detection
+- **Test Case**: `test-cases/discussion-workflows/`
+- **Validates**: Detection of malicious GitHub Actions workflows that trigger on issue/PR discussion events
+- **Background**: Stealth persistence technique where workflows activate when legitimate users comment on issues/PRs
+- **Expected**: CRITICAL risk alerts for workflows with `on: discussion` triggers containing suspicious activity
+
+#### Self-Hosted GitHub Actions Runner Detection
+- **Test Case**: `test-cases/github-actions-runners/`
+- **Validates**: Detection of persistent backdoors installed as self-hosted GitHub Actions runners
+- **Background**: Attackers install runners in `.dev-env/` directories with SHA1HULUD naming patterns for persistent access
+- **Expected**: CRITICAL risk alerts for runner configurations with malicious naming patterns in development directories
+
+#### File Hash Verification Enhancement
+- **Test Case**: `test-cases/hash-verification/`
+- **Validates**: SHA256 hash verification against known malicious file signatures
+- **Background**: Enhanced detection of malicious files by their cryptographic fingerprints rather than just filename patterns
+- **Expected**: Accurate identification of malicious files by hash, with clean files passing verification
+
+#### Destructive Payload Pattern Detection
+- **Test Case**: `test-cases/destructive-patterns/`
+- **Validates**: Detection of destructive fallback commands that activate when credential theft fails
+- **Background**: From Koi.ai report - when credential exfiltration fails, malware deletes files as destructive fallback
+- **Expected**: CRITICAL risk alerts for patterns like `rm -rf $HOME/*`, `fs.rmSync(..., {recursive: true})`, `Remove-Item -Recurse`
+- **Coverage**: Cross-platform destruction patterns (Linux/macOS/Windows)
 
 ### Paranoid Mode Testing
 
@@ -253,10 +303,10 @@ This feature addresses Issue #42 and eliminates confusion for users with older p
 
 The script performs these comprehensive checks:
 
-1. **Package Database Loading**: Loads the complete list of 979+ compromised packages from `compromised-packages.txt` (September & November 2025)
+1. **Package Database Loading**: Loads the complete list of 1,677+ compromised packages from `compromised-packages.txt` (September & November 2025, plus 953 packages from Koi.ai "Second Coming" analysis)
 2. **Workflow Detection**: Searches for `shai-hulud-workflow.yml` files (September 2025) and `formatter_*.yml` files with SHA1HULUD runners (November 2025)
 3. **Hash Verification**: Calculates SHA-256 hashes of JavaScript/JSON files against 7 known malicious bundle.js variants representing the complete evolution of the Shai-Hulud worm (V1-V7)
-4. **November 2025 Bun Attack Detection**: Identifies `setup_bun.js` (fake Bun installer) and `bun_environment.js` (obfuscated payload) files
+4. **November 2025 Bun Attack Detection**: Identifies `setup_bun.js` (fake Bun installer) and `bun_environment.js` (obfuscated payload) files with enhanced SHA256 hash verification
 5. **Package Analysis**: Parses `package.json` files for specific compromised versions, affected namespaces, and fake Bun preinstall hooks
 6. **Postinstall Hook Detection**: Identifies suspicious postinstall scripts including fake Bun installation patterns (`"preinstall": "node setup_bun.js"`)
 7. **Content Scanning**: Greps for suspicious URLs, webhook endpoints, and malicious patterns
@@ -266,7 +316,10 @@ The script performs these comprehensive checks:
 11. **Repository Detection**: Identifies "Shai-Hulud" repositories and "Sha1-Hulud: The Second Coming" repository descriptions
 12. **Secrets Exfiltration Detection**: Identifies `actionsSecrets.json` files with double Base64 encoded credentials
 13. **GitHub Actions Runner Detection**: Identifies malicious SHA1HULUD runners in GitHub Actions workflows
-14. **Package Integrity Checking**: Analyzes package-lock.json and yarn.lock files for compromised packages and suspicious modifications
+14. **Discussion Workflow Detection**: Identifies malicious GitHub Actions workflows that trigger on discussion events (a stealth persistence technique where workflows activate when issues/PRs receive comments)
+15. **Self-Hosted Runner Detection**: Detects persistent backdoor installations via self-hosted GitHub Actions runners stored in `.dev-env/` directories with SHA1HULUD naming patterns
+16. **Destructive Payload Detection**: Identifies destructive fallback patterns that activate when credential theft fails, including `rm -rf $HOME/*`, `fs.rmSync(..., {recursive: true})`, `Remove-Item -Recurse`, and cross-platform destruction commands
+17. **Package Integrity Checking**: Analyzes package-lock.json and yarn.lock files for compromised packages and suspicious modifications
 
 ## Limitations
 

