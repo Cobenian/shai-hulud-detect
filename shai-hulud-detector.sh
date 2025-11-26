@@ -24,8 +24,8 @@ create_temp_dir() {
 
     if command -v mktemp >/dev/null 2>&1; then
         # Try mktemp with our preferred pattern
-        TEMP_DIR=$(mktemp -d -t shai-hulud-detect-XXXXXX 2>/dev/null) || \
-        TEMP_DIR=$(mktemp -d 2>/dev/null) || \
+        TEMP_DIR=$(mktemp -d -t shai-hulud-detect-XXXXXX 2>/dev/null || true) || \
+        TEMP_DIR=$(mktemp -d 2>/dev/null || true) || \
         TEMP_DIR="$temp_base/shai-hulud-detect-$$-$(date +%s)"
     else
         # Fallback for systems without mktemp (rare with bash)
@@ -253,7 +253,7 @@ show_progress() {
 # Modifies: None
 # Returns: Integer count of matching files (strips whitespace)
 count_files() {
-    find "$@" 2>/dev/null | wc -l | tr -d ' '
+    (find "$@" 2>/dev/null || true) | wc -l | tr -d ' '
 }
 
 # Function: check_workflow_files
@@ -270,7 +270,7 @@ check_workflow_files() {
         if [[ -f "$file" ]]; then
             echo "$file" >> "$TEMP_DIR/workflow_files.txt"
         fi
-    done < <(find "$scan_dir" -name "shai-hulud-workflow.yml" 2>/dev/null)
+    done < <(find "$scan_dir" -name "shai-hulud-workflow.yml" 2>/dev/null || true)
 }
 
 # Function: check_bun_attack_files
@@ -315,7 +315,7 @@ check_bun_attack_files() {
                 done
             fi
         fi
-    done < <(find "$scan_dir" -name "setup_bun.js" 2>/dev/null)
+    done < <(find "$scan_dir" -name "setup_bun.js" 2>/dev/null || true)
 
     # Look for bun_environment.js files (10MB+ obfuscated payload)
     while IFS= read -r file; do
@@ -339,7 +339,7 @@ check_bun_attack_files() {
                 done
             fi
         fi
-    done < <(find "$scan_dir" -name "bun_environment.js" 2>/dev/null)
+    done < <(find "$scan_dir" -name "bun_environment.js" 2>/dev/null || true)
 }
 
 # Function: check_new_workflow_patterns
@@ -356,14 +356,14 @@ check_new_workflow_patterns() {
         if [[ -f "$file" ]]; then
             echo "$file" >> "$TEMP_DIR/new_workflow_files.txt"
         fi
-    done < <(find "$scan_dir" -name "formatter_*.yml" -path "*/.github/workflows/*" 2>/dev/null)
+    done < <(find "$scan_dir" -name "formatter_*.yml" -path "*/.github/workflows/*" 2>/dev/null || true)
 
     # Look for actionsSecrets.json files (double Base64 encoded secrets)
     while IFS= read -r file; do
         if [[ -f "$file" ]]; then
             echo "$file" >> "$TEMP_DIR/actions_secrets_files.txt"
         fi
-    done < <(find "$scan_dir" -name "actionsSecrets.json" 2>/dev/null)
+    done < <(find "$scan_dir" -name "actionsSecrets.json" 2>/dev/null || true)
 }
 
 # Function: check_discussion_workflows
@@ -395,7 +395,7 @@ check_discussion_workflows() {
                 echo "$file:Suspicious discussion workflow filename" >> "$TEMP_DIR/discussion_workflows.txt"
             fi
         fi
-    done < <(find "$scan_dir" -path "*/.github/workflows/*" -name "*.yml" -o -name "*.yaml" 2>/dev/null)
+    done < <(find "$scan_dir" -path "*/.github/workflows/*" -name "*.yml" -o -name "*.yaml" 2>/dev/null || true)
 }
 
 # Function: check_github_runners
@@ -441,7 +441,7 @@ check_github_runners() {
                     echo "$dir:Suspicious .dev-env directory (matches Koi.ai report)" >> "$TEMP_DIR/github_runners.txt"
                 fi
             fi
-        done < <(find "$scan_dir" -type d -name "$pattern" 2>/dev/null)
+        done < <(find "$scan_dir" -type d -name "$pattern" 2>/dev/null || true)
     done
 
     # Also check user home directory specifically for ~/.dev-env
@@ -534,7 +534,7 @@ check_destructive_patterns() {
                         ;;
                 esac
             fi
-        done < <(find "$scan_dir" -name "$ext" -type f 2>/dev/null | head -100)  # Limit to avoid performance issues
+        done < <(find "$scan_dir" -name "$ext" -type f 2>/dev/null || true | head -100)  # Limit to avoid performance issues
     done
 }
 
@@ -555,7 +555,7 @@ check_preinstall_bun_patterns() {
                 echo "$file" >> "$TEMP_DIR/preinstall_bun_patterns.txt"
             fi
         fi
-    done < <(find "$scan_dir" -name "package.json" 2>/dev/null)
+    done < <(find "$scan_dir" -name "package.json" 2>/dev/null || true)
 }
 
 # Function: check_github_actions_runner
@@ -575,7 +575,7 @@ check_github_actions_runner() {
                 echo "$file" >> "$TEMP_DIR/github_sha1hulud_runners.txt"
             fi
         fi
-    done < <(find "$scan_dir" -name "*.yml" -o -name "*.yaml" 2>/dev/null)
+    done < <(find "$scan_dir" -name "*.yml" -o -name "*.yaml" 2>/dev/null || true)
 }
 
 # Function: check_second_coming_repos
@@ -609,7 +609,7 @@ check_second_coming_repos() {
             fi
             # Skip repositories where git command times out or fails
         fi
-    done < <(find "$scan_dir" -type d -name ".git" | sed 's|/.git$||' 2>/dev/null)
+    done < <(find "$scan_dir" -type d -name ".git" | sed 's|/.git$||' 2>/dev/null || true)
 }
 
 # Function: check_file_hashes
@@ -642,7 +642,7 @@ check_file_hashes() {
         filesChecked=$((filesChecked+1))
         show_progress "$filesChecked" "$filesCount"
     done < <(\
-      find "$scan_dir" -type f \( -name "*.js" -o -name "*.ts" -o -name "*.json" \) -print0 2>/dev/null |\
+      find "$scan_dir" -type f \( -name "*.js" -o -name "*.ts" -o -name "*.json" \) -print0 2>/dev/null || true |\
       xargs -0 -P ${PARALLELISM} -I. shasum -a 256 . 2>/dev/null
     )
     echo -ne "\r\033[K"
@@ -897,7 +897,7 @@ check_packages() {
         filesChecked=$((filesChecked+1))
         show_progress "$filesChecked" "$filesCount"
 
-    done < <(find "$scan_dir" -name "package.json" -type f -print0 2>/dev/null)
+    done < <(find "$scan_dir" -name "package.json" -type f -print0 2>/dev/null || true)
     echo -ne "\r\033[K"
 }
 
@@ -915,7 +915,7 @@ check_postinstall_hooks() {
             # Look for postinstall scripts
             if grep -q "\"postinstall\"" "$package_file" 2>/dev/null; then
                 local postinstall_cmd
-                postinstall_cmd=$(grep -A1 "\"postinstall\"" "$package_file" 2>/dev/null | grep -o '"[^"]*"' 2>/dev/null | tail -1 2>/dev/null | tr -d '"' 2>/dev/null) || true
+                postinstall_cmd=$(grep -A1 "\"postinstall\"" "$package_file" 2>/dev/null | grep -o '"[^"]*"' 2>/dev/null | tail -1 2>/dev/null | tr -d '"' 2>/dev/null || true) || true
 
                 # Check for suspicious patterns in postinstall commands
                 if [[ -n "$postinstall_cmd" ]] && ([[ "$postinstall_cmd" == *"curl"* ]] || [[ "$postinstall_cmd" == *"wget"* ]] || [[ "$postinstall_cmd" == *"node -e"* ]] || [[ "$postinstall_cmd" == *"eval"* ]]); then
@@ -923,7 +923,7 @@ check_postinstall_hooks() {
                 fi
             fi
         fi
-    done < <(find "$scan_dir" -name "package.json" -print0 2>/dev/null)
+    done < <(find "$scan_dir" -name "package.json" -print0 2>/dev/null || true)
 }
 
 # Function: check_content
@@ -945,7 +945,7 @@ check_content() {
                 echo "$file:malicious webhook endpoint" >> "$TEMP_DIR/suspicious_content.txt"
             fi
         fi
-    done < <(find "$scan_dir" -type f \( -name "*.js" -o -name "*.ts" -o -name "*.json" -o -name "*.yml" -o -name "*.yaml" \) -print0 2>/dev/null)
+    done < <(find "$scan_dir" -type f \( -name "*.js" -o -name "*.ts" -o -name "*.json" -o -name "*.yml" -o -name "*.yaml" \) -print0 2>/dev/null || true)
 }
 
 # Function: check_crypto_theft_patterns
@@ -1009,7 +1009,7 @@ check_crypto_theft_patterns() {
         if grep -q -E "ethereum.*0x\[a-fA-F0-9\]|bitcoin.*\[13\]\[a-km-zA-HJ-NP-Z1-9\]" "$file" 2>/dev/null; then
             echo "$file:Cryptocurrency regex patterns detected" >> "$TEMP_DIR/crypto_patterns.txt"
         fi
-    done < <(find "$scan_dir" -type f \( -name "*.js" -o -name "*.ts" -o -name "*.json" \) -print0 2>/dev/null)
+    done < <(find "$scan_dir" -type f \( -name "*.js" -o -name "*.ts" -o -name "*.json" \) -print0 2>/dev/null || true)
 }
 
 # Function: check_git_branches
@@ -1030,11 +1030,11 @@ check_git_branches() {
                 local branch_name
                 branch_name=$(basename "$branch_file")
                 local commit_hash
-                commit_hash=$(cat "$branch_file" 2>/dev/null)
+                commit_hash=$(cat "$branch_file" 2>/dev/null || true)
                 echo "$repo_dir:Branch '$branch_name' (commit: ${commit_hash:0:8}...)" >> "$TEMP_DIR/git_branches.txt"
-            done < <(find "$git_dir/refs/heads" -name "*shai-hulud*" -type f 2>/dev/null)
+            done < <(find "$git_dir/refs/heads" -name "*shai-hulud*" -type f 2>/dev/null || true)
         fi
-    done < <(find "$scan_dir" -name ".git" -type d -print0 2>/dev/null)
+    done < <(find "$scan_dir" -name ".git" -type d -print0 2>/dev/null || true)
 }
 
 # Function: get_file_context
@@ -1145,7 +1145,7 @@ get_lockfile_version() {
                         }
                     }
                 }
-            ' "$current_dir/package-lock.json" 2>/dev/null)
+            ' "$current_dir/package-lock.json" 2>/dev/null || true)
 
             if [[ -n "$found_version" ]]; then
                 echo "$found_version"
@@ -1157,7 +1157,7 @@ get_lockfile_version() {
         if [[ -f "$current_dir/yarn.lock" ]]; then
             # Yarn.lock format: package-name@version:
             local found_version
-            found_version=$(grep "^\"\\?$package_name@" "$current_dir/yarn.lock" 2>/dev/null | head -1 | sed 's/.*@\([^"]*\).*/\1/' 2>/dev/null)
+            found_version=$(grep "^\"\\?$package_name@" "$current_dir/yarn.lock" 2>/dev/null | head -1 | sed 's/.*@\([^"]*\).*/\1/' 2>/dev/null || true)
             if [[ -n "$found_version" ]]; then
                 echo "$found_version"
                 return
@@ -1187,7 +1187,7 @@ get_lockfile_version() {
                     print $0
                     exit
                 }
-            ' "$temp_lockfile" 2>/dev/null)
+            ' "$temp_lockfile" 2>/dev/null || true)
 
             if [[ -n "$found_version" ]]; then
                 echo "$found_version"
@@ -1217,7 +1217,7 @@ check_trufflehog_activity() {
         if [[ -f "$binary_file" ]]; then
             echo "$binary_file:HIGH:Trufflehog binary found" >> "$TEMP_DIR/trufflehog_activity.txt"
         fi
-    done < <(find "$scan_dir" -name "*trufflehog*" -type f 2>/dev/null)
+    done < <(find "$scan_dir" -name "*trufflehog*" -type f 2>/dev/null || true)
 
     # Look for potential trufflehog activity in files
     while IFS= read -r -d '' file; do
@@ -1326,7 +1326,7 @@ check_trufflehog_activity() {
                 echo "$file:HIGH:November 2025 pattern - Dynamic TruffleHog download via curl/wget/Bun" >> "$TEMP_DIR/trufflehog_activity.txt"
             fi
         fi
-    done < <(find "$scan_dir" -type f \( -name "*.js" -o -name "*.py" -o -name "*.sh" -o -name "*.json" \) -print0 2>/dev/null)
+    done < <(find "$scan_dir" -type f \( -name "*.js" -o -name "*.py" -o -name "*.sh" -o -name "*.json" \) -print0 2>/dev/null || true)
 }
 
 # Function: check_shai_hulud_repos
@@ -1364,12 +1364,12 @@ check_shai_hulud_repos() {
         # Check for double base64-encoded data.json (new IoC)
         if [[ -f "$repo_dir/data.json" ]]; then
             local content_sample
-            content_sample=$(head -5 "$repo_dir/data.json" 2>/dev/null)
+            content_sample=$(head -5 "$repo_dir/data.json" 2>/dev/null || true)
             if [[ "$content_sample" == *"eyJ"* ]] && [[ "$content_sample" == *"=="* ]]; then
                 echo "$repo_dir:Contains suspicious data.json (possible base64-encoded credentials)" >> "$TEMP_DIR/shai_hulud_repos.txt"
             fi
         fi
-    done < <(find "$scan_dir" -name ".git" -type d -print0 2>/dev/null)
+    done < <(find "$scan_dir" -name ".git" -type d -print0 2>/dev/null || true)
 }
 
 # Function: check_package_integrity
@@ -1418,7 +1418,7 @@ check_package_integrity() {
                             print $0
                             exit
                         }
-                    ' "$lockfile" 2>/dev/null) || true
+                    ' "$lockfile" 2>/dev/null || true) || true
 
                 # Fallback: for older lockfile formats without node_modules structure
                 # Only look for exact version matches on the same line
@@ -1428,7 +1428,7 @@ check_package_integrity() {
                         gsub(/.*"/, "", $2)
                         gsub(/".*/, "", $2)
                         print $2
-                    }' 2>/dev/null) || true
+                    }' 2>/dev/null || true) || true
                 fi
 
                 if [[ -n "$found_version" && "$found_version" == "$malicious_version" ]]; then
@@ -1461,7 +1461,7 @@ check_package_integrity() {
             fi
 
         fi
-    done < <(find "$scan_dir" \( -name "pnpm-lock.yaml" -o -name "yarn.lock" -o -name "package-lock.json" \) -print0 2>/dev/null)
+    done < <(find "$scan_dir" \( -name "pnpm-lock.yaml" -o -name "yarn.lock" -o -name "package-lock.json" \) -print0 2>/dev/null || true)
 }
 
 # Function: check_typosquatting
@@ -1651,7 +1651,7 @@ check_typosquatting() {
 
             done <<< "$package_names"
         fi
-    done < <(find "$scan_dir" -name "package.json" -print0 2>/dev/null)
+    done < <(find "$scan_dir" -name "package.json" -print0 2>/dev/null || true)
 }
 
 # Function: check_network_exfiltration
@@ -1707,19 +1707,19 @@ check_network_exfiltration() {
                     if grep -qE "https?://[^[:space:]]*$domain|[[:space:]:,\"\']$domain[[:space:]/\"\',;]" "$file" 2>/dev/null; then
                         # Additional check - make sure it's not just a comment or documentation
                         local suspicious_usage
-                        suspicious_usage=$(grep -E "https?://[^[:space:]]*$domain|[[:space:]:,\"\']$domain[[:space:]/\"\',;]" "$file" 2>/dev/null | grep -vE "^[[:space:]]*#|^[[:space:]]*//" 2>/dev/null | head -1 2>/dev/null) || true
+                        suspicious_usage=$(grep -E "https?://[^[:space:]]*$domain|[[:space:]:,\"\']$domain[[:space:]/\"\',;]" "$file" 2>/dev/null | grep -vE "^[[:space:]]*#|^[[:space:]]*//" 2>/dev/null | head -1 2>/dev/null || true) || true
                         if [[ -n "$suspicious_usage" ]]; then
                             # Get line number and context
                             local line_info
-                            line_info=$(grep -nE "https?://[^[:space:]]*$domain|[[:space:]:,\"\']$domain[[:space:]/\"\',;]" "$file" 2>/dev/null | grep -vE "^[[:space:]]*#|^[[:space:]]*//" 2>/dev/null | head -1 2>/dev/null) || true
+                            line_info=$(grep -nE "https?://[^[:space:]]*$domain|[[:space:]:,\"\']$domain[[:space:]/\"\',;]" "$file" 2>/dev/null | grep -vE "^[[:space:]]*#|^[[:space:]]*//" 2>/dev/null | head -1 2>/dev/null || true) || true
                             local line_num
-                            line_num=$(echo "$line_info" | cut -d: -f1 2>/dev/null) || true
+                            line_num=$(echo "$line_info" | cut -d: -f1 2>/dev/null || true) || true
 
                             # Check if it's a minified file or has very long lines
-                            if [[ "$file" == *".min.js"* ]] || [[ $(echo "$suspicious_usage" | wc -c 2>/dev/null) -gt 150 ]]; then
+                            if [[ "$file" == *".min.js"* ]] || [[ $(echo "$suspicious_usage" | wc -c 2>/dev/null || true) -gt 150 ]]; then
                                 # Extract just around the domain
                                 local snippet
-                                snippet=$(echo "$suspicious_usage" | grep -o ".\{0,20\}$domain.\{0,20\}" 2>/dev/null | head -1 2>/dev/null) || true
+                                snippet=$(echo "$suspicious_usage" | grep -o ".\{0,20\}$domain.\{0,20\}" 2>/dev/null | head -1 2>/dev/null || true) || true
                                 if [[ -n "$line_num" ]]; then
                                     echo "$file:Suspicious domain found: $domain at line $line_num: ...${snippet}..." >> "$TEMP_DIR/network_exfiltration_warnings.txt"
                                 else
@@ -1727,7 +1727,7 @@ check_network_exfiltration() {
                                 fi
                             else
                                 local snippet
-                                snippet=$(echo "$suspicious_usage" | cut -c1-80 2>/dev/null) || true
+                                snippet=$(echo "$suspicious_usage" | cut -c1-80 2>/dev/null || true) || true
                                 if [[ -n "$line_num" ]]; then
                                     echo "$file:Suspicious domain found: $domain at line $line_num: ${snippet}..." >> "$TEMP_DIR/network_exfiltration_warnings.txt"
                                 else
@@ -1744,16 +1744,16 @@ check_network_exfiltration() {
                 if grep -q 'atob(' "$file" 2>/dev/null || grep -q 'base64.*decode' "$file" 2>/dev/null; then
                     # Get line number and a small snippet
                     local line_num
-                    line_num=$(grep -n 'atob\|base64.*decode' "$file" 2>/dev/null | head -1 2>/dev/null | cut -d: -f1 2>/dev/null) || true
+                    line_num=$(grep -n 'atob\|base64.*decode' "$file" 2>/dev/null | head -1 2>/dev/null | cut -d: -f1 2>/dev/null || true) || true
                     local snippet
 
                     # For minified files, try to extract just the relevant part
-                    if [[ "$file" == *".min.js"* ]] || [[ $(head -1 "$file" 2>/dev/null | wc -c 2>/dev/null) -gt 500 ]]; then
+                    if [[ "$file" == *".min.js"* ]] || [[ $(head -1 "$file" 2>/dev/null | wc -c 2>/dev/null || true) -gt 500 ]]; then
                         # Extract a small window around the atob call
                         if [[ -n "$line_num" ]]; then
-                            snippet=$(sed -n "${line_num}p" "$file" 2>/dev/null | grep -o '.\{0,30\}atob.\{0,30\}' 2>/dev/null | head -1 2>/dev/null) || true
+                            snippet=$(sed -n "${line_num}p" "$file" 2>/dev/null | grep -o '.\{0,30\}atob.\{0,30\}' 2>/dev/null | head -1 2>/dev/null || true) || true
                             if [[ -z "$snippet" ]]; then
-                                snippet=$(sed -n "${line_num}p" "$file" 2>/dev/null | grep -o '.\{0,30\}base64.*decode.\{0,30\}' 2>/dev/null | head -1 2>/dev/null) || true
+                                snippet=$(sed -n "${line_num}p" "$file" 2>/dev/null | grep -o '.\{0,30\}base64.*decode.\{0,30\}' 2>/dev/null | head -1 2>/dev/null || true) || true
                             fi
                             echo "$file:Base64 decoding at line $line_num: ...${snippet}..." >> "$TEMP_DIR/network_exfiltration_warnings.txt"
                         else
@@ -1774,7 +1774,7 @@ check_network_exfiltration() {
             # Check for WebSocket connections to unusual endpoints
             if grep -q "ws://" "$file" 2>/dev/null || grep -q "wss://" "$file" 2>/dev/null; then
                 local ws_endpoints
-                ws_endpoints=$(grep -o 'wss\?://[^"'\''[:space:]]*' "$file" 2>/dev/null)
+                ws_endpoints=$(grep -o 'wss\?://[^"'\''[:space:]]*' "$file" 2>/dev/null || true)
                 while IFS= read -r endpoint; do
                     [[ -z "$endpoint" ]] && continue
                     # Flag WebSocket connections that don't seem to be localhost or common development
@@ -1798,10 +1798,10 @@ check_network_exfiltration() {
                         if ! grep -C3 "btoa(" "$file" 2>/dev/null | grep -q "Authorization:\|Basic \|Bearer " 2>/dev/null; then
                             # Get a small snippet around the btoa usage
                             local line_num
-                            line_num=$(grep -n "btoa(" "$file" 2>/dev/null | head -1 2>/dev/null | cut -d: -f1 2>/dev/null) || true
+                            line_num=$(grep -n "btoa(" "$file" 2>/dev/null | head -1 2>/dev/null | cut -d: -f1 2>/dev/null || true) || true
                             local snippet
                             if [[ -n "$line_num" ]]; then
-                                snippet=$(sed -n "${line_num}p" "$file" 2>/dev/null | cut -c1-80 2>/dev/null) || true
+                                snippet=$(sed -n "${line_num}p" "$file" 2>/dev/null | cut -c1-80 2>/dev/null || true) || true
                                 echo "$file:Suspicious base64 encoding near network operation at line $line_num: ${snippet}..." >> "$TEMP_DIR/network_exfiltration_warnings.txt"
                             else
                                 echo "$file:Suspicious base64 encoding near network operation" >> "$TEMP_DIR/network_exfiltration_warnings.txt"
@@ -1812,7 +1812,7 @@ check_network_exfiltration() {
             fi
 
         fi
-    done < <(find "$scan_dir" \( -name "*.js" -o -name "*.ts" -o -name "*.json" -o -name "*.mjs" \) -print0 2>/dev/null)
+    done < <(find "$scan_dir" \( -name "*.js" -o -name "*.ts" -o -name "*.json" -o -name "*.mjs" \) -print0 2>/dev/null || true)
 }
 
 # Function: generate_report
