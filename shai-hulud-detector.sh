@@ -57,6 +57,10 @@ create_temp_dir() {
     touch "$TEMP_DIR/preinstall_bun_patterns.txt"
     touch "$TEMP_DIR/second_coming_repos.txt"
     touch "$TEMP_DIR/actions_secrets_files.txt"
+    touch "$TEMP_DIR/discussion_workflows.txt"
+    touch "$TEMP_DIR/github_runners.txt"
+    touch "$TEMP_DIR/malicious_hashes.txt"
+    touch "$TEMP_DIR/destructive_patterns.txt"
     touch "$TEMP_DIR/trufflehog_patterns.txt"
 }
 
@@ -268,16 +272,44 @@ check_workflow_files() {
 # Function: check_bun_attack_files
 # Purpose: Detect November 2025 "Shai-Hulud: The Second Coming" Bun attack files
 # Args: $1 = scan_dir (directory to scan)
-# Modifies: BUN_SETUP_FILES, BUN_ENVIRONMENT_FILES (global arrays)
-# Returns: Populates arrays with paths to suspicious Bun-related malicious files
+# Modifies: $TEMP_DIR/bun_setup_files.txt, bun_environment_files.txt, malicious_hashes.txt
+# Returns: Populates temp files with paths to suspicious Bun-related malicious files
 check_bun_attack_files() {
     local scan_dir=$1
     print_status "$BLUE" "🔍 Checking for November 2025 Bun attack files..."
+
+    # Known malicious file hashes from Koi.ai incident report
+    local setup_bun_hashes=(
+        "a3894003ad1d293ba96d77881ccd2071446dc3f65f434669b49b3da92421901a"
+    )
+
+    local bun_environment_hashes=(
+        "62ee164b9b306250c1172583f138c9614139264f889fa99614903c12755468d0"
+        "f099c5d9ec417d4445a0328ac0ada9cde79fc37410914103ae9c609cbc0ee068"
+        "cbb9bc5a8496243e02f3cc080efbe3e4a1430ba0671f2e43a202bf45b05479cd"
+    )
 
     # Look for setup_bun.js files (fake Bun runtime installation)
     while IFS= read -r file; do
         if [[ -f "$file" ]]; then
             echo "$file" >> "$TEMP_DIR/bun_setup_files.txt"
+
+            # Verify hash if sha256sum or shasum is available
+            local file_hash=""
+            if command -v sha256sum >/dev/null 2>&1; then
+                file_hash=$(sha256sum "$file" 2>/dev/null | cut -d' ' -f1)
+            elif command -v shasum >/dev/null 2>&1; then
+                file_hash=$(shasum -a 256 "$file" 2>/dev/null | cut -d' ' -f1)
+            fi
+
+            if [[ -n "$file_hash" ]]; then
+                for known_hash in "${setup_bun_hashes[@]}"; do
+                    if [[ "$file_hash" == "$known_hash" ]]; then
+                        echo "$file:SHA256=$file_hash (CONFIRMED MALICIOUS - Koi.ai IOC)" >> "$TEMP_DIR/malicious_hashes.txt"
+                        break
+                    fi
+                done
+            fi
         fi
     done < <(find "$scan_dir" -name "setup_bun.js" 2>/dev/null)
 
@@ -285,6 +317,23 @@ check_bun_attack_files() {
     while IFS= read -r file; do
         if [[ -f "$file" ]]; then
             echo "$file" >> "$TEMP_DIR/bun_environment_files.txt"
+
+            # Verify hash if sha256sum or shasum is available
+            local file_hash=""
+            if command -v sha256sum >/dev/null 2>&1; then
+                file_hash=$(sha256sum "$file" 2>/dev/null | cut -d' ' -f1)
+            elif command -v shasum >/dev/null 2>&1; then
+                file_hash=$(shasum -a 256 "$file" 2>/dev/null | cut -d' ' -f1)
+            fi
+
+            if [[ -n "$file_hash" ]]; then
+                for known_hash in "${bun_environment_hashes[@]}"; do
+                    if [[ "$file_hash" == "$known_hash" ]]; then
+                        echo "$file:SHA256=$file_hash (CONFIRMED MALICIOUS - Koi.ai IOC)" >> "$TEMP_DIR/malicious_hashes.txt"
+                        break
+                    fi
+                done
+            fi
         fi
     done < <(find "$scan_dir" -name "bun_environment.js" 2>/dev/null)
 }
@@ -311,6 +360,142 @@ check_new_workflow_patterns() {
             echo "$file" >> "$TEMP_DIR/actions_secrets_files.txt"
         fi
     done < <(find "$scan_dir" -name "actionsSecrets.json" 2>/dev/null)
+}
+
+# Function: check_discussion_workflows
+# Purpose: Detect malicious GitHub Actions workflows with discussion triggers
+# Args: $1 = scan_dir (directory to scan)
+# Modifies: $TEMP_DIR/discussion_workflows.txt (temp file)
+# Returns: Populates discussion_workflows.txt with paths to suspicious discussion-triggered workflows
+check_discussion_workflows() {
+    local scan_dir=$1
+    print_status "$BLUE" "🔍 Checking for malicious discussion workflows..."
+
+    # Look for .yml/.yaml files in .github/workflows/ directories
+    while IFS= read -r file; do
+        if [[ -f "$file" ]]; then
+            # Check for discussion-based triggers
+            if grep -q "on:.*discussion" "$file" 2>/dev/null || grep -q "on:\s*discussion" "$file" 2>/dev/null; then
+                echo "$file:Discussion trigger detected" >> "$TEMP_DIR/discussion_workflows.txt"
+            fi
+
+            # Check for self-hosted runners combined with dynamic payload execution
+            if grep -q "runs-on:.*self-hosted" "$file" 2>/dev/null; then
+                if grep -q "\${{ github\.event\..*\.body }}" "$file" 2>/dev/null; then
+                    echo "$file:Self-hosted runner with dynamic payload execution" >> "$TEMP_DIR/discussion_workflows.txt"
+                fi
+            fi
+
+            # Check for specific discussion.yaml filename (exact match from Koi.ai report)
+            if [[ "$(basename "$file")" == "discussion.yaml" ]] || [[ "$(basename "$file")" == "discussion.yml" ]]; then
+                echo "$file:Suspicious discussion workflow filename" >> "$TEMP_DIR/discussion_workflows.txt"
+            fi
+        fi
+    done < <(find "$scan_dir" -path "*/.github/workflows/*" -name "*.yml" -o -name "*.yaml" 2>/dev/null)
+}
+
+# Function: check_github_runners
+# Purpose: Detect self-hosted GitHub Actions runners installed by malware
+# Args: $1 = scan_dir (directory to scan)
+# Modifies: $TEMP_DIR/github_runners.txt (temp file)
+# Returns: Populates github_runners.txt with paths to suspicious runner installations
+check_github_runners() {
+    local scan_dir=$1
+    print_status "$BLUE" "🔍 Checking for malicious GitHub Actions runners..."
+
+    # Check for runner directories in common locations
+    local runner_patterns=(
+        "~/.dev-env"
+        ".dev-env"
+        "actions-runner"
+        ".runner"
+        "_work"
+    )
+
+    for pattern in "${runner_patterns[@]}"; do
+        # Expand tilde to actual home directory for search
+        local search_pattern="$pattern"
+        if [[ "$pattern" == "~/"* ]]; then
+            search_pattern="${HOME}${pattern#~}"
+        fi
+
+        # Look for runner directories
+        while IFS= read -r dir; do
+            if [[ -d "$dir" ]]; then
+                # Check for runner configuration files
+                if [[ -f "$dir/.runner" ]] || [[ -f "$dir/.credentials" ]] || [[ -f "$dir/config.sh" ]]; then
+                    echo "$dir:Runner configuration files found" >> "$TEMP_DIR/github_runners.txt"
+                fi
+
+                # Check for runner binaries
+                if [[ -f "$dir/Runner.Worker" ]] || [[ -f "$dir/run.sh" ]] || [[ -f "$dir/run.cmd" ]]; then
+                    echo "$dir:Runner executable files found" >> "$TEMP_DIR/github_runners.txt"
+                fi
+
+                # Check for .dev-env specifically (from Koi.ai report)
+                if [[ "$(basename "$dir")" == ".dev-env" ]]; then
+                    echo "$dir:Suspicious .dev-env directory (matches Koi.ai report)" >> "$TEMP_DIR/github_runners.txt"
+                fi
+            fi
+        done < <(find "$scan_dir" -type d -name "$pattern" 2>/dev/null)
+    done
+
+    # Also check user home directory specifically for ~/.dev-env
+    if [[ -d "${HOME}/.dev-env" ]]; then
+        echo "${HOME}/.dev-env:Malicious runner directory in home folder (Koi.ai IOC)" >> "$TEMP_DIR/github_runners.txt"
+    fi
+}
+
+# Function: check_destructive_patterns
+# Purpose: Detect destructive patterns that can cause data loss when credential theft fails
+# Args: $1 = scan_dir (directory to scan)
+# Modifies: $TEMP_DIR/destructive_patterns.txt (temp file)
+# Returns: Populates destructive_patterns.txt with paths to files containing destructive patterns
+check_destructive_patterns() {
+    local scan_dir=$1
+    print_status "$BLUE" "🔍 Checking for destructive payload patterns..."
+
+    # Destructive patterns targeting user files (from Koi.ai report)
+    local destructive_patterns=(
+        # File deletion patterns
+        "rm -rf \$HOME"
+        "rm -rf ~"
+        "del /s /q"
+        "Remove-Item -Recurse"
+        "fs\.unlinkSync"
+        "fs\.rmSync.*recursive"
+        "rimraf"
+
+        # Bulk file operations in home directory
+        "find.*-delete"
+        "find \$HOME.*-exec rm"
+        "find ~.*-exec rm"
+        "\$HOME/\*"
+        "~/\*"
+
+        # Conditional destruction patterns (when credential theft fails)
+        "if.*credential.*fail.*rm"
+        "if.*token.*not.*found.*delete"
+        "if.*github.*auth.*fail.*rm"
+        "catch.*rm -rf"
+        "error.*delete.*home"
+    )
+
+    # Search for destructive patterns in common script files
+    local file_extensions=("*.js" "*.sh" "*.ps1" "*.py" "*.bat" "*.cmd")
+
+    for ext in "${file_extensions[@]}"; do
+        while IFS= read -r file; do
+            if [[ -f "$file" ]]; then
+                for pattern in "${destructive_patterns[@]}"; do
+                    # Use grep with case-insensitive matching for broader detection
+                    if grep -qi "$pattern" "$file" 2>/dev/null; then
+                        echo "$file:Destructive pattern detected: $pattern" >> "$TEMP_DIR/destructive_patterns.txt"
+                    fi
+                done
+            fi
+        done < <(find "$scan_dir" -name "$ext" -type f 2>/dev/null | head -100)  # Limit to avoid performance issues
+    done
 }
 
 # Function: check_preinstall_bun_patterns
@@ -1671,6 +1856,57 @@ generate_report() {
         done < "$TEMP_DIR/actions_secrets_files.txt"
     fi
 
+    if [[ -s "$TEMP_DIR/discussion_workflows.txt" ]]; then
+        print_status "$RED" "🚨 HIGH RISK: Malicious discussion-triggered workflows detected:"
+        while IFS= read -r line; do
+            local file="${line%%:*}"
+            local reason="${line#*:}"
+            echo "   - $file"
+            echo "     Reason: $reason"
+            show_file_preview "$file" "HIGH RISK: Discussion workflow - Enables arbitrary command execution via GitHub discussions"
+            high_risk=$((high_risk+1))
+        done < "$TEMP_DIR/discussion_workflows.txt"
+    fi
+
+    if [[ -s "$TEMP_DIR/github_runners.txt" ]]; then
+        print_status "$RED" "🚨 HIGH RISK: Malicious GitHub Actions runners detected:"
+        while IFS= read -r line; do
+            local dir="${line%%:*}"
+            local reason="${line#*:}"
+            echo "   - $dir"
+            echo "     Reason: $reason"
+            show_file_preview "$dir" "HIGH RISK: GitHub Actions runner - Self-hosted backdoor for persistent access"
+            high_risk=$((high_risk+1))
+        done < "$TEMP_DIR/github_runners.txt"
+    fi
+
+    if [[ -s "$TEMP_DIR/malicious_hashes.txt" ]]; then
+        print_status "$RED" "🚨 CRITICAL: Hash-confirmed malicious files detected:"
+        print_status "$RED" "    These files match exact SHA256 hashes from security incident reports!"
+        while IFS= read -r line; do
+            local file="${line%%:*}"
+            local hash_info="${line#*:}"
+            echo "   - $file"
+            echo "     $hash_info"
+            show_file_preview "$file" "CRITICAL: Hash-confirmed malicious file - Exact match with known malware"
+            high_risk=$((high_risk+1))
+        done < "$TEMP_DIR/malicious_hashes.txt"
+    fi
+
+    if [[ -s "$TEMP_DIR/destructive_patterns.txt" ]]; then
+        print_status "$RED" "🚨 CRITICAL: Destructive payload patterns detected:"
+        print_status "$RED" "    ⚠️  WARNING: These patterns can cause permanent data loss!"
+        while IFS= read -r line; do
+            local file="${line%%:*}"
+            local pattern_info="${line#*:}"
+            echo "   - $file"
+            echo "     Pattern: $pattern_info"
+            show_file_preview "$file" "CRITICAL: Destructive pattern - Can delete user files when credential theft fails"
+            high_risk=$((high_risk+1))
+        done < "$TEMP_DIR/destructive_patterns.txt"
+        print_status "$RED" "    📋 IMMEDIATE ACTION REQUIRED: Quarantine these files and review for data destruction capabilities"
+    fi
+
     if [[ -s "$TEMP_DIR/preinstall_bun_patterns.txt" ]]; then
         print_status "$RED" "🚨 HIGH RISK: Fake Bun preinstall patterns detected:"
         while IFS= read -r file; do
@@ -2140,6 +2376,9 @@ main() {
     # November 2025 "Shai-Hulud: The Second Coming" attack detection
     check_bun_attack_files "$scan_dir"
     check_new_workflow_patterns "$scan_dir"
+    check_discussion_workflows "$scan_dir"
+    check_github_runners "$scan_dir"
+    check_destructive_patterns "$scan_dir"
     check_preinstall_bun_patterns "$scan_dir"
     check_github_actions_runner "$scan_dir"
     check_second_coming_repos "$scan_dir"

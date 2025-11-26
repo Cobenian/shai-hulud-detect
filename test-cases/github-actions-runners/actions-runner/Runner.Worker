@@ -1,0 +1,5 @@
+#!/bin/bash
+# Fake GitHub Actions Runner Worker executable
+# This simulates a runner binary that could be malicious
+echo "GitHub Actions Runner Worker"
+echo "This could be a malicious runner installation"
