@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **False Positive Elimination**: Refined destructive pattern detection to eliminate false positives on minified JavaScript files (resolves GitHub issue #74)
 - **Permission Error Resilience**: Added comprehensive permission denied error handling for all find commands (resolves GitHub issue #76)
+- **SemVer Wildcard Case Sensitivity**: Fixed crash when encountering uppercase wildcard patterns like "3.X" instead of "3.x" (resolves GitHub issue #73)
 - **Cross-Platform Robustness**: Script now gracefully handles restricted directories and permission variations common in enterprise environments
 
 ### Changed
@@ -23,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Limited conditional patterns to `.{1,200}` spans instead of unlimited `.*` to prevent false positives across minified files
   - Added command-specific contexts for JavaScript patterns (requires `rm -`, `fs.`, `rimraf`, etc.)
 - **Permission Handling**: Modified `count_files()` function and all direct find usages to handle permission denied gracefully
+- **SemVer Case Insensitive**: Changed wildcard pattern from `*x*` to `*[xX]*` and updated skip logic to handle both "x" and "X"
 - **Test Coverage**: Added test case for minified file false positives and validated fix against AutoNumeric.js patterns
 
 ### Security
