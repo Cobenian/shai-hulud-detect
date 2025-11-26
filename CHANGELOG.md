@@ -5,6 +5,31 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.4] - 2025-11-25
+
+### Fixed
+- **Critical Bug: Network Exfiltration Detection**: Fixed network exfiltration warnings not appearing in report due to array vs temp file mismatch (resolves GitHub issue #55)
+- **Error Handling**: Added proper error handling for directory path conversion to prevent script failure on inaccessible directories
+- **Security Improvement**: Replaced eval usage in semverParseInto() function with safer printf -v alternatives
+- **Cross-Platform Compatibility**: Added timeout command detection with macOS fallback for better platform support
+
+### Changed
+- **Network Exfiltration Function**: Updated check_network_exfiltration() to write findings to temp file instead of global array
+- **Function Documentation**: Updated comments to reflect temp file usage instead of array operations
+- **Path Handling**: Enhanced directory access validation with proper error messages
+
+### Security
+- **Paranoid Mode Restored**: Network exfiltration detection now properly functions in paranoid mode
+- **Code Injection Prevention**: Eliminated eval usage that could pose security risks
+- **Robust Error Handling**: Improved script reliability by handling edge cases in directory operations
+
+### Technical Details
+- **Array to File Conversion**: Replaced 13 instances of NETWORK_EXFILTRATION_WARNINGS+= with echo >> temp file
+- **Safe Variable Assignment**: Changed eval $var= to printf -v "$var" for dynamic variable setting
+- **Platform Detection**: Added command -v timeout check with graceful fallback for systems without GNU timeout
+- **Directory Validation**: Enhanced cd command with proper error handling: if ! scan_dir=$(cd "$scan_dir" && pwd)
+- **Comment Corrections**: Fixed typo in semverParseInto function comments (#MINO) → #PATCH)
+
 ## [2.7.3] - 2025-11-25
 
 ### Added
