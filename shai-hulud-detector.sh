@@ -461,7 +461,7 @@ check_destructive_patterns() {
 
     # Destructive patterns targeting user files (from Koi.ai report)
     local destructive_patterns=(
-        # File deletion patterns
+        # File deletion patterns - these are specific enough to avoid false positives
         "rm -rf \$HOME"
         "rm -rf ~"
         "del /s /q"
@@ -470,16 +470,26 @@ check_destructive_patterns() {
         "fs\.rmSync.*recursive"
         "rimraf"
 
-        # Bulk file operations in home directory
-        "find.*-delete"
+        # Bulk file operations in home directory - refined patterns
+        "find[[:space:]]+[^[:space:]]+.*[[:space:]]+-delete"     # More specific find command structure
         "find \$HOME.*-exec rm"
         "find ~.*-exec rm"
         "\$HOME/\*"
         "~/\*"
+    )
 
-        # Conditional destruction patterns (when credential theft fails)
-        "if.*credential.*fail.*rm"
-        "if.*token.*not.*found.*delete"
+    # Conditional destruction patterns - these need context limits to avoid false positives in minified files
+    local conditional_patterns=(
+        # Limited span patterns with command-specific context for JavaScript/Python
+        "if.{1,200}credential.{1,50}(fail|error).{1,50}(rm -|fs\.|rimraf|exec|spawn|child_process)"
+        "if.{1,200}token.{1,50}not.{1,20}found.{1,50}(rm -|del |fs\.|rimraf|unlinkSync|rmSync)"
+        "if.{1,200}github.{1,50}auth.{1,50}fail.{1,50}(rm -|fs\.|rimraf|exec)"
+        "catch.{1,100}(rm -rf|fs\.rm|rimraf|exec.*rm)"
+        "error.{1,100}(rm -|del |fs\.|rimraf).{1,100}(\$HOME|~/|home.*(directory|folder|path))"
+
+        # Shell-specific patterns (for .sh, .bat, .ps1 files) - can be broader for actual shell commands
+        "if.*credential.*(fail|error).*rm"
+        "if.*token.*not.*found.*(delete|rm)"
         "if.*github.*auth.*fail.*rm"
         "catch.*rm -rf"
         "error.*delete.*home"
@@ -491,12 +501,38 @@ check_destructive_patterns() {
     for ext in "${file_extensions[@]}"; do
         while IFS= read -r file; do
             if [[ -f "$file" ]]; then
+                # Always check specific destructive patterns (low false positive risk)
                 for pattern in "${destructive_patterns[@]}"; do
-                    # Use grep with case-insensitive matching for broader detection
                     if grep -qi "$pattern" "$file" 2>/dev/null; then
                         echo "$file:Destructive pattern detected: $pattern" >> "$TEMP_DIR/destructive_patterns.txt"
                     fi
                 done
+
+                # Check conditional patterns based on file type
+                case "$file" in
+                    *.sh|*.bat|*.ps1|*.cmd)
+                        # Shell scripts: Use broader patterns (last 5 in conditional_patterns array)
+                        for i in {6..10}; do
+                            if [[ $i -lt ${#conditional_patterns[@]} ]]; then
+                                pattern="${conditional_patterns[$i]}"
+                                if grep -qi "$pattern" "$file" 2>/dev/null; then
+                                    echo "$file:Conditional destruction pattern detected: $pattern" >> "$TEMP_DIR/destructive_patterns.txt"
+                                fi
+                            fi
+                        done
+                        ;;
+                    *.js|*.py)
+                        # JavaScript/Python: Use limited span patterns only (first 5 in conditional_patterns array)
+                        for i in {0..4}; do
+                            if [[ $i -lt ${#conditional_patterns[@]} ]]; then
+                                pattern="${conditional_patterns[$i]}"
+                                if grep -qiE "$pattern" "$file" 2>/dev/null; then
+                                    echo "$file:Conditional destruction pattern detected: $pattern" >> "$TEMP_DIR/destructive_patterns.txt"
+                                fi
+                            fi
+                        done
+                        ;;
+                esac
             fi
         done < <(find "$scan_dir" -name "$ext" -type f 2>/dev/null | head -100)  # Limit to avoid performance issues
     done
