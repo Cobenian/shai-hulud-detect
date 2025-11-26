@@ -5,6 +5,31 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.3] - 2025-11-25
+
+### Added
+- **Comprehensive Package List Update**: Added 953 missing compromised packages from Koi.ai incident report (resolves GitHub issue #61)
+- **Complete "Second Coming" Coverage**: Now includes all 1,055 packages from the November 2025 Shai-Hulud attack
+
+### Changed
+- **Package Detection Coverage**: Expanded from 980 to 1,677 compromised package versions (+71% increase)
+- **Supply Chain Protection**: Comprehensive coverage of "Shai-Hulud: The Second Coming" attack packages
+
+### Security
+- **Critical Detection Gap Closed**: Previously missing 90% of compromised packages from November 2025 attack
+- **Enhanced Security Coverage**: Added extensive missing packages from major compromised organizations:
+  - Voiceflow (100+ packages): @voiceflow/anthropic, @voiceflow/api-sdk, @voiceflow/chat-types, etc.
+  - Zapier packages: @zapier/ai-actions-react, @zapier/mcp-integration, zapier-platform-cli, etc.
+  - PostHog packages: Multiple @posthog/* scoped packages from security incident
+  - AsyncAPI packages: @asyncapi/cli, @asyncapi/converter, @asyncapi/generator, etc.
+  - AccordProject, Oku-UI, BrowserBase, ENS Domains, and hundreds more
+
+### Technical Details
+- **Source Integration**: Incorporated complete Koi.ai incident list covering 1,055 confirmed compromised packages
+- **Data Processing**: Merged and deduplicated package lists maintaining alphabetical sorting
+- **Coverage Metrics**: Increased detection from ~10% to 100% of known "Second Coming" attack packages
+- **Package Validation**: Cross-referenced with GitHub issue #61 missing package analysis
+
 ## [2.7.2] - 2025-11-25
 
 ### Fixed
