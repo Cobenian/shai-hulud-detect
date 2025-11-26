@@ -54,7 +54,13 @@ chmod +x shai-hulud-detector.sh
 
 # For comprehensive security scanning
 ./shai-hulud-detector.sh --paranoid /path/to/your/project
+
+# Check exit code for CI/CD integration
+./shai-hulud-detector.sh /path/to/your/project
+echo "Exit code: $?"  # 0=clean, 1=high-risk, 2=medium-risk
 ```
+
+**CI/CD Integration**: The script returns appropriate exit codes (0=clean, 1=high-risk, 2=medium-risk) for seamless integration into automated security pipelines.
 
 ## What it Detects
 
@@ -160,6 +166,63 @@ The script will show:
 - Review flagged files for legitimacy
 - Check if webhook.site usage is intentional
 - Verify git branch purposes
+
+## Exit Codes for CI/CD Integration
+
+The script returns specific exit codes to enable proper CI/CD pipeline integration:
+
+- **Exit Code 0**: Clean system - no significant security findings
+- **Exit Code 1**: High-risk findings detected - immediate action required
+- **Exit Code 2**: Medium-risk findings detected - manual investigation needed
+
+### CI/CD Pipeline Examples
+
+#### GitHub Actions
+```yaml
+- name: Security Scan with Shai-Hulud Detector
+  run: |
+    chmod +x ./shai-hulud-detector.sh
+    ./shai-hulud-detector.sh .
+  # Pipeline will automatically fail on exit codes 1 or 2
+```
+
+#### GitLab CI
+```yaml
+security_scan:
+  script:
+    - chmod +x ./shai-hulud-detector.sh
+    - ./shai-hulud-detector.sh .
+  # Job fails automatically on non-zero exit codes
+```
+
+#### Jenkins
+```groovy
+stage('Security Scan') {
+  steps {
+    sh '''
+      chmod +x ./shai-hulud-detector.sh
+      ./shai-hulud-detector.sh .
+    '''
+  }
+  // Build fails automatically on non-zero exit codes
+}
+```
+
+#### Custom Handling by Exit Code
+```bash
+#!/bin/bash
+./shai-hulud-detector.sh .
+exit_code=$?
+
+case $exit_code in
+    0) echo "✅ Security scan passed - no issues found" ;;
+    1) echo "🚨 CRITICAL: High-risk security issues found - blocking deployment"
+       exit 1 ;;
+    2) echo "⚠️ WARNING: Medium-risk issues found - review required"
+       # Could choose to continue with warnings
+       ;;
+esac
+```
 
 ## Testing
 
