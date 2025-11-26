@@ -785,7 +785,7 @@ semver_match() {
                 [[ "${subject_patch}"   -ge "${pattern_patch}"   ]] || continue
                 return 0 # Match
                 ;;
-            *x*) # Wildcard pattern (4.x, 1.2.x, etc.)
+            *[xX]*) # Wildcard pattern (4.x, 1.2.x, 4.X, 1.2.X, etc.)
                 # Parse pattern components, handling 'x' wildcards specially
                 local pattern_parts
                 IFS='.' read -ra pattern_parts <<< "${pattern}"
@@ -798,8 +798,8 @@ semver_match() {
                         local pattern_part="${pattern_parts[i]}"
                         local subject_part="${subject_parts[i]}"
 
-                        # Skip wildcard components
-                        if [[ "${pattern_part}" == "x" ]]; then
+                        # Skip wildcard components (both lowercase x and uppercase X)
+                        if [[ "${pattern_part}" == "x" ]] || [[ "${pattern_part}" == "X" ]]; then
                             continue
                         fi
 
