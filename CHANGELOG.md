@@ -5,6 +5,31 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.6] - 2025-11-26
+
+### Fixed
+- **False Positive Elimination**: Refined destructive pattern detection to eliminate false positives on minified JavaScript files (resolves GitHub issue #74)
+- **Permission Error Resilience**: Added comprehensive permission denied error handling for all find commands (resolves GitHub issue #76)
+- **Cross-Platform Robustness**: Script now gracefully handles restricted directories and permission variations common in enterprise environments
+
+### Changed
+- **Pattern Specificity**: Enhanced destructive pattern regex to require actual command context rather than isolated keywords
+- **File Type Awareness**: Different pattern strictness for shell scripts vs. JavaScript files to reduce false positives
+- **Error Handling**: All 26+ find commands now use `|| true` to prevent script abortion on permission denied errors
+
+### Technical Details
+- **Regex Improvements**:
+  - Changed `find.*-delete` to `find[[:space:]]+[^[:space:]]+.*[[:space:]]+-delete` (requires proper command structure)
+  - Limited conditional patterns to `.{1,200}` spans instead of unlimited `.*` to prevent false positives across minified files
+  - Added command-specific contexts for JavaScript patterns (requires `rm -`, `fs.`, `rimraf`, etc.)
+- **Permission Handling**: Modified `count_files()` function and all direct find usages to handle permission denied gracefully
+- **Test Coverage**: Added test case for minified file false positives and validated fix against AutoNumeric.js patterns
+
+### Security
+- **Maintained Detection Accuracy**: All real threats still detected while eliminating false positives from legitimate minified libraries
+- **Production Ready**: Enhanced robustness for enterprise environments with mixed file permissions
+- **CI/CD Compatibility**: Script no longer aborts in automated environments due to permission restrictions
+
 ## [2.7.5] - 2025-11-25
 
 ### Added
