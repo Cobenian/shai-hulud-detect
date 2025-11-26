@@ -367,9 +367,19 @@ check_second_coming_repos() {
         if [[ -d "$repo_dir/.git" ]]; then
             # Check git config for repository description with timeout
             local description
-            if description=$(timeout 5s git -C "$repo_dir" config --get --local --null --default "" repository.description 2>/dev/null | tr -d '\0'); then
-                if [[ "$description" == *"Sha1-Hulud: The Second Coming"* ]]; then
-                    echo "$repo_dir" >> "$TEMP_DIR/second_coming_repos.txt"
+            if command -v timeout >/dev/null 2>&1; then
+                # GNU timeout is available
+                if description=$(timeout 5s git -C "$repo_dir" config --get --local --null --default "" repository.description 2>/dev/null | tr -d '\0'); then
+                    if [[ "$description" == *"Sha1-Hulud: The Second Coming"* ]]; then
+                        echo "$repo_dir" >> "$TEMP_DIR/second_coming_repos.txt"
+                    fi
+                fi
+            else
+                # Fallback for systems without timeout command (e.g., macOS)
+                if description=$(git -C "$repo_dir" config --get --local --null --default "" repository.description 2>/dev/null | tr -d '\0'); then
+                    if [[ "$description" == *"Sha1-Hulud: The Second Coming"* ]]; then
+                        echo "$repo_dir" >> "$TEMP_DIR/second_coming_repos.txt"
+                    fi
                 fi
             fi
             # Skip repositories where git command times out or fails
@@ -484,19 +494,19 @@ transform_pnpm_yaml() {
 # Function: semverParseInto
 # Purpose: Parse semantic version string into major, minor, patch, and special components
 # Args: $1 = version_string, $2 = major_var, $3 = minor_var, $4 = patch_var, $5 = special_var
-# Modifies: Sets variables named by $2-$5 using eval
+# Modifies: Sets variables named by $2-$5 using printf -v
 # Returns: Populates variables with parsed version components
 # Origin: https://github.com/cloudflare/semver_bash/blob/6cc9ce10/semver.sh
 semverParseInto() {
   local RE='[^0-9]*\([0-9]*\)[.]\([0-9]*\)[.]\([0-9]*\)\([0-9A-Za-z-]*\)'
   #MAJOR
-  eval $2=$(echo $1 | sed -e "s/$RE/\1/")
+  printf -v "$2" '%s' "$(echo $1 | sed -e "s/$RE/\1/")"
   #MINOR
-  eval $3=$(echo $1 | sed -e "s/$RE/\2/")
-  #MINO)
-  eval $4=$(echo $1 | sed -e "s/$RE/\3/")
+  printf -v "$3" '%s' "$(echo $1 | sed -e "s/$RE/\2/")"
+  #PATCH
+  printf -v "$4" '%s' "$(echo $1 | sed -e "s/$RE/\3/")"
   #SPECIAL
-  eval $5=$(echo $1 | sed -e "s/$RE/\4/")
+  printf -v "$5" '%s' "$(echo $1 | sed -e "s/$RE/\4/")"
 }
 
 # Function: semver_match
@@ -1422,8 +1432,8 @@ check_typosquatting() {
 # Function: check_network_exfiltration
 # Purpose: Detect network exfiltration patterns including suspicious domains and IPs
 # Args: $1 = scan_dir (directory to scan)
-# Modifies: NETWORK_EXFILTRATION_WARNINGS (global array)
-# Returns: Populates NETWORK_EXFILTRATION_WARNINGS with hardcoded IPs and suspicious domains
+# Modifies: $TEMP_DIR/network_exfiltration_warnings.txt (temp file)
+# Returns: Populates network_exfiltration_warnings.txt with hardcoded IPs and suspicious domains
 check_network_exfiltration() {
     local scan_dir=$1
 
@@ -1456,9 +1466,9 @@ check_network_exfiltration() {
                     if [[ "$ips_context" != *"127.0.0.1"* && "$ips_context" != *"0.0.0.0"* ]]; then
                         # Check if it's a minified file to avoid showing file path details
                         if [[ "$file" == *".min.js"* ]]; then
-                            NETWORK_EXFILTRATION_WARNINGS+=("$file:Hardcoded IP addresses found (minified file): $ips_context")
+                            echo "$file:Hardcoded IP addresses found (minified file): $ips_context" >> "$TEMP_DIR/network_exfiltration_warnings.txt"
                         else
-                            NETWORK_EXFILTRATION_WARNINGS+=("$file:Hardcoded IP addresses found: $ips_context")
+                            echo "$file:Hardcoded IP addresses found: $ips_context" >> "$TEMP_DIR/network_exfiltration_warnings.txt"
                         fi
                     fi
                 fi
@@ -1486,17 +1496,17 @@ check_network_exfiltration() {
                                 local snippet
                                 snippet=$(echo "$suspicious_usage" | grep -o ".\{0,20\}$domain.\{0,20\}" 2>/dev/null | head -1 2>/dev/null) || true
                                 if [[ -n "$line_num" ]]; then
-                                    NETWORK_EXFILTRATION_WARNINGS+=("$file:Suspicious domain found: $domain at line $line_num: ...${snippet}...")
+                                    echo "$file:Suspicious domain found: $domain at line $line_num: ...${snippet}..." >> "$TEMP_DIR/network_exfiltration_warnings.txt"
                                 else
-                                    NETWORK_EXFILTRATION_WARNINGS+=("$file:Suspicious domain found: $domain: ...${snippet}...")
+                                    echo "$file:Suspicious domain found: $domain: ...${snippet}..." >> "$TEMP_DIR/network_exfiltration_warnings.txt"
                                 fi
                             else
                                 local snippet
                                 snippet=$(echo "$suspicious_usage" | cut -c1-80 2>/dev/null) || true
                                 if [[ -n "$line_num" ]]; then
-                                    NETWORK_EXFILTRATION_WARNINGS+=("$file:Suspicious domain found: $domain at line $line_num: ${snippet}...")
+                                    echo "$file:Suspicious domain found: $domain at line $line_num: ${snippet}..." >> "$TEMP_DIR/network_exfiltration_warnings.txt"
                                 else
-                                    NETWORK_EXFILTRATION_WARNINGS+=("$file:Suspicious domain found: $domain: ${snippet}...")
+                                    echo "$file:Suspicious domain found: $domain: ${snippet}..." >> "$TEMP_DIR/network_exfiltration_warnings.txt"
                                 fi
                             fi
                         fi
@@ -1520,20 +1530,20 @@ check_network_exfiltration() {
                             if [[ -z "$snippet" ]]; then
                                 snippet=$(sed -n "${line_num}p" "$file" 2>/dev/null | grep -o '.\{0,30\}base64.*decode.\{0,30\}' 2>/dev/null | head -1 2>/dev/null) || true
                             fi
-                            NETWORK_EXFILTRATION_WARNINGS+=("$file:Base64 decoding at line $line_num: ...${snippet}...")
+                            echo "$file:Base64 decoding at line $line_num: ...${snippet}..." >> "$TEMP_DIR/network_exfiltration_warnings.txt"
                         else
-                            NETWORK_EXFILTRATION_WARNINGS+=("$file:Base64 decoding detected")
+                            echo "$file:Base64 decoding detected" >> "$TEMP_DIR/network_exfiltration_warnings.txt"
                         fi
                     else
                         snippet=$(sed -n "${line_num}p" "$file" | cut -c1-80)
-                        NETWORK_EXFILTRATION_WARNINGS+=("$file:Base64 decoding at line $line_num: ${snippet}...")
+                        echo "$file:Base64 decoding at line $line_num: ${snippet}..." >> "$TEMP_DIR/network_exfiltration_warnings.txt"
                     fi
                 fi
             fi
 
             # Check for DNS-over-HTTPS patterns
             if grep -q "dns-query" "$file" 2>/dev/null || grep -q "application/dns-message" "$file" 2>/dev/null; then
-                NETWORK_EXFILTRATION_WARNINGS+=("$file:DNS-over-HTTPS pattern detected")
+                echo "$file:DNS-over-HTTPS pattern detected" >> "$TEMP_DIR/network_exfiltration_warnings.txt"
             fi
 
             # Check for WebSocket connections to unusual endpoints
@@ -1544,14 +1554,14 @@ check_network_exfiltration() {
                     [[ -z "$endpoint" ]] && continue
                     # Flag WebSocket connections that don't seem to be localhost or common development
                     if [[ "$endpoint" != *"localhost"* && "$endpoint" != *"127.0.0.1"* ]]; then
-                        NETWORK_EXFILTRATION_WARNINGS+=("$file:WebSocket connection to external endpoint: $endpoint")
+                        echo "$file:WebSocket connection to external endpoint: $endpoint" >> "$TEMP_DIR/network_exfiltration_warnings.txt"
                     fi
                 done <<< "$ws_endpoints"
             fi
 
             # Check for suspicious HTTP headers
             if grep -q "X-Exfiltrate\|X-Data-Export\|X-Credential" "$file" 2>/dev/null; then
-                NETWORK_EXFILTRATION_WARNINGS+=("$file:Suspicious HTTP headers detected")
+                echo "$file:Suspicious HTTP headers detected" >> "$TEMP_DIR/network_exfiltration_warnings.txt"
             fi
 
             # Check for data encoding that might hide exfiltration (but be more selective)
@@ -1567,9 +1577,9 @@ check_network_exfiltration() {
                             local snippet
                             if [[ -n "$line_num" ]]; then
                                 snippet=$(sed -n "${line_num}p" "$file" 2>/dev/null | cut -c1-80 2>/dev/null) || true
-                                NETWORK_EXFILTRATION_WARNINGS+=("$file:Suspicious base64 encoding near network operation at line $line_num: ${snippet}...")
+                                echo "$file:Suspicious base64 encoding near network operation at line $line_num: ${snippet}..." >> "$TEMP_DIR/network_exfiltration_warnings.txt"
                             else
-                                NETWORK_EXFILTRATION_WARNINGS+=("$file:Suspicious base64 encoding near network operation")
+                                echo "$file:Suspicious base64 encoding near network operation" >> "$TEMP_DIR/network_exfiltration_warnings.txt"
                             fi
                         fi
                     fi
@@ -2102,7 +2112,10 @@ main() {
     fi
 
     # Convert to absolute path
-    scan_dir=$(cd "$scan_dir" && pwd)
+    if ! scan_dir=$(cd "$scan_dir" && pwd); then
+        print_status "$RED" "Error: Unable to access directory '$scan_dir' or convert to absolute path."
+        exit 1
+    fi
 
     print_status "$GREEN" "Starting Shai-Hulud detection scan..."
     if [[ "$paranoid_mode" == "true" ]]; then
