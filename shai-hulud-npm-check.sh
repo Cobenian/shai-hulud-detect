@@ -3,34 +3,22 @@ set -euo pipefail
 
 INPUT_FILE="${1:-compromised-packages.txt}"
 TIMESTAMP=$(date '+%Y%m%d-%H%M%S')
-TMP_DIR="tmp"
-THREATS_FILE="$TMP_DIR/threats-$TIMESTAMP.txt"
-THREATS_TEMP="$TMP_DIR/threats-$TIMESTAMP.tmp"
-CONCURRENCY="${CONCURRENCY:-10}"  # change or: CONCURRENCY=20 ./script.sh
+THREATS_FILE="tmp/threats-$TIMESTAMP.txt"
+CONCURRENCY="${CONCURRENCY:-10}"
 
-# Create tmp directory if it doesn't exist
-mkdir -p "$TMP_DIR"
-
-# Clean threats file at start
+mkdir -p tmp
 : > "$THREATS_FILE"
 
-if ! command -v npm >/dev/null 2>&1; then
-  echo "Error: npm is not installed or not in PATH" >&2
-  exit 1
-fi
+# Cleanup incomplete file on interruption
+trap 'rm -f "$THREATS_FILE"; exit 1' INT TERM ERR
 
 check_pkg() {
   local line="$1"
 
-  # Trim whitespace
-  line="${line#"${line%%[![:space:]]*}"}"
-  line="${line%"${line##*[![:space:]]}"}"
-
   # Skip empty lines or comments
-  if [[ -z "$line" || "${line:0:1}" == "#" ]]; then
-    return
-  fi
+  [[ -z "${line// /}" || "$line" =~ ^[[:space:]]*# ]] && return
 
+  # Parse package:version
   local pkg="${line%%:*}"
   local ver="${line#*:}"
 
@@ -44,42 +32,24 @@ check_pkg() {
 
   if npm view "$spec" version >/dev/null 2>&1; then
     echo "THREAT  $spec"
-    # appends are fine from parallel processes
     echo "$spec" >> "$THREATS_FILE"
   else
     echo "SAFE    $spec"
   fi
 }
 
-# Simple concurrency control using a PID queue
-pids=()
+export -f check_pkg
+export THREATS_FILE
 
-run_with_limit() {
-  check_pkg "$1" &
-  pids+=("$!")
-
-  # If we reached max concurrency, wait for the oldest job to finish
-  if ((${#pids[@]} >= CONCURRENCY)); then
-    wait "${pids[0]}"
-    pids=("${pids[@]:1}")
-  fi
-}
-
-# Schedule checks
-while IFS= read -r line; do
-  run_with_limit "$line"
-done < "$INPUT_FILE"
-
-# Wait for remaining jobs
-for pid in "${pids[@]}"; do
-  wait "$pid"
-done
+# Use xargs for parallel execution
+grep -v '^[[:space:]]*#' "$INPUT_FILE" | grep -v '^[[:space:]]*$' | \
+  xargs -P "$CONCURRENCY" -I {} bash -c 'check_pkg "$@"' _ {}
 
 # Sort threats alphabetically
-if [[ -f "$THREATS_FILE" && -s "$THREATS_FILE" ]]; then
-  sort "$THREATS_FILE" -o "$THREATS_TEMP"
-  mv "$THREATS_TEMP" "$THREATS_FILE"
-fi
+sort -o "$THREATS_FILE" "$THREATS_FILE"
+
+# Clear trap on successful completion
+trap - INT TERM ERR
 
 echo
 echo "Finished. Threats saved to: $THREATS_FILE"
