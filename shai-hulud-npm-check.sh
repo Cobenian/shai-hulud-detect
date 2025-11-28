@@ -6,7 +6,7 @@ TIMESTAMP=$(date '+%Y%m%d-%H%M%S')
 TMP_DIR="tmp"
 THREATS_FILE="$TMP_DIR/threats-$TIMESTAMP.txt"
 THREATS_TEMP="$TMP_DIR/threats-$TIMESTAMP.tmp"
-CONCURRENCY="${CONCURRENCY:-20}"  # change or: CONCURRENCY=20 ./script.sh
+CONCURRENCY="${CONCURRENCY:-10}"  # change or: CONCURRENCY=20 ./script.sh
 
 # Create tmp directory if it doesn't exist
 mkdir -p "$TMP_DIR"
