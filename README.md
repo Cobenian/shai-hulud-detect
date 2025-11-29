@@ -1,7 +1,7 @@
 # Shai-Hulud NPM Supply Chain Attack Detector
 
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Shell](https://img.shields.io/badge/shell-Bash-blue)](#requirements)
+[![Shell](https://img.shields.io/badge/shell-Bash%205.0%2B-blue)](#requirements)
 [![Status](https://img.shields.io/badge/status-Active-success)](../../)
 [![Contributions](https://img.shields.io/badge/contributions-Welcome-orange)](CONTRIBUTING.md)
 [![Last Commit](https://img.shields.io/github/last-commit/Cobenian/shai-hulud-detect)](https://github.com/Cobenian/shai-hulud-detect/commits/main)
@@ -135,7 +135,10 @@ Check these security advisories regularly for newly discovered compromised packa
 ## Requirements
 
 - macOS or Unix-like system
-- Bash shell
+- **Bash 5.0 or newer** (required for associative arrays and performance features)
+  - macOS: `brew install bash` then run with `/opt/homebrew/bin/bash ./shai-hulud-detector.sh`
+  - Linux: Most modern distributions include Bash 5.x by default
+  - Check your version: `bash --version`
 - Standard Unix tools: `find`, `grep`, `shasum`
 
 ## Output Interpretation

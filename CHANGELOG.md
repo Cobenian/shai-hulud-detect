@@ -5,6 +5,37 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] - 2025-11-29
+
+### Breaking Changes
+- **Bash 5.0+ Required**: The script now requires Bash 5.0 or newer. On macOS, install via `brew install bash` and run with `/opt/homebrew/bin/bash ./shai-hulud-detector.sh`. Clear error message displayed when running on older Bash versions.
+
+### Added
+- **Automated Test Suite**: New `run-tests.sh` script validates all 32 test cases with expected exit codes and risk level detection (HIGH/MEDIUM/LOW)
+- **O(1) Package Lookups**: Replaced linear array searches with associative arrays for compromised package detection, dramatically improving performance on large projects
+- **Robust Error Handling**: Added `set -eo pipefail` with proper `|| true` guards on all commands that may legitimately fail (grep, find, etc.)
+
+### Changed
+- **Lockfile Detection Rewrite**: Completely rewrote `check_package_integrity()` with AWK block-based JSON parsing instead of broken grep patterns. Now correctly detects compromised packages in lockfiles where package name and version are on different lines.
+- **Modern Bash Features**: Leverages associative arrays (`declare -A`) and `mapfile` for improved performance and reliability
+- **Cross-Platform Stat Abstraction**: Added `get_file_size()` and `get_file_mtime()` helper functions for macOS/Linux compatibility
+
+### Fixed
+- **Lockfile False Negatives**: Fixed critical bug where `chalk@5.6.1` and other compromised packages in lockfiles were not detected due to grep pattern assuming name and version on same line
+- **Script Crashes Mid-Execution**: Fixed multiple grep pipeline failures that caused the script to exit with code 1 without completing the scan or showing results
+- **Missing Ethereum Wallet Detection**: Restored Ethereum wallet address pattern detection (`0x[a-fA-F0-9]{40}`) that was lost during refactoring
+- **Missing LOW RISK for Framework XMLHttpRequest**: Fixed detection to properly report LOW RISK for legitimate XMLHttpRequest modifications in React Native and Next.js framework code
+- **Duplicate Lockfile Warnings**: Fixed AWK parser that was outputting duplicate findings for packages appearing in both node_modules and dependencies sections
+
+### Performance
+- **Associative Array Lookups**: O(1) package lookups instead of O(n) linear searches
+- **Reduced Subprocess Spawning**: Consolidated multiple grep calls into single AWK passes where possible
+- **Parallel Processing**: Enhanced xargs parallelism for hash checking and content scanning
+
+### Security
+- **Complete Test Coverage**: All 32 test cases now pass, validating detection of all known attack patterns
+- **No Detection Regressions**: All previously detected threats continue to be detected at correct risk levels
+
 ## [2.7.6] - 2025-11-26
 
 ### Fixed
