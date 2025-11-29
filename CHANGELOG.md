@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Missing Ethereum Wallet Detection**: Restored Ethereum wallet address pattern detection (`0x[a-fA-F0-9]{40}`) that was lost during refactoring
 - **Missing LOW RISK for Framework XMLHttpRequest**: Fixed detection to properly report LOW RISK for legitimate XMLHttpRequest modifications in React Native and Next.js framework code
 - **Duplicate Lockfile Warnings**: Fixed AWK parser that was outputting duplicate findings for packages appearing in both node_modules and dependencies sections
+- **Reduced False Positives for Destructive Patterns**: Standalone `rimraf`, `fs.unlinkSync`, and `fs.rmSync` no longer flagged as CRITICAL. Now only flags deletion commands that target user directories (`$HOME`, `~`, `/home/`) or are combined with credential/auth failure patterns. (GitHub issue #74)
 
 ### Performance
 - **Associative Array Lookups**: O(1) package lookups instead of O(n) linear searches
