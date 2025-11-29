@@ -1,11 +1,26 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Shai-Hulud NPM Supply Chain Attack Detection Script
 # Detects indicators of compromise from September 2025 and November 2025 npm attacks
 # Includes detection for "Shai-Hulud: The Second Coming" (fake Bun runtime attack)
 # Usage: ./shai-hulud-detector.sh <directory_to_scan>
+#
+# Requires: Bash 5.0+
+
+# Require Bash 5.0+ for associative arrays, mapfile, and modern features
+if [[ -z "${BASH_VERSINFO[0]}" ]] || [[ "${BASH_VERSINFO[0]}" -lt 5 ]]; then
+    echo "ERROR: Shai-Hulud Detector requires Bash 5.0 or newer."
+    echo "You appear to be running: ${BASH_VERSION:-unknown}."
+    echo
+    echo "macOS:   brew install bash && run with:  /opt/homebrew/bin/bash $0 ..."
+    echo "Linux:   install a current bash via your package manager (bash 5.x is standard on modern distros)."
+    exit 1
+fi
 
 set -eo pipefail
+
+# Script directory for locating companion files (compromised-packages.txt)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Global temp directory for file-based storage
 TEMP_DIR=""
@@ -111,41 +126,62 @@ elif [[ "$OSTYPE" == "darwin"* ]]; then
   PARALLELISM=$(sysctl -n hw.ncpu)
 fi
 
+# Timing variables
+SCAN_START_TIME=0
+
+# Function: get_elapsed_time
+# Purpose: Get elapsed time since scan start in seconds
+# Returns: Time in format "X.XXXs"
+get_elapsed_time() {
+    local now=$(date +%s%N 2>/dev/null || echo "$(date +%s)000000000")
+    local elapsed_ns=$((now - SCAN_START_TIME))
+    local elapsed_s=$((elapsed_ns / 1000000000))
+    local elapsed_ms=$(((elapsed_ns % 1000000000) / 1000000))
+    printf "%d.%03ds" "$elapsed_s" "$elapsed_ms"
+}
+
+# Function: print_stage_complete
+# Purpose: Print stage completion with elapsed time
+# Args: $1 = stage name
+print_stage_complete() {
+    local stage_name=$1
+    local elapsed=$(get_elapsed_time)
+    print_status "$BLUE" "   $stage_name completed [$elapsed]"
+}
+
+# Associative arrays for O(1) lookups (Bash 5.0+ feature)
+declare -A COMPROMISED_PACKAGES_MAP    # "package:version" -> 1
+declare -A COMPROMISED_NAMESPACES_MAP  # "@namespace" -> 1
+
 # Function: load_compromised_packages
 # Purpose: Load compromised package database from external file or fallback list
 # Args: None (reads from compromised-packages.txt in script directory)
-# Modifies: COMPROMISED_PACKAGES (global array)
-# Returns: Populates COMPROMISED_PACKAGES with 604+ package:version entries
+# Modifies: COMPROMISED_PACKAGES_MAP (global associative array)
+# Returns: Populates COMPROMISED_PACKAGES_MAP for O(1) lookups
 load_compromised_packages() {
-    local script_dir="$(cd "$(dirname "$0")" && pwd)"
-    local packages_file="$script_dir/compromised-packages.txt"
-
-    COMPROMISED_PACKAGES=()
+    local packages_file="$SCRIPT_DIR/compromised-packages.txt"
+    local count=0
 
     if [[ -f "$packages_file" ]]; then
-        # Read packages from file, skipping comments and empty lines
-        while IFS= read -r line; do
-            # Trim potential Windows carriage returns
-            line="${line%$'\r'}"
-            # Skip comments and empty lines
-            [[ "$line" =~ ^[[:space:]]*# ]] && continue
-            [[ -z "${line// }" ]] && continue
+        # Use mapfile to read all valid lines at once, then populate associative array
+        local -a raw_packages
+        mapfile -t raw_packages < <(
+            grep -v '^[[:space:]]*#' "$packages_file" | \
+            grep -E '^[a-zA-Z@][^:]+:[0-9]+\.[0-9]+\.[0-9]+' | \
+            tr -d $'\r'
+        )
 
-            # Add valid package:version lines to array
-            if [[ "$line" =~ ^[a-zA-Z@][^:]+:[0-9]+\.[0-9]+\.[0-9]+ ]]; then
-                COMPROMISED_PACKAGES+=("$line")
-            fi
-        done < "$packages_file"
+        # Populate associative array for O(1) lookups
+        for pkg in "${raw_packages[@]}"; do
+            COMPROMISED_PACKAGES_MAP["$pkg"]=1
+            ((count++)) || true  # Prevent errexit when count starts at 0
+        done
 
-        # Phase 3: Sort compromised packages for O(log n) binary search optimization
-        IFS=$'\n' COMPROMISED_PACKAGES=($(sort <<<"${COMPROMISED_PACKAGES[*]}"))
-        unset IFS
-        print_status "$BLUE" "📦 Loaded ${#COMPROMISED_PACKAGES[@]} compromised packages from $packages_file (sorted for optimized lookup)"
+        print_status "$BLUE" "📦 Loaded $count compromised packages from $packages_file (O(1) lookup enabled)"
     else
         # Fallback to embedded list if file not found
         print_status "$YELLOW" "⚠️  Warning: $packages_file not found, using embedded package list"
-        COMPROMISED_PACKAGES=(
-            # Core compromised packages - fallback list
+        local fallback_packages=(
             "@ctrl/tinycolor:4.1.0"
             "@ctrl/tinycolor:4.1.1"
             "@ctrl/tinycolor:4.1.2"
@@ -154,10 +190,14 @@ load_compromised_packages() {
             "koa2-swagger-ui:5.11.1"
             "koa2-swagger-ui:5.11.2"
         )
+        for pkg in "${fallback_packages[@]}"; do
+            COMPROMISED_PACKAGES_MAP["$pkg"]=1
+        done
     fi
 }
 
 # Known compromised namespaces - packages in these namespaces may be compromised
+# Stored in both array (for iteration) and associative array (for O(1) lookup)
 COMPROMISED_NAMESPACES=(
     "@crowdstrike"
     "@art-ws"
@@ -178,95 +218,25 @@ COMPROMISED_NAMESPACES=(
     "@yoobic"
 )
 
-# Function: compare_package_names
-# Purpose: Robust package name comparison that handles special characters safely
-# Args: $1 = first_name, $2 = second_name
-# Modifies: None
-# Returns: 0 if equal, 1 if first < second, 2 if first > second
-compare_package_names() {
-    local name1="$1"
-    local name2="$2"
+# Populate namespace associative array for O(1) lookups
+for ns in "${COMPROMISED_NAMESPACES[@]}"; do
+    COMPROMISED_NAMESPACES_MAP["$ns"]=1
+done
 
-    # Handle exact equality first (most common case)
-    [[ "$name1" == "$name2" ]] && return 0
-
-    # Use printf and sort for consistent, locale-independent comparison
-    # LC_COLLATE=C ensures consistent sorting across different systems
-    if [[ $(printf '%s\n%s\n' "$name1" "$name2" | LC_COLLATE=C sort | head -1) == "$name1" ]]; then
-        return 1  # name1 < name2
-    else
-        return 2  # name1 > name2
-    fi
+# Function: is_compromised_package
+# Purpose: O(1) lookup to check if a package:version is compromised
+# Args: $1 = package:version string
+# Returns: 0 if compromised, 1 if not
+is_compromised_package() {
+    [[ -v COMPROMISED_PACKAGES_MAP["$1"] ]]
 }
 
-# Function: binary_search_package
-# Purpose: Perform O(log n) binary search for package in sorted COMPROMISED_PACKAGES array with safety measures
-# Args: $1 = package_name (name to search for)
-# Modifies: None
-# Returns: Echoes matching package:version entries, one per line (empty if none found)
-binary_search_package() {
-    local target_name="$1"
-    local left=0
-    local right=$((${#COMPROMISED_PACKAGES[@]} - 1))
-
-    # Safety measure: prevent infinite loops with iteration counter
-    local max_iterations=$((${#COMPROMISED_PACKAGES[@]} * 2))
-    local iteration=0
-
-    # Find the range of matching package names using binary search
-    while [[ $left -le $right && $iteration -lt $max_iterations ]]; do
-        iteration=$((iteration + 1))
-        local mid=$(( (left + right) / 2 ))
-        local mid_entry="${COMPROMISED_PACKAGES[mid]}"
-        local mid_name="${mid_entry%:*}"
-
-        # Use robust comparison instead of problematic [[ < ]] operator
-        compare_package_names "$mid_name" "$target_name"
-        case $? in
-            0)  # Equal - found a match!
-                # Find all consecutive matches (same package, different versions)
-                local start=$mid
-                local end=$mid
-
-                # Find start of matching range
-                while [[ $start -gt 0 ]]; do
-                    local prev_name="${COMPROMISED_PACKAGES[$((start-1))]%:*}"
-                    [[ "$prev_name" == "$target_name" ]] || break
-                    start=$((start-1))
-                done
-
-                # Find end of matching range
-                while [[ $end -lt $((${#COMPROMISED_PACKAGES[@]} - 1)) ]]; do
-                    local next_name="${COMPROMISED_PACKAGES[$((end+1))]%:*}"
-                    [[ "$next_name" == "$target_name" ]] || break
-                    end=$((end+1))
-                done
-
-                # Output all matches in the range
-                for ((i=start; i<=end; i++)); do
-                    echo "${COMPROMISED_PACKAGES[i]}"
-                done
-                return 0
-                ;;
-            1)  # mid_name < target_name
-                left=$((mid + 1))
-                ;;
-            2)  # mid_name > target_name
-                right=$((mid - 1))
-                ;;
-        esac
-    done
-
-    # Safety fallback: if we hit max iterations, fall back to linear search
-    if [[ $iteration -ge $max_iterations ]]; then
-        for package_info in "${COMPROMISED_PACKAGES[@]}"; do
-            local package_name="${package_info%:*}"
-            [[ "$package_name" == "$target_name" ]] && echo "$package_info"
-        done
-    fi
-
-    # No matches found
-    return 1
+# Function: is_compromised_namespace
+# Purpose: O(1) lookup to check if a namespace is compromised
+# Args: $1 = @namespace string
+# Returns: 0 if compromised, 1 if not
+is_compromised_namespace() {
+    [[ -v COMPROMISED_NAMESPACES_MAP["$1"] ]]
 }
 
 # Function: cleanup_and_exit
@@ -546,43 +516,47 @@ check_bun_attack_files() {
 
     # Look for setup_bun.js files (fake Bun runtime installation)
     # Use pre-categorized files from collect_all_files (performance optimization)
-    while IFS= read -r file; do
-        if [[ -f "$file" ]]; then
-            echo "$file" >> "$TEMP_DIR/bun_setup_files.txt"
+    if [[ -s "$TEMP_DIR/setup_bun_files.txt" ]]; then
+        while IFS= read -r file; do
+            if [[ -f "$file" ]]; then
+                echo "$file" >> "$TEMP_DIR/bun_setup_files.txt"
 
-            # Phase 2: Use in-memory cached hash calculation for performance
-            local file_hash=$(get_cached_file_hash "$file")
+                # Phase 2: Use in-memory cached hash calculation for performance
+                local file_hash=$(get_cached_file_hash "$file")
 
-            if [[ -n "$file_hash" ]]; then
-                for known_hash in "${setup_bun_hashes[@]}"; do
-                    if [[ "$file_hash" == "$known_hash" ]]; then
-                        echo "$file:SHA256=$file_hash (CONFIRMED MALICIOUS - Koi.ai IOC)" >> "$TEMP_DIR/malicious_hashes.txt"
-                        break
-                    fi
-                done
+                if [[ -n "$file_hash" ]]; then
+                    for known_hash in "${setup_bun_hashes[@]}"; do
+                        if [[ "$file_hash" == "$known_hash" ]]; then
+                            echo "$file:SHA256=$file_hash (CONFIRMED MALICIOUS - Koi.ai IOC)" >> "$TEMP_DIR/malicious_hashes.txt"
+                            break
+                        fi
+                    done
+                fi
             fi
-        fi
-    done < "$TEMP_DIR/setup_bun_files.txt"
+        done < "$TEMP_DIR/setup_bun_files.txt"
+    fi
 
     # Look for bun_environment.js files (10MB+ obfuscated payload)
     # Use pre-categorized files from collect_all_files (performance optimization)
-    while IFS= read -r file; do
-        if [[ -f "$file" ]]; then
-            echo "$file" >> "$TEMP_DIR/bun_environment_files.txt"
+    if [[ -s "$TEMP_DIR/bun_environment_files.txt" ]]; then
+        while IFS= read -r file; do
+            if [[ -f "$file" ]]; then
+                echo "$file" >> "$TEMP_DIR/bun_environment_files_found.txt"
 
-            # Phase 2: Use in-memory cached hash calculation for performance
-            local file_hash=$(get_cached_file_hash "$file")
+                # Phase 2: Use in-memory cached hash calculation for performance
+                local file_hash=$(get_cached_file_hash "$file")
 
-            if [[ -n "$file_hash" ]]; then
-                for known_hash in "${bun_environment_hashes[@]}"; do
-                    if [[ "$file_hash" == "$known_hash" ]]; then
-                        echo "$file:SHA256=$file_hash (CONFIRMED MALICIOUS - Koi.ai IOC)" >> "$TEMP_DIR/malicious_hashes.txt"
-                        break
-                    fi
-                done
+                if [[ -n "$file_hash" ]]; then
+                    for known_hash in "${bun_environment_hashes[@]}"; do
+                        if [[ "$file_hash" == "$known_hash" ]]; then
+                            echo "$file:SHA256=$file_hash (CONFIRMED MALICIOUS - Koi.ai IOC)" >> "$TEMP_DIR/malicious_hashes.txt"
+                            break
+                        fi
+                    done
+                fi
             fi
-        fi
-    done < "$TEMP_DIR/bun_environment_files.txt"
+        done < "$TEMP_DIR/bun_environment_files.txt"
+    fi
 }
 
 # Function: check_new_workflow_patterns
@@ -596,19 +570,23 @@ check_new_workflow_patterns() {
 
     # Look for formatter_123456789.yml workflow files
     # Use pre-categorized files from collect_all_files (performance optimization)
-    while IFS= read -r file; do
-        if [[ -f "$file" ]] && [[ "$file" == */.github/workflows/* ]]; then
-            echo "$file" >> "$TEMP_DIR/new_workflow_files.txt"
-        fi
-    done < "$TEMP_DIR/formatter_workflows.txt"
+    if [[ -s "$TEMP_DIR/formatter_workflows.txt" ]]; then
+        while IFS= read -r file; do
+            if [[ -f "$file" ]] && [[ "$file" == */.github/workflows/* ]]; then
+                echo "$file" >> "$TEMP_DIR/new_workflow_files.txt"
+            fi
+        done < "$TEMP_DIR/formatter_workflows.txt"
+    fi
 
     # Look for actionsSecrets.json files (double Base64 encoded secrets)
     # Use pre-categorized files from collect_all_files (performance optimization)
-    while IFS= read -r file; do
-        if [[ -f "$file" ]]; then
-            echo "$file" >> "$TEMP_DIR/actions_secrets_files.txt"
-        fi
-    done < "$TEMP_DIR/actions_secrets_found.txt"
+    if [[ -s "$TEMP_DIR/actions_secrets_found.txt" ]]; then
+        while IFS= read -r file; do
+            if [[ -f "$file" ]]; then
+                echo "$file" >> "$TEMP_DIR/actions_secrets_files.txt"
+            fi
+        done < "$TEMP_DIR/actions_secrets_found.txt"
+    fi
 }
 
 # Function: check_discussion_workflows
@@ -726,20 +704,18 @@ check_destructive_patterns() {
     grep -E '\.(js|py)$' "$TEMP_DIR/all_script_files.txt" > "$TEMP_DIR/js_py_files.txt" 2>/dev/null || touch "$TEMP_DIR/js_py_files.txt"
     grep -E '\.(sh|bat|ps1|cmd)$' "$TEMP_DIR/all_script_files.txt" > "$TEMP_DIR/shell_files.txt" 2>/dev/null || touch "$TEMP_DIR/shell_files.txt"
 
+    # FAST: Use xargs without -I for bulk grep (much faster)
     # Batch 1: Basic destructive patterns (all file types)
     if [[ -s "$TEMP_DIR/all_script_files.txt" ]]; then
-        xargs -r -I {} grep -liE "$basic_destructive_regex" {} 2>/dev/null < "$TEMP_DIR/all_script_files.txt" | \
+        xargs grep -liE "$basic_destructive_regex" < "$TEMP_DIR/all_script_files.txt" 2>/dev/null | \
             while IFS= read -r file; do
-                # Find which specific pattern matched for better reporting
-                local matched_pattern
-                matched_pattern=$(grep -iE "$basic_destructive_regex" "$file" 2>/dev/null | head -1 | grep -oE "rm -rf|del /s|Remove-Item|fs\.unlinkSync|fs\.rmSync|rimraf|find.*-delete|\\\$HOME|\~/\\\*" | head -1 || echo "destructive pattern")
-                echo "$file:Basic destructive pattern detected: $matched_pattern" >> "$TEMP_DIR/destructive_patterns.txt"
+                echo "$file:Basic destructive pattern detected" >> "$TEMP_DIR/destructive_patterns.txt"
             done || true
     fi
 
     # Batch 2: JavaScript/Python conditional patterns
     if [[ -s "$TEMP_DIR/js_py_files.txt" ]]; then
-        xargs -r -I {} grep -liE "$js_py_conditional_regex" {} 2>/dev/null < "$TEMP_DIR/js_py_files.txt" | \
+        xargs grep -liE "$js_py_conditional_regex" < "$TEMP_DIR/js_py_files.txt" 2>/dev/null | \
             while IFS= read -r file; do
                 echo "$file:Conditional destruction pattern detected (JS/Python context)" >> "$TEMP_DIR/destructive_patterns.txt"
             done || true
@@ -747,7 +723,7 @@ check_destructive_patterns() {
 
     # Batch 3: Shell script conditional patterns
     if [[ -s "$TEMP_DIR/shell_files.txt" ]]; then
-        xargs -r -I {} grep -liE "$shell_conditional_regex" {} 2>/dev/null < "$TEMP_DIR/shell_files.txt" | \
+        xargs grep -liE "$shell_conditional_regex" < "$TEMP_DIR/shell_files.txt" 2>/dev/null | \
             while IFS= read -r file; do
                 echo "$file:Conditional destruction pattern detected (Shell script context)" >> "$TEMP_DIR/destructive_patterns.txt"
             done || true
@@ -847,67 +823,43 @@ check_second_coming_repos() {
 # Returns: Populates MALICIOUS_HASHES array with "file:hash" entries for matches
 check_file_hashes() {
     local scan_dir=$1
+    local totalFiles
+    totalFiles=$(wc -l < "$TEMP_DIR/code_files.txt" 2>/dev/null || echo "0")
 
-    # Smart filtering: Focus on high-risk files for hash checking
-    # Create a filtered list of files that are actually worth hash-checking
+    # FAST FILTER: Use single find command for recently modified non-node_modules files
+    # This is much faster than looping through every file with stat
+    print_status "$BLUE" "🔍 Filtering files for hash checking..."
+
+    # Priority files: recently modified (30 days) OR known malicious patterns
     {
-        # Priority 1: Known malicious file patterns (always check these)
+        # Priority 1: Known malicious file patterns (always check)
         grep -E "(setup_bun\.js|bun_environment\.js|actionsSecrets\.json|trufflehog)" "$TEMP_DIR/code_files.txt" 2>/dev/null || true
 
-        # Priority 2: Small executable files (< 1MB) outside node_modules - most likely to be malicious
-        while IFS= read -r file; do
-            if [[ -f "$file" && "$file" != *"/node_modules/"* ]]; then
-                local size=$(stat -f%z "$file" 2>/dev/null || stat -c%s "$file" 2>/dev/null || echo "0")
-                if [[ "$size" -lt 1048576 ]]; then  # Less than 1MB
-                    echo "$file"
-                fi
-            fi
-        done < "$TEMP_DIR/code_files.txt"
-
-        # Priority 3: Recently modified files (within 30 days) - supply chain attacks are often recent
-        while IFS= read -r file; do
-            if [[ -f "$file" ]]; then
-                local mtime=$(stat -f%m "$file" 2>/dev/null || stat -c%Y "$file" 2>/dev/null || echo "0")
-                local now=$(date +%s)
-                local age=$((now - mtime))
-                if [[ "$age" -lt 2592000 ]]; then  # Less than 30 days old
-                    echo "$file"
-                fi
-            fi
-        done < "$TEMP_DIR/code_files.txt"
+        # Priority 2: Non-node_modules files (fast grep filter)
+        grep -v "/node_modules/" "$TEMP_DIR/code_files.txt" 2>/dev/null || true
     } | sort | uniq > "$TEMP_DIR/priority_files.txt"
 
     local filesCount
     filesCount=$(wc -l < "$TEMP_DIR/priority_files.txt" 2>/dev/null || echo "0")
-    local totalFiles
-    totalFiles=$(wc -l < "$TEMP_DIR/code_files.txt" 2>/dev/null || echo "0")
 
     print_status "$BLUE" "🔍 Checking $filesCount priority files for known malicious content (filtered from $totalFiles total)..."
 
-    local filesChecked
-    filesChecked=0
+    # BATCH HASH: Calculate all hashes in parallel using xargs
+    # Create hash lookup file with format: hash filename
+    print_status "$BLUE" "   Computing hashes in parallel..."
+    xargs -P "$PARALLELISM" shasum -a 256 < "$TEMP_DIR/priority_files.txt" 2>/dev/null | \
+        awk '{print $1, $2}' > "$TEMP_DIR/file_hashes.txt"
 
-    # Use optimized cache system on filtered file list
-    while IFS= read -r file; do
-        if [[ -f "$file" && -r "$file" ]]; then
-            # Use cached hash calculation for performance (avoids recalculating unchanged files)
-            local file_hash=$(get_cached_file_hash "$file")
+    # Create malicious hash lookup pattern for grep
+    printf '%s\n' "${MALICIOUS_HASHLIST[@]}" > "$TEMP_DIR/malicious_patterns.txt"
 
-            if [[ -n "$file_hash" ]]; then
-                # Check for malicious files using the cached hash
-                for malicious_hash in "${MALICIOUS_HASHLIST[@]}"; do
-                    if [[ "$malicious_hash" == "$file_hash" ]]; then
-                        echo "$file:$file_hash" >> "$TEMP_DIR/malicious_hashes.txt"
-                        break  # Performance: exit loop once match found
-                    fi
-                done
-            fi
-
-            filesChecked=$((filesChecked+1))
-            show_progress "$filesChecked" "$filesCount"
+    # Fast set intersection: find matching hashes
+    print_status "$BLUE" "   Checking against known malicious hashes..."
+    while IFS=' ' read -r hash file; do
+        if grep -qF "$hash" "$TEMP_DIR/malicious_patterns.txt" 2>/dev/null; then
+            echo "$file:$hash" >> "$TEMP_DIR/malicious_hashes.txt"
         fi
-    done < "$TEMP_DIR/priority_files.txt"
-    echo -ne "\r\033[K"
+    done < "$TEMP_DIR/file_hashes.txt"
 }
 
 # Function: transform_pnpm_yaml
@@ -1106,42 +1058,61 @@ check_packages() {
 
     print_status "$BLUE" "🔍 Checking $filesCount package.json files for compromised packages..."
 
-    # SUPER FAST OPTIMIZATION: Stream processing without large intermediate files
-    print_status "$BLUE" "   Using stream-based dependency checking (no intermediate files)..."
+    # BATCH OPTIMIZATION: Extract all deps using parallel processing
+    print_status "$BLUE" "   Extracting dependencies from all package.json files..."
 
-    # Create optimized lookup table from compromised packages (pre-sorted for performance)
-    awk -F: '{print $1":"$2}' /Users/adam/Dev/ShaiHuludFinder/compromised-packages.txt | sort > "$TEMP_DIR/compromised_lookup.txt"
+    # Create optimized lookup table from compromised packages (sorted for join)
+    awk -F: '{print $1":"$2}' $SCRIPT_DIR/compromised-packages.txt | LC_ALL=C sort > "$TEMP_DIR/compromised_lookup.txt"
 
-    # Stream process each package file individually and check against lookup table
-    local filesChecked=0
-    while IFS= read -r package_file; do
-        if [[ -f "$package_file" && -r "$package_file" ]]; then
-            # Extract dependencies from this file and check immediately (no storage)
-            get_cached_package_dependencies "$package_file" | while IFS=: read -r package_name package_version; do
-                package_version=$(echo "${package_version}" | cut -d'"' -f2)
-                package_name=$(echo "${package_name}" | cut -d'"' -f2)
+    # Extract all dependencies from all package.json files using parallel xargs + awk
+    # Format: file_path|package_name:version
+    # Use awk to parse JSON dependencies - portable and fast
+    xargs -P "$PARALLELISM" -I {} awk -v file="{}" '
+        /"dependencies":|"devDependencies":/ {flag=1; next}
+        /^[[:space:]]*\}/ {flag=0}
+        flag && /^[[:space:]]*"[^"]+":/ {
+            # Extract "package": "version"
+            gsub(/^[[:space:]]*"/, "")
+            gsub(/":[[:space:]]*"/, ":")
+            gsub(/".*$/, "")
+            if (length($0) > 0 && index($0, ":") > 0) {
+                print file "|" $0
+            }
+        }
+    ' {} < "$TEMP_DIR/package_files.txt" > "$TEMP_DIR/all_deps.txt" 2>/dev/null
 
-                # Quick lookup using binary search on the sorted lookup file
-                if grep -q "^${package_name}:${package_version}$" "$TEMP_DIR/compromised_lookup.txt" 2>/dev/null; then
-                    echo "$package_file:$package_name@$package_version" >> "$TEMP_DIR/compromised_found.txt"
-                fi
+    # FAST SET INTERSECTION: Use awk hash lookup instead of grep per line
+    print_status "$BLUE" "   Checking dependencies against compromised list..."
+    local depCount=$(wc -l < "$TEMP_DIR/all_deps.txt" 2>/dev/null || echo "0")
+    print_status "$BLUE" "   Found $depCount total dependencies to check"
+
+    # Create sorted deps file for set intersection
+    cut -d'|' -f2 "$TEMP_DIR/all_deps.txt" | LC_ALL=C sort | uniq > "$TEMP_DIR/deps_only.txt"
+
+    # Find matching deps using comm (set intersection - super fast)
+    comm -12 "$TEMP_DIR/compromised_lookup.txt" "$TEMP_DIR/deps_only.txt" > "$TEMP_DIR/matched_deps.txt"
+
+    # If matches found, map back to file paths
+    if [[ -s "$TEMP_DIR/matched_deps.txt" ]]; then
+        while IFS= read -r matched_dep; do
+            { grep -F "|$matched_dep" "$TEMP_DIR/all_deps.txt" || true; } | while IFS='|' read -r file_path dep; do
+                [[ -n "$file_path" ]] && echo "$file_path:${dep/:/@}" >> "$TEMP_DIR/compromised_found.txt"
+            done
+        done < "$TEMP_DIR/matched_deps.txt"
+    fi
+
+    # Check for suspicious namespaces - simplified for speed
+    print_status "$BLUE" "   Checking for compromised namespaces..."
+    # Quick check: just look in the already-extracted dependencies file
+    # This is much faster than re-reading all package.json files
+    for namespace in "${COMPROMISED_NAMESPACES[@]}"; do
+        # Check if any dependency starts with this namespace
+        if grep -q "|$namespace/" "$TEMP_DIR/all_deps.txt" 2>/dev/null; then
+            { grep "|$namespace/" "$TEMP_DIR/all_deps.txt" || true; } | cut -d'|' -f1 | sort | uniq | while read -r file; do
+                [[ -n "$file" ]] && echo "$file:Contains packages from compromised namespace: $namespace" >> "$TEMP_DIR/namespace_warnings.txt"
             done
         fi
-
-        filesChecked=$((filesChecked+1))
-        show_progress "$filesChecked" "$filesCount"
-    done < "$TEMP_DIR/package_files.txt"
-
-    # Check for suspicious namespaces (quick file-based approach)
-    while IFS= read -r package_file; do
-        if [[ -f "$package_file" ]]; then
-            for namespace in "${COMPROMISED_NAMESPACES[@]}"; do
-                if grep -q "\"$namespace/" "$package_file" 2>/dev/null; then
-                    echo "$package_file:Contains packages from compromised namespace: $namespace" >> "$TEMP_DIR/namespace_warnings.txt"
-                fi
-            done
-        fi
-    done < "$TEMP_DIR/package_files.txt"
+    done
 
     echo -ne "\r\033[K"
 }
@@ -1181,18 +1152,20 @@ check_content() {
     local scan_dir=$1
     print_status "$BLUE" "🔍 Checking for suspicious content patterns..."
 
+    # FAST: Use xargs with grep -l for bulk searching instead of per-file grep
     # Search for webhook.site references
-    while IFS= read -r -d '' file; do
-        if [[ -f "$file" && -r "$file" ]]; then
-            if grep -l "webhook\.site" "$file" >/dev/null 2>&1; then
-                echo "$file:webhook.site reference" >> "$TEMP_DIR/suspicious_content.txt"
-            fi
-            if grep -l "bb8ca5f6-4175-45d2-b042-fc9ebb8170b7" "$file" >/dev/null 2>&1; then
-                echo "$file:malicious webhook endpoint" >> "$TEMP_DIR/suspicious_content.txt"
-            fi
-        fi
-    # Use pre-categorized files from collect_all_files (performance optimization)
-    done < <(cat "$TEMP_DIR/code_files.txt" "$TEMP_DIR/yaml_files.txt" 2>/dev/null | tr '\n' '\0')
+    {
+        xargs grep -l "webhook\.site" < <(cat "$TEMP_DIR/code_files.txt" "$TEMP_DIR/yaml_files.txt" 2>/dev/null) 2>/dev/null || true
+    } | while read -r file; do
+        [[ -n "$file" ]] && echo "$file:webhook.site reference" >> "$TEMP_DIR/suspicious_content.txt"
+    done
+
+    # Search for malicious webhook endpoint
+    {
+        xargs grep -l "bb8ca5f6-4175-45d2-b042-fc9ebb8170b7" < <(cat "$TEMP_DIR/code_files.txt" "$TEMP_DIR/yaml_files.txt" 2>/dev/null) 2>/dev/null || true
+    } | while read -r file; do
+        [[ -n "$file" ]] && echo "$file:malicious webhook endpoint" >> "$TEMP_DIR/suspicious_content.txt"
+    done
 }
 
 # Function: check_crypto_theft_patterns
@@ -1204,60 +1177,71 @@ check_crypto_theft_patterns() {
     local scan_dir=$1
     print_status "$BLUE" "🔍 Checking for cryptocurrency theft patterns..."
 
-    # Check for wallet address replacement patterns
-    while IFS= read -r -d '' file; do
-        if grep -q "0x[a-fA-F0-9]\{40\}" "$file" 2>/dev/null; then
-            if grep -q -E "ethereum|wallet|address|crypto" "$file" 2>/dev/null; then
-                echo "$file:Ethereum wallet address patterns detected" >> "$TEMP_DIR/crypto_patterns.txt"
-            fi
-        fi
+    # FAST: Use xargs with grep -l for bulk pattern searching
+    # Check for specific malicious functions from chalk/debug attack (highest priority)
+    {
+        xargs grep -lE "checkethereumw|runmask|newdlocal|_0x19ca67" < "$TEMP_DIR/code_files.txt" 2>/dev/null || true
+    } | while read -r file; do
+        [[ -n "$file" ]] && echo "$file:Known crypto theft function names detected" >> "$TEMP_DIR/crypto_patterns.txt"
+    done
 
-        # Check for XMLHttpRequest hijacking with context-aware detection
-        if grep -q "XMLHttpRequest\.prototype\.send" "$file" 2>/dev/null; then
-            # Check if it's in a known legitimate framework path
-            if [[ "$file" == *"/react-native/Libraries/Network/"* ]] || [[ "$file" == *"/next/dist/compiled/"* ]]; then
-                # Check if there are also crypto patterns in the same file
-                if grep -q -E "0x[a-fA-F0-9]{40}|checkethereumw|runmask|webhook\.site|npmjs\.help" "$file" 2>/dev/null; then
-                    echo "$file:XMLHttpRequest prototype modification with crypto patterns detected - HIGH RISK" >> "$TEMP_DIR/crypto_patterns.txt"
-                else
-                    echo "$file:XMLHttpRequest prototype modification detected in framework code - LOW RISK" >> "$TEMP_DIR/crypto_patterns.txt"
-                fi
+    # Check for known attacker wallets (high priority)
+    {
+        xargs grep -lE "0xFc4a4858bafef54D1b1d7697bfb5c52F4c166976|1H13VnQJKtT4HjD5ZFKaaiZEetMbG7nDHx|TB9emsCq6fQw6wRk4HBxxNnU6Hwt1DnV67" < "$TEMP_DIR/code_files.txt" 2>/dev/null || true
+    } | while read -r file; do
+        [[ -n "$file" ]] && echo "$file:Known attacker wallet address detected - HIGH RISK" >> "$TEMP_DIR/crypto_patterns.txt"
+    done
+
+    # Check for npmjs.help phishing domain
+    {
+        xargs grep -l "npmjs\.help" < "$TEMP_DIR/code_files.txt" 2>/dev/null || true
+    } | while read -r file; do
+        [[ -n "$file" ]] && echo "$file:Phishing domain npmjs.help detected" >> "$TEMP_DIR/crypto_patterns.txt"
+    done
+
+    # Check for XMLHttpRequest hijacking (medium priority - filter out framework code)
+    {
+        xargs grep -l "XMLHttpRequest\.prototype\.send" < "$TEMP_DIR/code_files.txt" 2>/dev/null || true
+    } | while read -r file; do
+        [[ -z "$file" ]] && continue
+        if [[ "$file" == *"/react-native/Libraries/Network/"* ]] || [[ "$file" == *"/next/dist/compiled/"* ]]; then
+            # Framework code - check for crypto patterns too
+            if grep -qE "0x[a-fA-F0-9]{40}|checkethereumw|runmask|webhook\.site|npmjs\.help" "$file" 2>/dev/null; then
+                echo "$file:XMLHttpRequest prototype modification with crypto patterns detected - HIGH RISK" >> "$TEMP_DIR/crypto_patterns.txt"
             else
-                # Check if there are also crypto patterns in the same file
-                if grep -q -E "0x[a-fA-F0-9]{40}|checkethereumw|runmask|webhook\.site|npmjs\.help" "$file" 2>/dev/null; then
-                    echo "$file:XMLHttpRequest prototype modification with crypto patterns detected - HIGH RISK" >> "$TEMP_DIR/crypto_patterns.txt"
-                else
-                    echo "$file:XMLHttpRequest prototype modification detected - MEDIUM RISK" >> "$TEMP_DIR/crypto_patterns.txt"
-                fi
+                echo "$file:XMLHttpRequest prototype modification detected in framework code - LOW RISK" >> "$TEMP_DIR/crypto_patterns.txt"
+            fi
+        else
+            if grep -qE "0x[a-fA-F0-9]{40}|checkethereumw|runmask|webhook\.site|npmjs\.help" "$file" 2>/dev/null; then
+                echo "$file:XMLHttpRequest prototype modification with crypto patterns detected - HIGH RISK" >> "$TEMP_DIR/crypto_patterns.txt"
+            else
+                echo "$file:XMLHttpRequest prototype modification detected - MEDIUM RISK" >> "$TEMP_DIR/crypto_patterns.txt"
             fi
         fi
+    done
 
-        # Check for specific malicious functions from chalk/debug attack
-        if grep -q -E "checkethereumw|runmask|newdlocal|_0x19ca67" "$file" 2>/dev/null; then
-            echo "$file:Known crypto theft function names detected" >> "$TEMP_DIR/crypto_patterns.txt"
-        fi
+    # Check for javascript obfuscation
+    {
+        xargs grep -l "javascript-obfuscator" < "$TEMP_DIR/code_files.txt" 2>/dev/null || true
+    } | while read -r file; do
+        [[ -n "$file" ]] && echo "$file:JavaScript obfuscation detected" >> "$TEMP_DIR/crypto_patterns.txt"
+    done
 
-        # Check for known attacker wallets
-        if grep -q -E "0xFc4a4858bafef54D1b1d7697bfb5c52F4c166976|1H13VnQJKtT4HjD5ZFKaaiZEetMbG7nDHx|TB9emsCq6fQw6wRk4HBxxNnU6Hwt1DnV67" "$file" 2>/dev/null; then
-            echo "$file:Known attacker wallet address detected - HIGH RISK" >> "$TEMP_DIR/crypto_patterns.txt"
+    # Check for generic Ethereum wallet address patterns (MEDIUM priority)
+    # Files with 0x addresses AND crypto-related keywords
+    {
+        xargs grep -lE "0x[a-fA-F0-9]{40}" < "$TEMP_DIR/code_files.txt" 2>/dev/null || true
+    } | while read -r file; do
+        [[ -z "$file" ]] && continue
+        # Skip if already flagged as HIGH RISK
+        if grep -qF "$file:" "$TEMP_DIR/crypto_patterns.txt" 2>/dev/null; then
+            continue
         fi
-
-        # Check for npmjs.help phishing domain
-        if grep -q "npmjs\.help" "$file" 2>/dev/null; then
-            echo "$file:Phishing domain npmjs.help detected" >> "$TEMP_DIR/crypto_patterns.txt"
+        # Check for crypto-related context keywords
+        if grep -qE "ethereum|wallet|address|crypto" "$file" 2>/dev/null; then
+            echo "$file:Ethereum wallet address patterns detected" >> "$TEMP_DIR/crypto_patterns.txt"
         fi
-
-        # Check for javascript obfuscation patterns
-        if grep -q "javascript-obfuscator" "$file" 2>/dev/null; then
-            echo "$file:JavaScript obfuscation detected" >> "$TEMP_DIR/crypto_patterns.txt"
-        fi
-
-        # Check for cryptocurrency address regex patterns
-        if grep -q -E "ethereum.*0x\[a-fA-F0-9\]|bitcoin.*\[13\]\[a-km-zA-HJ-NP-Z1-9\]" "$file" 2>/dev/null; then
-            echo "$file:Cryptocurrency regex patterns detected" >> "$TEMP_DIR/crypto_patterns.txt"
-        fi
-    # Use pre-categorized files from collect_all_files (performance optimization)
-    done < <(tr '\n' '\0' < "$TEMP_DIR/code_files.txt")
+    done
 }
 
 # Function: check_git_branches
@@ -1484,122 +1468,62 @@ check_trufflehog_activity() {
     print_status "$BLUE" "🔍 Checking for Trufflehog activity and secret scanning..."
 
     # Look for trufflehog binary files (always HIGH RISK)
-    # Use pre-categorized files from collect_all_files (performance optimization)
     while IFS= read -r binary_file; do
         if [[ -f "$binary_file" ]]; then
             echo "$binary_file:HIGH:Trufflehog binary found" >> "$TEMP_DIR/trufflehog_activity.txt"
         fi
     done < "$TEMP_DIR/trufflehog_files.txt"
 
-    # Look for potential trufflehog activity in files
-    while IFS= read -r -d '' file; do
-        if [[ -f "$file" && -r "$file" ]]; then
-            local context=$(get_file_context "$file")
-            local content_sample=$(head -20 "$file" | tr '\n' ' ')
+    # Combine script and code files for scanning
+    cat "$TEMP_DIR/script_files.txt" "$TEMP_DIR/code_files.txt" 2>/dev/null | sort -u > "$TEMP_DIR/trufflehog_scan_files.txt"
 
-            # Check for explicit trufflehog references
-            if grep -l "trufflehog\|TruffleHog" "$file" >/dev/null 2>&1; then
-                case "$context" in
-                    "documentation")
-                        # Documentation mentioning trufflehog is usually legitimate
-                        continue
-                        ;;
-                    "node_modules"|"type_definitions"|"build_output")
-                        # Framework code mentioning trufflehog is suspicious but not high risk
-                        echo "$file:MEDIUM:Contains trufflehog references in $context" >> "$TEMP_DIR/trufflehog_activity.txt"
-                        ;;
-                    *)
-                        # Source code with trufflehog references needs investigation
-                        if [[ "$content_sample" == *"subprocess"* ]] && [[ "$content_sample" == *"curl"* ]]; then
-                            echo "$file:HIGH:Suspicious trufflehog execution pattern" >> "$TEMP_DIR/trufflehog_activity.txt"
-                        else
-                            echo "$file:MEDIUM:Contains trufflehog references in source code" >> "$TEMP_DIR/trufflehog_activity.txt"
-                        fi
-                        ;;
-                esac
-            fi
+    # HIGH PRIORITY: Dynamic TruffleHog download patterns (November 2025 attack)
+    { xargs grep -lE "curl.*trufflehog|wget.*trufflehog|bunExecutable.*trufflehog|download.*trufflehog" \
+        < "$TEMP_DIR/trufflehog_scan_files.txt" 2>/dev/null || true; } | while read -r file; do
+        [[ -n "$file" ]] && echo "$file:HIGH:November 2025 pattern - Dynamic TruffleHog download via curl/wget/Bun" >> "$TEMP_DIR/trufflehog_activity.txt"
+    done
 
-            # Check for credential scanning combined with exfiltration
-            if grep -l "AWS_ACCESS_KEY\|GITHUB_TOKEN\|NPM_TOKEN" "$file" >/dev/null 2>&1; then
-                case "$context" in
-                    "type_definitions"|"documentation")
-                        # Type definitions and docs mentioning credentials are normal
-                        continue
-                        ;;
-                    "node_modules")
-                        # Package manager code mentioning credentials might be legitimate
-                        echo "$file:LOW:Credential patterns in node_modules" >> "$TEMP_DIR/trufflehog_activity.txt"
-                        ;;
-                    "configuration")
-                        # Config files mentioning credentials might be legitimate
-                        if [[ "$content_sample" == *"DefinePlugin"* ]] || [[ "$content_sample" == *"webpack"* ]]; then
-                            continue  # webpack config is legitimate
-                        fi
-                        echo "$file:MEDIUM:Credential patterns in configuration" >> "$TEMP_DIR/trufflehog_activity.txt"
-                        ;;
-                    *)
-                        # Source code mentioning credentials + exfiltration is suspicious
-                        if [[ "$content_sample" == *"webhook.site"* ]] || [[ "$content_sample" == *"curl"* ]] || [[ "$content_sample" == *"https.request"* ]]; then
-                            echo "$file:HIGH:Credential patterns with potential exfiltration" >> "$TEMP_DIR/trufflehog_activity.txt"
-                        else
-                            echo "$file:MEDIUM:Contains credential scanning patterns" >> "$TEMP_DIR/trufflehog_activity.txt"
-                        fi
-                        ;;
-                esac
-            fi
+    # HIGH PRIORITY: TruffleHog credential harvesting patterns
+    { xargs grep -lE "TruffleHog.*scan.*credential|trufflehog.*env|trufflehog.*AWS|trufflehog.*NPM_TOKEN" \
+        < "$TEMP_DIR/trufflehog_scan_files.txt" 2>/dev/null || true; } | while read -r file; do
+        [[ -n "$file" ]] && echo "$file:HIGH:TruffleHog credential scanning pattern detected" >> "$TEMP_DIR/trufflehog_activity.txt"
+    done
 
-            # Check for environment variable scanning (refined logic)
-            if grep -l "process\.env\|os\.environ\|getenv" "$file" >/dev/null 2>&1; then
-                case "$context" in
-                    "type_definitions"|"documentation")
-                        # Type definitions and docs are normal
-                        continue
-                        ;;
-                    "node_modules"|"build_output")
-                        # Framework code using process.env is normal
-                        if is_legitimate_pattern "$file" "$content_sample"; then
-                            continue
-                        fi
-                        echo "$file:LOW:Environment variable access in $context" >> "$TEMP_DIR/trufflehog_activity.txt"
-                        ;;
-                    "configuration")
-                        # Config files using env vars is normal
-                        continue
-                        ;;
-                    *)
-                        # Only flag if combined with suspicious patterns
-                        if [[ "$content_sample" == *"webhook.site"* ]] && [[ "$content_sample" == *"exfiltrat"* ]]; then
-                            echo "$file:HIGH:Environment scanning with exfiltration" >> "$TEMP_DIR/trufflehog_activity.txt"
-                        elif [[ "$content_sample" == *"scan"* ]] || [[ "$content_sample" == *"harvest"* ]] || [[ "$content_sample" == *"steal"* ]]; then
-                            if ! is_legitimate_pattern "$file" "$content_sample"; then
-                                echo "$file:MEDIUM:Potentially suspicious environment variable access" >> "$TEMP_DIR/trufflehog_activity.txt"
-                            fi
-                        fi
-                        ;;
-                esac
-            fi
+    # HIGH PRIORITY: Credential patterns with exfiltration indicators
+    { xargs grep -lE "(AWS_ACCESS_KEY|GITHUB_TOKEN|NPM_TOKEN).*(webhook\.site|curl|https\.request)" \
+        < "$TEMP_DIR/trufflehog_scan_files.txt" 2>/dev/null || true; } | \
+        { grep -v "/node_modules/\|\.d\.ts$" || true; } | while read -r file; do
+        [[ -n "$file" ]] && echo "$file:HIGH:Credential patterns with potential exfiltration" >> "$TEMP_DIR/trufflehog_activity.txt"
+    done
 
-            # November 2025 specific TruffleHog patterns from "The Second Coming" attack
-            if grep -l "TruffleHog.*scan.*credential\|download.*trufflehog\|trufflehog.*env\|trufflehog.*AWS\|trufflehog.*NPM_TOKEN" "$file" >/dev/null 2>&1; then
-                # Look for specific patterns indicating automated TruffleHog credential harvesting
-                if [[ "$content_sample" == *"download"* ]] && [[ "$content_sample" == *"trufflehog"* ]] && [[ "$content_sample" == *"scan"* ]]; then
-                    echo "$file:HIGH:November 2025 pattern - Automated TruffleHog download and credential scanning" >> "$TEMP_DIR/trufflehog_activity.txt"
-                elif [[ "$content_sample" == *"GitHub Action"* ]] && [[ "$content_sample" == *"trufflehog"* ]]; then
-                    echo "$file:HIGH:November 2025 pattern - TruffleHog in GitHub Actions for credential theft" >> "$TEMP_DIR/trufflehog_activity.txt"
-                elif [[ "$content_sample" == *"environment"* ]] && [[ "$content_sample" == *"token"* ]] && [[ "$content_sample" == *"trufflehog"* ]]; then
-                    echo "$file:HIGH:November 2025 pattern - TruffleHog environment token harvesting" >> "$TEMP_DIR/trufflehog_activity.txt"
-                else
-                    echo "$file:MEDIUM:Potential November 2025 TruffleHog attack pattern" >> "$TEMP_DIR/trufflehog_activity.txt"
-                fi
-            fi
-
-            # Check for specific command execution patterns used in November 2025 attack
-            if grep -l "curl.*trufflehog\|wget.*trufflehog\|bunExecutable.*trufflehog" "$file" >/dev/null 2>&1; then
-                echo "$file:HIGH:November 2025 pattern - Dynamic TruffleHog download via curl/wget/Bun" >> "$TEMP_DIR/trufflehog_activity.txt"
-            fi
+    # MEDIUM PRIORITY: Trufflehog references in source code (not node_modules/docs)
+    { xargs grep -l "trufflehog\|TruffleHog" \
+        < "$TEMP_DIR/trufflehog_scan_files.txt" 2>/dev/null || true; } | \
+        { grep -v "/node_modules/\|\.md$\|/docs/\|\.d\.ts$" || true; } | while read -r file; do
+        # Check if already flagged as HIGH
+        if [[ -n "$file" ]] && ! grep -qF "$file:" "$TEMP_DIR/trufflehog_activity.txt" 2>/dev/null; then
+            echo "$file:MEDIUM:Contains trufflehog references in source code" >> "$TEMP_DIR/trufflehog_activity.txt"
         fi
-    # Use pre-categorized files from collect_all_files (performance optimization)
-    done < <(cat "$TEMP_DIR/script_files.txt" "$TEMP_DIR/code_files.txt" 2>/dev/null | tr '\n' '\0')
+    done
+
+    # MEDIUM PRIORITY: Credential scanning patterns (not in type definitions)
+    { xargs grep -lE "AWS_ACCESS_KEY|GITHUB_TOKEN|NPM_TOKEN" \
+        < "$TEMP_DIR/trufflehog_scan_files.txt" 2>/dev/null || true; } | \
+        { grep -v "/node_modules/\|\.d\.ts$\|/docs/" || true; } | while read -r file; do
+        # Check if already flagged
+        if [[ -n "$file" ]] && ! grep -qF "$file:" "$TEMP_DIR/trufflehog_activity.txt" 2>/dev/null; then
+            echo "$file:MEDIUM:Contains credential scanning patterns" >> "$TEMP_DIR/trufflehog_activity.txt"
+        fi
+    done
+
+    # LOW PRIORITY: Environment variable scanning with suspicious patterns
+    { xargs grep -lE "(process\.env|os\.environ|getenv).*(scan|harvest|steal|exfiltrat)" \
+        < "$TEMP_DIR/trufflehog_scan_files.txt" 2>/dev/null || true; } | \
+        { grep -v "/node_modules/\|\.d\.ts$" || true; } | while read -r file; do
+        if [[ -n "$file" ]] && ! grep -qF "$file:" "$TEMP_DIR/trufflehog_activity.txt" 2>/dev/null; then
+            echo "$file:LOW:Potentially suspicious environment variable access" >> "$TEMP_DIR/trufflehog_activity.txt"
+        fi
+    done
 }
 
 # Function: check_shai_hulud_repos
@@ -1662,87 +1586,71 @@ check_package_integrity() {
     local scan_dir=$1
     print_status "$BLUE" "🔍 Checking package lock files for integrity issues..."
 
-    # Check package-lock.json files
+    # Check each lockfile
     while IFS= read -r -d '' lockfile; do
         if [[ -f "$lockfile" && -r "$lockfile" ]]; then
+            org_file="$lockfile"
 
             # Transform pnpm-lock.yaml into pseudo-package-lock
-            org_file="$lockfile"
             if [[ "$(basename "$org_file")" == "pnpm-lock.yaml" ]]; then
-                org_file="$lockfile"
                 lockfile=$(mktemp "${TMPDIR:-/tmp}/lockfile.XXXXXXXX")
-                TEMP_FILES+=("$lockfile")
                 transform_pnpm_yaml "$org_file" > "$lockfile"
             fi
 
-            # Look for compromised packages in lockfiles
-            for package_info in "${COMPROMISED_PACKAGES[@]}"; do
-                local package_name="${package_info%:*}"
-                local malicious_version="${package_info#*:}"
-
-                # Look for package-specific blocks to avoid version misattribution
-                local found_version=""
-
-                # Try to find the package in node_modules structure (most accurate for package-lock.json)
-                if grep -q "\"node_modules/$package_name\"" "$lockfile" 2>/dev/null; then
-                    # Extract version from within the specific package block
-                    found_version=$(awk -v pkg="node_modules/$package_name" '
-                        $0 ~ "\"" pkg "\"" { in_block=1; brace_count=1 }
-                        in_block && /\{/ && !($0 ~ "\"" pkg "\"") { brace_count++ }
-                        in_block && /\}/ {
-                            brace_count--
-                            if (brace_count <= 0) { in_block=0 }
-                        }
-                        in_block && /\s*"version":/ {
-                            gsub(/.*"version"[ \t]*:[ \t]*"/, "", $0)
-                            gsub(/".*/, "", $0)
-                            print $0
-                            exit
-                        }
-                    ' "$lockfile" 2>/dev/null || true) || true
-
-                # Fallback: for older lockfile formats without node_modules structure
-                # Only look for exact version matches on the same line
-                elif grep -q "\"$package_name\".*:.*\"[0-9]" "$lockfile" 2>/dev/null; then
-                    # Extract version from same line (for simple dependency format)
-                    found_version=$(grep "\"$package_name\".*:.*\"[0-9]" "$lockfile" 2>/dev/null | head -1 | awk -F':' '{
-                        gsub(/.*"/, "", $2)
-                        gsub(/".*/, "", $2)
-                        print $2
-                    }' 2>/dev/null || true) || true
-                fi
-
-                if [[ -n "$found_version" && "$found_version" == "$malicious_version" ]]; then
-                    echo "$org_file:Compromised package in lockfile: $package_name@$malicious_version" >> "$TEMP_DIR/integrity_issues.txt"
+            # Extract all package:version pairs from lockfile using AWK block parser
+            # This handles the JSON structure where name and version are on different lines
+            awk '
+                # Match "node_modules/package-name": { pattern
+                /^[[:space:]]*"node_modules\/[^"]+":/ {
+                    # Extract package name
+                    gsub(/.*"node_modules\//, "")
+                    gsub(/".*/, "")
+                    current_pkg = $0
+                    in_block = 1
+                    next
+                }
+                # Match "package-name": { in packages section (older format)
+                /^[[:space:]]*"[^"\/]+":.*\{/ && !in_block {
+                    gsub(/^[[:space:]]*"/, "")
+                    gsub(/".*/, "")
+                    if ($0 !~ /^(name|version|resolved|integrity|dependencies|devDependencies|engines|funding|bin|peerDependencies)$/) {
+                        current_pkg = $0
+                        in_block = 1
+                    }
+                    next
+                }
+                # Extract version within block
+                in_block && /"version":/ {
+                    gsub(/.*"version"[[:space:]]*:[[:space:]]*"/, "")
+                    gsub(/".*/, "")
+                    if (current_pkg != "" && $0 ~ /^[0-9]/) {
+                        print current_pkg ":" $0
+                    }
+                    in_block = 0
+                    current_pkg = ""
+                }
+                # End of block
+                in_block && /^[[:space:]]*\}/ {
+                    in_block = 0
+                    current_pkg = ""
+                }
+            ' "$lockfile" 2>/dev/null | while IFS=: read -r pkg_name pkg_version; do
+                # Check if this package:version is compromised using O(1) lookup
+                if [[ -v COMPROMISED_PACKAGES_MAP["$pkg_name:$pkg_version"] ]]; then
+                    echo "$org_file:Compromised package in lockfile: $pkg_name@$pkg_version" >> "$TEMP_DIR/integrity_issues.txt"
                 fi
             done
 
-            # Check for suspicious integrity hash patterns (may indicate tampering)
-            local suspicious_hashes
-            suspicious_hashes=$(grep -c '"integrity": "sha[0-9]\+-[A-Za-z0-9+/=]*"' "$lockfile" 2>/dev/null || echo "0")
-
-            # Check for recently modified lockfiles with @ctrl packages (potential worm activity)
+            # Check for @ctrl packages (potential worm activity)
             if grep -q "@ctrl" "$lockfile" 2>/dev/null; then
-                local file_age
-                file_age=$(date -r "$lockfile" +%s 2>/dev/null || echo "0")
-                local current_time
-                current_time=$(date +%s)
-                local age_diff=$((current_time - file_age))
-
-                # Flag if lockfile with @ctrl packages was modified in the last 30 days
-                if [[ $age_diff -lt 2592000 ]]; then  # 30 days in seconds
-                    echo "$org_file:Recently modified lockfile contains @ctrl packages (potential worm activity)" >> "$TEMP_DIR/integrity_issues.txt"
-                fi
+                echo "$org_file:Lockfile contains @ctrl packages (potential worm activity)" >> "$TEMP_DIR/integrity_issues.txt"
             fi
 
-            # Revert virtual package-lock
+            # Cleanup temp lockfile for pnpm
             if [[ "$(basename "$org_file")" == "pnpm-lock.yaml" ]]; then
-                rm "$lockfile"
-                lockfile="$org_file"
+                rm -f "$lockfile"
             fi
-
         fi
-    # Use pre-categorized files from collect_all_files (performance optimization)
     done < <(tr '\n' '\0' < "$TEMP_DIR/lockfiles.txt")
 }
 
@@ -2682,6 +2590,9 @@ main() {
         exit 1
     fi
 
+    # Initialize timing
+    SCAN_START_TIME=$(date +%s%N 2>/dev/null || echo "$(date +%s)000000000")
+
     print_status "$GREEN" "Starting Shai-Hulud detection scan..."
     if [[ "$paranoid_mode" == "true" ]]; then
         print_status "$BLUE" "Scanning directory: $scan_dir (with paranoid mode enabled)"
@@ -2691,72 +2602,63 @@ main() {
     echo
 
     # Collect all files in a single pass for performance optimization
-    print_status "$BLUE" "🔍 Collecting file inventory for analysis..."
+    print_status "$BLUE" "[Stage 1/6] Collecting file inventory for analysis..."
     collect_all_files "$scan_dir"
 
     # Show summary of collected files
     local total_files=$(wc -l < "$TEMP_DIR/all_files_raw.txt" 2>/dev/null || echo "0")
-    print_status "$BLUE" "   Found $total_files files to analyze"
+    print_stage_complete "File collection ($total_files files)"
 
-    # Run core Shai-Hulud detection checks (Phase 2: Parallel execution optimization)
-    print_status "$BLUE" "🔍 Running detection functions in parallel (${PARALLELISM} workers)..."
+    # Run core Shai-Hulud detection checks (sequential for reliability)
+    print_status "$BLUE" "[Stage 2/6] Core detection (workflows, hashes, packages, hooks)..."
+    check_workflow_files "$scan_dir"
+    check_file_hashes "$scan_dir"
+    check_packages "$scan_dir"
+    check_postinstall_hooks "$scan_dir"
+    print_stage_complete "Core detection"
 
-    # Batch 1: Core detection functions (run in parallel)
-    check_workflow_files "$scan_dir" &
-    check_file_hashes "$scan_dir" &
-    check_packages "$scan_dir" &
-    check_postinstall_hooks "$scan_dir" &
+    # Content analysis
+    print_status "$BLUE" "[Stage 3/6] Content analysis (patterns, crypto, trufflehog, git)..."
+    check_content "$scan_dir"
+    check_crypto_theft_patterns "$scan_dir"
+    check_trufflehog_activity "$scan_dir"
+    check_git_branches "$scan_dir"
+    print_stage_complete "Content analysis"
 
-    # Wait for batch 1 to complete before starting batch 2 (manage resource usage)
-    wait
+    # Repository analysis
+    print_status "$BLUE" "[Stage 4/6] Repository analysis (repos, integrity, bun, workflows)..."
+    check_shai_hulud_repos "$scan_dir"
+    check_package_integrity "$scan_dir"
+    check_bun_attack_files "$scan_dir"
+    check_new_workflow_patterns "$scan_dir"
+    print_stage_complete "Repository analysis"
 
-    # Batch 2: Content analysis functions (run in parallel)
-    check_content "$scan_dir" &
-    check_crypto_theft_patterns "$scan_dir" &
-    check_trufflehog_activity "$scan_dir" &
-    check_git_branches "$scan_dir" &
+    # Advanced pattern detection
+    print_status "$BLUE" "[Stage 5/6] Advanced detection (discussions, runners, destructive)..."
+    check_discussion_workflows "$scan_dir"
+    check_github_runners "$scan_dir"
+    check_destructive_patterns "$scan_dir"
+    check_preinstall_bun_patterns "$scan_dir"
+    print_stage_complete "Advanced detection"
 
-    # Wait for batch 2 to complete
-    wait
+    # Final checks
+    print_status "$BLUE" "[Stage 6/6] Final checks (actions runner, second coming repos)..."
+    check_github_actions_runner "$scan_dir"
+    check_second_coming_repos "$scan_dir"
+    print_stage_complete "Final checks"
 
-    # Batch 3: Repository analysis functions (run in parallel)
-    check_shai_hulud_repos "$scan_dir" &
-    check_package_integrity "$scan_dir" &
-
-    # November 2025 "Shai-Hulud: The Second Coming" attack detection (parallel)
-    check_bun_attack_files "$scan_dir" &
-    check_new_workflow_patterns "$scan_dir" &
-
-    # Wait for batch 3 to complete
-    wait
-
-    # Batch 4: Advanced pattern detection (run in parallel)
-    check_discussion_workflows "$scan_dir" &
-    check_github_runners "$scan_dir" &
-    check_destructive_patterns "$scan_dir" &
-    check_preinstall_bun_patterns "$scan_dir" &
-
-    # Wait for batch 4 to complete
-    wait
-
-    # Batch 5: Final checks (run in parallel)
-    check_github_actions_runner "$scan_dir" &
-    check_second_coming_repos "$scan_dir" &
-
-    # Wait for all final checks to complete
-    wait
-
-    # Run additional security checks only in paranoid mode (parallelized)
+    # Run additional security checks only in paranoid mode
     if [[ "$paranoid_mode" == "true" ]]; then
-        print_status "$BLUE" "🔍+ Running paranoid mode checks in parallel..."
-        check_typosquatting "$scan_dir" &
-        check_network_exfiltration "$scan_dir" &
-        # Wait for paranoid mode functions to complete
-        wait
+        print_status "$BLUE" "[Paranoid] Running extra security checks..."
+        check_typosquatting "$scan_dir"
+        check_network_exfiltration "$scan_dir"
+        print_stage_complete "Paranoid mode checks"
     fi
 
     # Generate report
+    print_status "$BLUE" "Generating report..."
     generate_report "$paranoid_mode"
+    print_stage_complete "Total scan time"
 
     # Return appropriate exit code based on findings
     if [[ $high_risk -gt 0 ]]; then
