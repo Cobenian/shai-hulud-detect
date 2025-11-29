@@ -688,8 +688,9 @@ check_destructive_patterns() {
     print_status "$BLUE" "🔍 Checking for destructive payload patterns..."
 
     # Phase 3 Optimization: Pre-compile combined regex patterns for batch processing
-    # Basic destructive patterns (case-insensitive, combined for efficiency)
-    local basic_destructive_regex="rm -rf \\\$HOME|rm -rf ~|del /s /q|Remove-Item -Recurse|fs\.unlinkSync|fs\.rmSync.*recursive|rimraf|find[[:space:]]+[^[:space:]]+.*[[:space:]]+-delete|find \\\$HOME.*-exec rm|find ~.*-exec rm|\\\$HOME/\\\*|~/\\\*"
+    # Basic destructive patterns - ONLY flag when targeting user directories ($HOME, ~, /home/)
+    # Standalone rimraf/unlinkSync/rmSync removed to reduce false positives (GitHub issue #74)
+    local basic_destructive_regex="rm -rf[[:space:]]+(\\\$HOME|~[^a-zA-Z]|/home/)|del /s /q[[:space:]]+(%USERPROFILE%|\\\$HOME)|Remove-Item -Recurse[[:space:]]+(\\\$HOME|~[^a-zA-Z])|find[[:space:]]+(\\\$HOME|~[^a-zA-Z]|/home/).*-exec rm|find[[:space:]]+(\\\$HOME|~[^a-zA-Z]|/home/).*-delete|\\\$HOME/\\\*|~/\\\*|/home/[^/]+/\\\*"
 
     # Conditional patterns for JavaScript/Python (limited span patterns)
     local js_py_conditional_regex="if.{1,200}credential.{1,50}(fail|error).{1,50}(rm -|fs\.|rimraf|exec|spawn|child_process)|if.{1,200}token.{1,50}not.{1,20}found.{1,50}(rm -|del |fs\.|rimraf|unlinkSync|rmSync)|if.{1,200}github.{1,50}auth.{1,50}fail.{1,50}(rm -|fs\.|rimraf|exec)|catch.{1,100}(rm -rf|fs\.rm|rimraf|exec.*rm)|error.{1,100}(rm -|del |fs\.|rimraf).{1,100}(\\\$HOME|~/|home.*(directory|folder|path))"

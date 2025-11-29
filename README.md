@@ -229,7 +229,17 @@ esac
 
 ## Testing
 
-The repository includes test cases to validate the script:
+The repository includes a comprehensive test suite with 32 test cases. Use the automated test runner to validate all cases:
+
+```bash
+# Run the full test suite (recommended)
+./run-tests.sh
+
+# The test suite validates expected exit codes and risk levels for all test cases
+# Exit codes: 0=clean, 1=high-risk, 2=medium-risk
+```
+
+You can also run individual test cases manually:
 
 ```bash
 # Test on clean project (should show no issues)
@@ -473,12 +483,11 @@ We welcome contributions to improve any of the code, documentation, tests and pa
 
 3. **Test your changes**
    ```bash
-   # Test that the script loads the new packages
-   ./shai-hulud-detector.sh test-cases/clean-project
+   # Run the full test suite to ensure nothing breaks
+   ./run-tests.sh
 
-   # Run all test cases to ensure nothing breaks
-   ./shai-hulud-detector.sh test-cases/infected-project
-   ./shai-hulud-detector.sh test-cases/mixed-project
+   # All 32 tests should pass. If any fail, review the expected results
+   # in run-tests.sh and verify your changes don't cause regressions.
    ```
 
 4. **Submit a Pull Request**
