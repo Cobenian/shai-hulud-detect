@@ -104,6 +104,7 @@ RED='\033[0;31m'
 YELLOW='\033[1;33m'
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
+ORANGE='\033[38;5;172m'  # Muted orange for stage headers (256-color mode)
 NC='\033[0m' # No Color
 
 # Known malicious file hashed (source: https://socket.dev/blog/ongoing-supply-chain-attack-targets-crowdstrike-npm-packages)
@@ -484,7 +485,7 @@ collect_all_files() {
 # Returns: Populates WORKFLOW_FILES array with paths to suspicious workflow files
 check_workflow_files() {
     local scan_dir=$1
-    print_status "$BLUE" "🔍 Checking for malicious workflow files..."
+    print_status "$BLUE" "   Checking for malicious workflow files..."
 
     # Use pre-categorized files from collect_all_files (performance optimization)
     while IFS= read -r file; do
@@ -501,7 +502,7 @@ check_workflow_files() {
 # Returns: Populates temp files with paths to suspicious Bun-related malicious files
 check_bun_attack_files() {
     local scan_dir=$1
-    print_status "$BLUE" "🔍 Checking for November 2025 Bun attack files..."
+    print_status "$BLUE" "   Checking for November 2025 Bun attack files..."
 
     # Known malicious file hashes from Koi.ai incident report
     local setup_bun_hashes=(
@@ -566,7 +567,7 @@ check_bun_attack_files() {
 # Returns: Populates arrays with paths to new attack pattern files
 check_new_workflow_patterns() {
     local scan_dir=$1
-    print_status "$BLUE" "🔍 Checking for new workflow patterns..."
+    print_status "$BLUE" "   Checking for new workflow patterns..."
 
     # Look for formatter_123456789.yml workflow files
     # Use pre-categorized files from collect_all_files (performance optimization)
@@ -596,7 +597,7 @@ check_new_workflow_patterns() {
 # Returns: Populates discussion_workflows.txt with paths to suspicious discussion-triggered workflows
 check_discussion_workflows() {
     local scan_dir=$1
-    print_status "$BLUE" "🔍 Checking for malicious discussion workflows..."
+    print_status "$BLUE" "   Checking for malicious discussion workflows..."
 
     # Phase 3 Optimization: Batch processing with combined patterns
     # Create a temporary file list for valid workflow files to process in batches
@@ -637,7 +638,7 @@ check_discussion_workflows() {
 # Returns: Populates github_runners.txt with paths to suspicious runner installations
 check_github_runners() {
     local scan_dir=$1
-    print_status "$BLUE" "🔍 Checking for malicious GitHub Actions runners..."
+    print_status "$BLUE" "   Checking for malicious GitHub Actions runners..."
 
     # Performance Optimization: Single find operation with combined patterns
     {
@@ -685,15 +686,16 @@ check_github_runners() {
 # Returns: Populates destructive_patterns.txt with paths to files containing destructive patterns
 check_destructive_patterns() {
     local scan_dir=$1
-    print_status "$BLUE" "🔍 Checking for destructive payload patterns..."
+    print_status "$BLUE" "   Checking for destructive payload patterns..."
 
     # Phase 3 Optimization: Pre-compile combined regex patterns for batch processing
     # Basic destructive patterns - ONLY flag when targeting user directories ($HOME, ~, /home/)
     # Standalone rimraf/unlinkSync/rmSync removed to reduce false positives (GitHub issue #74)
-    local basic_destructive_regex="rm -rf[[:space:]]+(\\\$HOME|~[^a-zA-Z]|/home/)|del /s /q[[:space:]]+(%USERPROFILE%|\\\$HOME)|Remove-Item -Recurse[[:space:]]+(\\\$HOME|~[^a-zA-Z])|find[[:space:]]+(\\\$HOME|~[^a-zA-Z]|/home/).*-exec rm|find[[:space:]]+(\\\$HOME|~[^a-zA-Z]|/home/).*-delete|\\\$HOME/\\\*|~/\\\*|/home/[^/]+/\\\*"
+    local basic_destructive_regex="rm -rf[[:space:]]+(\\\$HOME|~[^a-zA-Z0-9_/]|/home/)|del /s /q[[:space:]]+(%USERPROFILE%|\\\$HOME)|Remove-Item -Recurse[[:space:]]+(\\\$HOME|~[^a-zA-Z0-9_/])|find[[:space:]]+(\\\$HOME|~[^a-zA-Z0-9_/]|/home/).*-exec rm|find[[:space:]]+(\\\$HOME|~[^a-zA-Z0-9_/]|/home/).*-delete|\\\$HOME/[*]|~/[*]|/home/[^/]+/[*]"
 
     # Conditional patterns for JavaScript/Python (limited span patterns)
-    local js_py_conditional_regex="if.{1,200}credential.{1,50}(fail|error).{1,50}(rm -|fs\.|rimraf|exec|spawn|child_process)|if.{1,200}token.{1,50}not.{1,20}found.{1,50}(rm -|del |fs\.|rimraf|unlinkSync|rmSync)|if.{1,200}github.{1,50}auth.{1,50}fail.{1,50}(rm -|fs\.|rimraf|exec)|catch.{1,100}(rm -rf|fs\.rm|rimraf|exec.*rm)|error.{1,100}(rm -|del |fs\.|rimraf).{1,100}(\\\$HOME|~/|home.*(directory|folder|path))"
+    # Note: exec.{1,30}rm limits span to avoid matching minified code where "exec" and "rm" are far apart
+    local js_py_conditional_regex="if.{1,200}credential.{1,50}(fail|error).{1,50}(rm -|fs\.|rimraf|exec|spawn|child_process)|if.{1,200}token.{1,50}not.{1,20}found.{1,50}(rm -|del |fs\.|rimraf|unlinkSync|rmSync)|if.{1,200}github.{1,50}auth.{1,50}fail.{1,50}(rm -|fs\.|rimraf|exec)|catch.{1,100}(rm -rf|fs\.rm|rimraf|exec.{1,30}rm)|error.{1,100}(rm -|del |fs\.|rimraf).{1,100}(\\\$HOME|~/|home.*(directory|folder|path))"
 
     # Shell-specific patterns (broader patterns for actual shell scripts)
     local shell_conditional_regex="if.*credential.*(fail|error).*rm|if.*token.*not.*found.*(delete|rm)|if.*github.*auth.*fail.*rm|catch.*rm -rf|error.*delete.*home"
@@ -738,7 +740,7 @@ check_destructive_patterns() {
 # Returns: Populates array with files containing suspicious preinstall patterns
 check_preinstall_bun_patterns() {
     local scan_dir=$1
-    print_status "$BLUE" "🔍 Checking for fake Bun preinstall patterns..."
+    print_status "$BLUE" "   Checking for fake Bun preinstall patterns..."
 
     # Look for package.json files with suspicious "preinstall": "node setup_bun.js" pattern
     while IFS= read -r file; do
@@ -759,7 +761,7 @@ check_preinstall_bun_patterns() {
 # Returns: Populates array with workflow files containing SHA1HULUD runner references
 check_github_actions_runner() {
     local scan_dir=$1
-    print_status "$BLUE" "🔍 Checking for SHA1HULUD GitHub Actions runners..."
+    print_status "$BLUE" "   Checking for SHA1HULUD GitHub Actions runners..."
 
     # Look for workflow files containing SHA1HULUD runner names
     while IFS= read -r file; do
@@ -780,7 +782,7 @@ check_github_actions_runner() {
 # Returns: Populates array with git repositories matching the description pattern
 check_second_coming_repos() {
     local scan_dir=$1
-    print_status "$BLUE" "🔍 Checking for 'Second Coming' repository descriptions..."
+    print_status "$BLUE" "   Checking for 'Second Coming' repository descriptions..."
 
     # Performance Optimization: Use pre-collected git repositories
     local git_repos_source
@@ -829,7 +831,7 @@ check_file_hashes() {
 
     # FAST FILTER: Use single find command for recently modified non-node_modules files
     # This is much faster than looping through every file with stat
-    print_status "$BLUE" "🔍 Filtering files for hash checking..."
+    print_status "$BLUE" "   Filtering files for hash checking..."
 
     # Priority files: recently modified (30 days) OR known malicious patterns
     {
@@ -843,7 +845,7 @@ check_file_hashes() {
     local filesCount
     filesCount=$(wc -l < "$TEMP_DIR/priority_files.txt" 2>/dev/null || echo "0")
 
-    print_status "$BLUE" "🔍 Checking $filesCount priority files for known malicious content (filtered from $totalFiles total)..."
+    print_status "$BLUE" "   Checking $filesCount priority files for known malicious content (filtered from $totalFiles total)..."
 
     # BATCH HASH: Calculate all hashes in parallel using xargs
     # Create hash lookup file with format: hash filename
@@ -1057,7 +1059,7 @@ check_packages() {
     local filesCount
     filesCount=$(wc -l < "$TEMP_DIR/package_files.txt" 2>/dev/null || echo "0")
 
-    print_status "$BLUE" "🔍 Checking $filesCount package.json files for compromised packages..."
+    print_status "$BLUE" "   Checking $filesCount package.json files for compromised packages..."
 
     # BATCH OPTIMIZATION: Extract all deps using parallel processing
     print_status "$BLUE" "   Extracting dependencies from all package.json files..."
@@ -1125,7 +1127,7 @@ check_packages() {
 # Returns: Populates POSTINSTALL_HOOKS array with package.json files containing hooks
 check_postinstall_hooks() {
     local scan_dir=$1
-    print_status "$BLUE" "🔍 Checking for suspicious postinstall hooks..."
+    print_status "$BLUE" "   Checking for suspicious postinstall hooks..."
 
     while IFS= read -r -d '' package_file; do
         if [[ -f "$package_file" && -r "$package_file" ]]; then
@@ -1151,7 +1153,7 @@ check_postinstall_hooks() {
 # Returns: Populates SUSPICIOUS_CONTENT array with files containing suspicious patterns
 check_content() {
     local scan_dir=$1
-    print_status "$BLUE" "🔍 Checking for suspicious content patterns..."
+    print_status "$BLUE" "   Checking for suspicious content patterns..."
 
     # FAST: Use xargs with grep -l for bulk searching instead of per-file grep
     # Search for webhook.site references
@@ -1176,7 +1178,7 @@ check_content() {
 # Returns: Populates arrays with wallet hijacking, XMLHttpRequest tampering, and attacker indicators
 check_crypto_theft_patterns() {
     local scan_dir=$1
-    print_status "$BLUE" "🔍 Checking for cryptocurrency theft patterns..."
+    print_status "$BLUE" "   Checking for cryptocurrency theft patterns..."
 
     # FAST: Use xargs with grep -l for bulk pattern searching
     # Check for specific malicious functions from chalk/debug attack (highest priority)
@@ -1252,7 +1254,7 @@ check_crypto_theft_patterns() {
 # Returns: Populates GIT_BRANCHES array with branch names and commit hashes
 check_git_branches() {
     local scan_dir=$1
-    print_status "$BLUE" "🔍 Checking for suspicious git branches..."
+    print_status "$BLUE" "   Checking for suspicious git branches..."
 
     # Performance Optimization: Use pre-collected git repositories and limit search scope
     if [[ -f "$TEMP_DIR/git_repos.txt" ]]; then
@@ -1466,7 +1468,7 @@ get_lockfile_version() {
 # Returns: Populates TRUFFLEHOG_ACTIVITY array with risk level (HIGH/MEDIUM/LOW) prefixes
 check_trufflehog_activity() {
     local scan_dir=$1
-    print_status "$BLUE" "🔍 Checking for Trufflehog activity and secret scanning..."
+    print_status "$BLUE" "   Checking for Trufflehog activity and secret scanning..."
 
     # Look for trufflehog binary files (always HIGH RISK)
     while IFS= read -r binary_file; do
@@ -1534,7 +1536,7 @@ check_trufflehog_activity() {
 # Returns: Populates SHAI_HULUD_REPOS array with repository patterns and migration indicators
 check_shai_hulud_repos() {
     local scan_dir=$1
-    print_status "$BLUE" "🔍 Checking for Shai-Hulud repositories and migration patterns..."
+    print_status "$BLUE" "   Checking for Shai-Hulud repositories and migration patterns..."
 
     # Performance Optimization: Use pre-collected git repositories
     local git_repos_source
@@ -1585,7 +1587,7 @@ check_shai_hulud_repos() {
 # Returns: Populates INTEGRITY_ISSUES with compromised packages found in lockfiles
 check_package_integrity() {
     local scan_dir=$1
-    print_status "$BLUE" "🔍 Checking package lock files for integrity issues..."
+    print_status "$BLUE" "   Checking package lock files for integrity issues..."
 
     # Check each lockfile
     while IFS= read -r -d '' lockfile; do
@@ -2494,7 +2496,7 @@ generate_report() {
             echo -e "   ${BLUE}NOTE: These are likely legitimate framework code or dependencies.${NC}"
         fi
     else
-        print_status "$RED" "🔍 SUMMARY:"
+        print_status "$RED" "   SUMMARY:"
         print_status "$RED" "   High Risk Issues: $high_risk"
         print_status "$YELLOW" "   Medium Risk Issues: $medium_risk"
         if [[ $low_risk_count -gt 0 ]]; then
@@ -2603,7 +2605,7 @@ main() {
     echo
 
     # Collect all files in a single pass for performance optimization
-    print_status "$BLUE" "[Stage 1/6] Collecting file inventory for analysis..."
+    print_status "$ORANGE" "[Stage 1/6] Collecting file inventory for analysis"
     collect_all_files "$scan_dir"
 
     # Show summary of collected files
@@ -2611,7 +2613,7 @@ main() {
     print_stage_complete "File collection ($total_files files)"
 
     # Run core Shai-Hulud detection checks (sequential for reliability)
-    print_status "$BLUE" "[Stage 2/6] Core detection (workflows, hashes, packages, hooks)..."
+    print_status "$ORANGE" "[Stage 2/6] Core detection (workflows, hashes, packages, hooks)"
     check_workflow_files "$scan_dir"
     check_file_hashes "$scan_dir"
     check_packages "$scan_dir"
@@ -2619,7 +2621,7 @@ main() {
     print_stage_complete "Core detection"
 
     # Content analysis
-    print_status "$BLUE" "[Stage 3/6] Content analysis (patterns, crypto, trufflehog, git)..."
+    print_status "$ORANGE" "[Stage 3/6] Content analysis (patterns, crypto, trufflehog, git)"
     check_content "$scan_dir"
     check_crypto_theft_patterns "$scan_dir"
     check_trufflehog_activity "$scan_dir"
@@ -2627,7 +2629,7 @@ main() {
     print_stage_complete "Content analysis"
 
     # Repository analysis
-    print_status "$BLUE" "[Stage 4/6] Repository analysis (repos, integrity, bun, workflows)..."
+    print_status "$ORANGE" "[Stage 4/6] Repository analysis (repos, integrity, bun, workflows)"
     check_shai_hulud_repos "$scan_dir"
     check_package_integrity "$scan_dir"
     check_bun_attack_files "$scan_dir"
@@ -2635,7 +2637,7 @@ main() {
     print_stage_complete "Repository analysis"
 
     # Advanced pattern detection
-    print_status "$BLUE" "[Stage 5/6] Advanced detection (discussions, runners, destructive)..."
+    print_status "$ORANGE" "[Stage 5/6] Advanced detection (discussions, runners, destructive)"
     check_discussion_workflows "$scan_dir"
     check_github_runners "$scan_dir"
     check_destructive_patterns "$scan_dir"
@@ -2643,7 +2645,7 @@ main() {
     print_stage_complete "Advanced detection"
 
     # Final checks
-    print_status "$BLUE" "[Stage 6/6] Final checks (actions runner, second coming repos)..."
+    print_status "$ORANGE" "[Stage 6/6] Final checks (actions runner, second coming repos)"
     check_github_actions_runner "$scan_dir"
     check_second_coming_repos "$scan_dir"
     print_stage_complete "Final checks"
