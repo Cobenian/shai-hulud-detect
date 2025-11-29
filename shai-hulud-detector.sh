@@ -1443,7 +1443,8 @@ check_package_integrity() {
             # Check for recently modified lockfiles with @ctrl packages (potential worm activity)
             if grep -q "@ctrl" "$lockfile" 2>/dev/null; then
                 local file_age
-                file_age=$(date -r "$lockfile" +%s 2>/dev/null || echo "0")
+                # FIX: Use $org_file for timestamp, not $lockfile (which may be a temp file for pnpm)
+                file_age=$(date -r "$org_file" +%s 2>/dev/null || echo "0")
                 local current_time
                 current_time=$(date +%s)
                 local age_diff=$((current_time - file_age))
