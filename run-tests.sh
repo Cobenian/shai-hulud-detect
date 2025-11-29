@@ -35,6 +35,7 @@ declare -A EXPECTED=(
     ["edge-case-project"]="0|no|no|no"         # Clean (no detections)
     ["false-positive-project"]="2|no|yes|no"   # MEDIUM: potential false positives
     ["github-actions-runners"]="1|yes|no|no"   # HIGH: malicious runners
+    ["gitlab-false-positive"]="0|no|no|no"    # Clean: non-.github YAML files (issue #83)
     ["hash-verification"]="1|yes|no|no"        # HIGH: known malicious hashes (was timeout in orig)
     ["infected-lockfile"]="2|no|yes|no"        # MEDIUM: lockfile issues
     ["infected-lockfile-pnpm"]="2|no|yes|no"   # MEDIUM: pnpm lockfile issues

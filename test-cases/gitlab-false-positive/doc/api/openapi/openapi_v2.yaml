@@ -1,0 +1,46 @@
+# OpenAPI documentation file - NOT a GitHub workflow
+# This file tests that YAML files outside .github/workflows/ are NOT flagged
+# even if they contain patterns like "on: discussion"
+openapi: "3.0.0"
+info:
+  title: GitLab API
+  version: "2.0"
+  description: |
+    This is an OpenAPI specification for the GitLab API.
+    It includes discussion endpoints but is NOT a GitHub Actions workflow.
+paths:
+  /discussions:
+    get:
+      summary: List discussions
+      description: Returns all discussions for a project
+      # on: discussion - this comment should NOT trigger a false positive
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+  /projects/{id}/discussions:
+    post:
+      summary: Create a discussion
+      # Another mention: on: discussion_comment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                body:
+                  type: string
+      responses:
+        201:
+          description: Discussion created
