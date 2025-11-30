@@ -850,7 +850,13 @@ check_file_hashes() {
     # BATCH HASH: Calculate all hashes in parallel using xargs
     # Create hash lookup file with format: hash filename
     print_status "$BLUE" "   Computing hashes in parallel..."
-    xargs -P "$PARALLELISM" shasum -a 256 < "$TEMP_DIR/priority_files.txt" 2>/dev/null | \
+    # FIX: Use sha256sum on Linux/WSL, shasum on macOS/Git Bash
+    # Check if shasum actually works (not just exists in PATH)
+    local hash_cmd="sha256sum"
+    if shasum -a 256 /dev/null &>/dev/null; then
+        hash_cmd="shasum -a 256"
+    fi
+    xargs -P "$PARALLELISM" $hash_cmd < "$TEMP_DIR/priority_files.txt" 2>/dev/null | \
         awk '{print $1, $2}' > "$TEMP_DIR/file_hashes.txt"
 
     # Create malicious hash lookup pattern for grep
@@ -1093,7 +1099,8 @@ check_packages() {
     cut -d'|' -f2 "$TEMP_DIR/all_deps.txt" | LC_ALL=C sort | uniq > "$TEMP_DIR/deps_only.txt"
 
     # Find matching deps using comm (set intersection - super fast)
-    comm -12 "$TEMP_DIR/compromised_lookup.txt" "$TEMP_DIR/deps_only.txt" > "$TEMP_DIR/matched_deps.txt"
+    # FIX: Use LC_ALL=C to ensure comm uses the same sort order as sort (Git Bash compatibility)
+    LC_ALL=C comm -12 "$TEMP_DIR/compromised_lookup.txt" "$TEMP_DIR/deps_only.txt" > "$TEMP_DIR/matched_deps.txt"
 
     # If matches found, map back to file paths
     if [[ -s "$TEMP_DIR/matched_deps.txt" ]]; then
