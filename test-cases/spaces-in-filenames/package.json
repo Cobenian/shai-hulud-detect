@@ -1,0 +1,9 @@
+{
+  "name": "spaces-in-filenames-test",
+  "version": "1.0.0",
+  "description": "Test case for filenames with spaces (issue #92)",
+  "dependencies": {
+    "lodash": "4.17.21"
+  },
+  "private": true
+}

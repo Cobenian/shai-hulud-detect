@@ -55,6 +55,7 @@ declare -A EXPECTED=(
     ["november-2025-attack"]="1|yes|yes|no"    # HIGH: November 2025 attack (was timeout in orig)
     ["semver-matching"]="0|no|no|yes"          # LOW: semver edge cases
     ["semver-wildcards"]="0|no|no|no"          # Clean
+    ["spaces-in-filenames"]="0|no|no|no"       # Clean: handles spaces in filenames (issue #92)
     ["typosquatting-project"]="0|no|no|no"     # Clean
     ["xmlhttp-legitimate"]="0|no|no|yes"       # LOW: framework XMLHttpRequest
     ["xmlhttp-malicious"]="1|yes|yes|no"       # HIGH: malicious XMLHttpRequest + MEDIUM patterns
