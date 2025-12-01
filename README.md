@@ -140,6 +140,10 @@ Check these security advisories regularly for newly discovered compromised packa
   - Linux: Most modern distributions include Bash 5.x by default
   - Check your version: `bash --version`
 - Standard Unix tools: `find`, `grep`, `shasum`
+- **Ripgrep (highly recommended)**: Install `rg` for significantly faster scanning on large codebases
+  - macOS: `brew install ripgrep`
+  - Linux: `apt install ripgrep` or `dnf install ripgrep`
+  - The script automatically uses ripgrep when available, falling back to grep otherwise
 
 ## Output Interpretation
 
@@ -418,28 +422,6 @@ This script is for **detection only**. It does not:
 - Prevent future attacks
 
 Always verify findings manually and take appropriate remediation steps.
-
-## Latest Threat Intelligence Updates
-
-### s1ngularity/Nx Connection (September 2025)
-Recent investigations have revealed a potential connection between the Shai-Hulud campaign and the Nx package ecosystem:
-- **Repository Migration Patterns**: Attackers are using repositories with "-migration" suffixes to distribute malicious packages
-- **Advanced Package Integrity Checks**: Double base64-encoded `data.json` files have been discovered in compromised package versions
-- **Additional Compromised Versions**: `tinycolor@4.1.1` and `tinycolor@4.1.2` have been identified as compromised
-- **New Package Targets**: `angulartics2` and `koa2-swagger-ui` packages have been added to the compromised list
-
-### Enhanced Detection Capabilities (v2.5.0)
-The script now includes:
-- **Fixed lockfile false positives**: Improved package version extraction to prevent incorrect flagging of safe packages (fixes issue #37)
-- **Robust lockfile parsing**: Uses block-based JSON parsing instead of proximity-based grep to accurately extract package versions
-- **Context-aware XMLHttpRequest detection**: Reduces false positives for legitimate framework code (React Native, Next.js)
-- **Improved risk stratification**: XMLHttpRequest modifications now properly classified based on context and crypto patterns
-- **Parallel processing optimization**: ~20% performance improvement with semver pattern matching
-- **Duplicate-free package database**: Cleaned 600+ unique compromised package entries
-- Repository migration pattern detection
-- Package-lock.json integrity verification
-- Context-aware Trufflehog detection to reduce false positives
-- Risk level classification (HIGH/MEDIUM/LOW) for better triage
 
 ## References
 

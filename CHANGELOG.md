@@ -5,6 +5,30 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.1] - 2025-12-01
+
+### Added
+- **Ripgrep Support**: Optional ripgrep (`rg`) integration for faster pattern matching when available (resolves GitHub issue #80)
+- **Two-Phase Destructive Pattern Check**: Implemented two-phase detection with quick pre-filter followed by detailed analysis
+
+### Fixed
+- **Large Repository Crash**: Fixed xargs "argument list too long" crash on repositories with 77,531+ files by batching hash computation with `-n 100` (resolves GitHub issue #94)
+- **Spaces in Filenames**: Fixed xargs crash when scanning files with spaces in their names by using null-delimited input throughout the script (resolves GitHub issue #92)
+- **Cross-Platform Compatibility**: Fixed Git Bash and WSL/Linux compatibility issues (merged PR #88)
+- **Network Exfiltration Comment Filtering**: Fixed comment filtering in network exfiltration detection (merged PR #81)
+
+### Changed
+- **Null-Delimited File Processing**: Updated `fast_grep_files()`, `fast_grep_files_i()`, `fast_grep_files_fixed()`, `check_file_hashes()`, `check_workflows()`, and `check_packages()` to use `tr '\n' '\0' | xargs -0` pattern for robust filename handling
+- **Batched Hash Computation**: Hash checking now processes files in batches of 100 to avoid shell argument limits on large codebases
+- **Ripgrep Detection**: Script automatically detects and uses ripgrep if installed, falling back to grep otherwise
+
+### Technical Details
+- All file processing pipelines now use null-delimited input (`-0` flag) for xargs
+- Hash computation uses `-n 100` batching combined with `-P "$PARALLELISM"` for efficient parallel processing
+- Added `HAS_RIPGREP` detection with `command -v rg` for optional performance optimization
+- Added test case `spaces-in-filenames` with files containing spaces to validate fix
+- Test suite expanded to 34 test cases
+
 ## [3.0.0] - 2025-11-29
 
 ### Breaking Changes
