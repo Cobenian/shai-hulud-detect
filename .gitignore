@@ -4,3 +4,4 @@ target
 .claude
 scratch
 *.plan
+tmp
