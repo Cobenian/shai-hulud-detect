@@ -1076,7 +1076,7 @@ check_packages() {
     # Extract all dependencies from all package.json files using parallel xargs + awk
     # Format: file_path|package_name:version
     # Use awk to parse JSON dependencies - portable and fast
-    xargs -P "$PARALLELISM" -I {} awk -v file="{}" '
+    xargs -P "$PARALLELISM" -n1 -r awk -v file="{}" '
         /"dependencies":|"devDependencies":/ {flag=1; next}
         /^[[:space:]]*\}/ {flag=0}
         flag && /^[[:space:]]*"[^"]+":/ {
@@ -1085,10 +1085,10 @@ check_packages() {
             gsub(/":[[:space:]]*"/, ":")
             gsub(/".*$/, "")
             if (length($0) > 0 && index($0, ":") > 0) {
-                print file "|" $0
+               print file "|" $0
             }
         }
-    ' {} < "$TEMP_DIR/package_files.txt" > "$TEMP_DIR/all_deps.txt" 2>/dev/null
+    ' < "$TEMP_DIR/package_files.txt" > "$TEMP_DIR/all_deps.txt" 2>/dev/null
 
     # FAST SET INTERSECTION: Use awk hash lookup instead of grep per line
     print_status "$BLUE" "   Checking dependencies against compromised list..."
@@ -1955,7 +1955,7 @@ check_network_exfiltration() {
                         if [[ -n "$line_num" ]]; then
                             snippet=$(sed -n "${line_num}p" "$file" 2>/dev/null | grep -o '.\{0,30\}atob.\{0,30\}' 2>/dev/null | head -1 2>/dev/null || true) || true
                             if [[ -z "$snippet" ]]; then
-                                snippet=$(sed -n "${line_num}p" "$file" 2>/dev/null | grep -o '.\{0,30\}base64.*decode.\{0,30\}' 2>/dev/null | head -1 2>/dev/null || true) || true
+                                snippet=$(sed -n "${line_num}p" "$file" 2>/dev/null | grep -o '.\{0,30\}base64.*decode.\{0,30\}' 2>/dev/null | head -1 2>/dev/null || true)
                             fi
                             echo "$file:Base64 decoding at line $line_num: ...${snippet}..." >> "$TEMP_DIR/network_exfiltration_warnings.txt"
                         else
