@@ -707,10 +707,12 @@ check_destructive_patterns() {
     grep -E '\.(js|py)$' "$TEMP_DIR/all_script_files.txt" > "$TEMP_DIR/js_py_files.txt" 2>/dev/null || touch "$TEMP_DIR/js_py_files.txt"
     grep -E '\.(sh|bat|ps1|cmd)$' "$TEMP_DIR/all_script_files.txt" > "$TEMP_DIR/shell_files.txt" 2>/dev/null || touch "$TEMP_DIR/shell_files.txt"
 
-    # FAST: Use xargs without -I for bulk grep (much faster)
+    # FAST: Use ripgrep for bulk pattern searching (3-6x faster than grep)
     # Batch 1: Basic destructive patterns (all file types)
     if [[ -s "$TEMP_DIR/all_script_files.txt" ]]; then
-        xargs grep -liE "$basic_destructive_regex" < "$TEMP_DIR/all_script_files.txt" 2>/dev/null | \
+        cat "$TEMP_DIR/all_script_files.txt" | tr '\n' '\0' | \
+            xargs -0 -r rg --files-with-matches --no-heading --ignore-case -e "$basic_destructive_regex" \
+                --path-separator / 2>/dev/null | \
             while IFS= read -r file; do
                 echo "$file:Basic destructive pattern detected" >> "$TEMP_DIR/destructive_patterns.txt"
             done || true
@@ -718,7 +720,9 @@ check_destructive_patterns() {
 
     # Batch 2: JavaScript/Python conditional patterns
     if [[ -s "$TEMP_DIR/js_py_files.txt" ]]; then
-        xargs grep -liE "$js_py_conditional_regex" < "$TEMP_DIR/js_py_files.txt" 2>/dev/null | \
+        cat "$TEMP_DIR/js_py_files.txt" | tr '\n' '\0' | \
+            xargs -0 -r rg --files-with-matches --no-heading --ignore-case -e "$js_py_conditional_regex" \
+                --path-separator / 2>/dev/null | \
             while IFS= read -r file; do
                 echo "$file:Conditional destruction pattern detected (JS/Python context)" >> "$TEMP_DIR/destructive_patterns.txt"
             done || true
@@ -726,7 +730,9 @@ check_destructive_patterns() {
 
     # Batch 3: Shell script conditional patterns
     if [[ -s "$TEMP_DIR/shell_files.txt" ]]; then
-        xargs grep -liE "$shell_conditional_regex" < "$TEMP_DIR/shell_files.txt" 2>/dev/null | \
+        cat "$TEMP_DIR/shell_files.txt" | tr '\n' '\0' | \
+            xargs -0 -r rg --files-with-matches --no-heading --ignore-case -e "$shell_conditional_regex" \
+                --path-separator / 2>/dev/null | \
             while IFS= read -r file; do
                 echo "$file:Conditional destruction pattern detected (Shell script context)" >> "$TEMP_DIR/destructive_patterns.txt"
             done || true
@@ -1162,20 +1168,20 @@ check_content() {
     local scan_dir=$1
     print_status "$BLUE" "   Checking for suspicious content patterns..."
 
-    # FAST: Use xargs with grep -l for bulk searching instead of per-file grep
+    # FAST: Use ripgrep for bulk pattern searching (3-6x faster than grep)
     # Search for webhook.site references
-    {
-        xargs grep -l "webhook\.site" < <(cat "$TEMP_DIR/code_files.txt" "$TEMP_DIR/yaml_files.txt" 2>/dev/null) 2>/dev/null || true
-    } | while read -r file; do
+    cat "$TEMP_DIR/code_files.txt" "$TEMP_DIR/yaml_files.txt" 2>/dev/null | tr '\n' '\0' | \
+        xargs -0 -r rg --files-with-matches --no-heading --fixed-strings "webhook.site" \
+            --path-separator / 2>/dev/null | while read -r file; do
         [[ -n "$file" ]] && echo "$file:webhook.site reference" >> "$TEMP_DIR/suspicious_content.txt"
-    done
+    done || true
 
     # Search for malicious webhook endpoint
-    {
-        xargs grep -l "bb8ca5f6-4175-45d2-b042-fc9ebb8170b7" < <(cat "$TEMP_DIR/code_files.txt" "$TEMP_DIR/yaml_files.txt" 2>/dev/null) 2>/dev/null || true
-    } | while read -r file; do
+    cat "$TEMP_DIR/code_files.txt" "$TEMP_DIR/yaml_files.txt" 2>/dev/null | tr '\n' '\0' | \
+        xargs -0 -r rg --files-with-matches --no-heading --fixed-strings "bb8ca5f6-4175-45d2-b042-fc9ebb8170b7" \
+            --path-separator / 2>/dev/null | while read -r file; do
         [[ -n "$file" ]] && echo "$file:malicious webhook endpoint" >> "$TEMP_DIR/suspicious_content.txt"
-    done
+    done || true
 }
 
 # Function: check_crypto_theft_patterns
@@ -1187,71 +1193,71 @@ check_crypto_theft_patterns() {
     local scan_dir=$1
     print_status "$BLUE" "   Checking for cryptocurrency theft patterns..."
 
-    # FAST: Use xargs with grep -l for bulk pattern searching
+    # FAST: Use ripgrep for bulk pattern searching (3-6x faster than grep)
     # Check for specific malicious functions from chalk/debug attack (highest priority)
-    {
-        xargs grep -lE "checkethereumw|runmask|newdlocal|_0x19ca67" < "$TEMP_DIR/code_files.txt" 2>/dev/null || true
-    } | while read -r file; do
+    cat "$TEMP_DIR/code_files.txt" | tr '\n' '\0' | \
+        xargs -0 -r rg --files-with-matches --no-heading -e "checkethereumw|runmask|newdlocal|_0x19ca67" \
+            --path-separator / 2>/dev/null | while read -r file; do
         [[ -n "$file" ]] && echo "$file:Known crypto theft function names detected" >> "$TEMP_DIR/crypto_patterns.txt"
-    done
+    done || true
 
     # Check for known attacker wallets (high priority)
-    {
-        xargs grep -lE "0xFc4a4858bafef54D1b1d7697bfb5c52F4c166976|1H13VnQJKtT4HjD5ZFKaaiZEetMbG7nDHx|TB9emsCq6fQw6wRk4HBxxNnU6Hwt1DnV67" < "$TEMP_DIR/code_files.txt" 2>/dev/null || true
-    } | while read -r file; do
+    cat "$TEMP_DIR/code_files.txt" | tr '\n' '\0' | \
+        xargs -0 -r rg --files-with-matches --no-heading -e "0xFc4a4858bafef54D1b1d7697bfb5c52F4c166976|1H13VnQJKtT4HjD5ZFKaaiZEetMbG7nDHx|TB9emsCq6fQw6wRk4HBxxNnU6Hwt1DnV67" \
+            --path-separator / 2>/dev/null | while read -r file; do
         [[ -n "$file" ]] && echo "$file:Known attacker wallet address detected - HIGH RISK" >> "$TEMP_DIR/crypto_patterns.txt"
-    done
+    done || true
 
     # Check for npmjs.help phishing domain
-    {
-        xargs grep -l "npmjs\.help" < "$TEMP_DIR/code_files.txt" 2>/dev/null || true
-    } | while read -r file; do
+    cat "$TEMP_DIR/code_files.txt" | tr '\n' '\0' | \
+        xargs -0 -r rg --files-with-matches --no-heading --fixed-strings "npmjs.help" \
+            --path-separator / 2>/dev/null | while read -r file; do
         [[ -n "$file" ]] && echo "$file:Phishing domain npmjs.help detected" >> "$TEMP_DIR/crypto_patterns.txt"
-    done
+    done || true
 
     # Check for XMLHttpRequest hijacking (medium priority - filter out framework code)
-    {
-        xargs grep -l "XMLHttpRequest\.prototype\.send" < "$TEMP_DIR/code_files.txt" 2>/dev/null || true
-    } | while read -r file; do
+    cat "$TEMP_DIR/code_files.txt" | tr '\n' '\0' | \
+        xargs -0 -r rg --files-with-matches --no-heading --fixed-strings "XMLHttpRequest.prototype.send" \
+            --path-separator / 2>/dev/null | while read -r file; do
         [[ -z "$file" ]] && continue
         if [[ "$file" == *"/react-native/Libraries/Network/"* ]] || [[ "$file" == *"/next/dist/compiled/"* ]]; then
             # Framework code - check for crypto patterns too
-            if grep -qE "0x[a-fA-F0-9]{40}|checkethereumw|runmask|webhook\.site|npmjs\.help" "$file" 2>/dev/null; then
+            if rg -q "0x[a-fA-F0-9]{40}|checkethereumw|runmask|webhook\.site|npmjs\.help" "$file" 2>/dev/null; then
                 echo "$file:XMLHttpRequest prototype modification with crypto patterns detected - HIGH RISK" >> "$TEMP_DIR/crypto_patterns.txt"
             else
                 echo "$file:XMLHttpRequest prototype modification detected in framework code - LOW RISK" >> "$TEMP_DIR/crypto_patterns.txt"
             fi
         else
-            if grep -qE "0x[a-fA-F0-9]{40}|checkethereumw|runmask|webhook\.site|npmjs\.help" "$file" 2>/dev/null; then
+            if rg -q "0x[a-fA-F0-9]{40}|checkethereumw|runmask|webhook\.site|npmjs\.help" "$file" 2>/dev/null; then
                 echo "$file:XMLHttpRequest prototype modification with crypto patterns detected - HIGH RISK" >> "$TEMP_DIR/crypto_patterns.txt"
             else
                 echo "$file:XMLHttpRequest prototype modification detected - MEDIUM RISK" >> "$TEMP_DIR/crypto_patterns.txt"
             fi
         fi
-    done
+    done || true
 
     # Check for javascript obfuscation
-    {
-        xargs grep -l "javascript-obfuscator" < "$TEMP_DIR/code_files.txt" 2>/dev/null || true
-    } | while read -r file; do
+    cat "$TEMP_DIR/code_files.txt" | tr '\n' '\0' | \
+        xargs -0 -r rg --files-with-matches --no-heading --fixed-strings "javascript-obfuscator" \
+            --path-separator / 2>/dev/null | while read -r file; do
         [[ -n "$file" ]] && echo "$file:JavaScript obfuscation detected" >> "$TEMP_DIR/crypto_patterns.txt"
-    done
+    done || true
 
     # Check for generic Ethereum wallet address patterns (MEDIUM priority)
     # Files with 0x addresses AND crypto-related keywords
-    {
-        xargs grep -lE "0x[a-fA-F0-9]{40}" < "$TEMP_DIR/code_files.txt" 2>/dev/null || true
-    } | while read -r file; do
+    cat "$TEMP_DIR/code_files.txt" | tr '\n' '\0' | \
+        xargs -0 -r rg --files-with-matches --no-heading -e "0x[a-fA-F0-9]{40}" \
+            --path-separator / 2>/dev/null | while read -r file; do
         [[ -z "$file" ]] && continue
         # Skip if already flagged as HIGH RISK
         if grep -qF "$file:" "$TEMP_DIR/crypto_patterns.txt" 2>/dev/null; then
             continue
         fi
         # Check for crypto-related context keywords
-        if grep -qE "ethereum|wallet|address|crypto" "$file" 2>/dev/null; then
+        if rg -q "ethereum|wallet|address|crypto" "$file" 2>/dev/null; then
             echo "$file:Ethereum wallet address patterns detected" >> "$TEMP_DIR/crypto_patterns.txt"
         fi
-    done
+    done || true
 }
 
 # Function: check_git_branches
@@ -1488,52 +1494,58 @@ check_trufflehog_activity() {
     cat "$TEMP_DIR/script_files.txt" "$TEMP_DIR/code_files.txt" 2>/dev/null | sort -u > "$TEMP_DIR/trufflehog_scan_files.txt"
 
     # HIGH PRIORITY: Dynamic TruffleHog download patterns (November 2025 attack)
-    { xargs grep -lE "curl.*trufflehog|wget.*trufflehog|bunExecutable.*trufflehog|download.*trufflehog" \
-        < "$TEMP_DIR/trufflehog_scan_files.txt" 2>/dev/null || true; } | while read -r file; do
+    cat "$TEMP_DIR/trufflehog_scan_files.txt" | tr '\n' '\0' | \
+        xargs -0 -r rg --files-with-matches --no-heading -e "curl.*trufflehog|wget.*trufflehog|bunExecutable.*trufflehog|download.*trufflehog" \
+            --path-separator / 2>/dev/null | while read -r file; do
         [[ -n "$file" ]] && echo "$file:HIGH:November 2025 pattern - Dynamic TruffleHog download via curl/wget/Bun" >> "$TEMP_DIR/trufflehog_activity.txt"
-    done
+    done || true
 
     # HIGH PRIORITY: TruffleHog credential harvesting patterns
-    { xargs grep -lE "TruffleHog.*scan.*credential|trufflehog.*env|trufflehog.*AWS|trufflehog.*NPM_TOKEN" \
-        < "$TEMP_DIR/trufflehog_scan_files.txt" 2>/dev/null || true; } | while read -r file; do
+    cat "$TEMP_DIR/trufflehog_scan_files.txt" | tr '\n' '\0' | \
+        xargs -0 -r rg --files-with-matches --no-heading -e "TruffleHog.*scan.*credential|trufflehog.*env|trufflehog.*AWS|trufflehog.*NPM_TOKEN" \
+            --path-separator / 2>/dev/null | while read -r file; do
         [[ -n "$file" ]] && echo "$file:HIGH:TruffleHog credential scanning pattern detected" >> "$TEMP_DIR/trufflehog_activity.txt"
-    done
+    done || true
 
     # HIGH PRIORITY: Credential patterns with exfiltration indicators
-    { xargs grep -lE "(AWS_ACCESS_KEY|GITHUB_TOKEN|NPM_TOKEN).*(webhook\.site|curl|https\.request)" \
-        < "$TEMP_DIR/trufflehog_scan_files.txt" 2>/dev/null || true; } | \
-        { grep -v "/node_modules/\|\.d\.ts$" || true; } | while read -r file; do
+    cat "$TEMP_DIR/trufflehog_scan_files.txt" | tr '\n' '\0' | \
+        xargs -0 -r rg --files-with-matches --no-heading -e "(AWS_ACCESS_KEY|GITHUB_TOKEN|NPM_TOKEN).*(webhook\.site|curl|https\.request)" \
+            --path-separator / 2>/dev/null | \
+        grep -v "/node_modules/\|\.d\.ts$" | while read -r file; do
         [[ -n "$file" ]] && echo "$file:HIGH:Credential patterns with potential exfiltration" >> "$TEMP_DIR/trufflehog_activity.txt"
-    done
+    done || true
 
     # MEDIUM PRIORITY: Trufflehog references in source code (not node_modules/docs)
-    { xargs grep -l "trufflehog\|TruffleHog" \
-        < "$TEMP_DIR/trufflehog_scan_files.txt" 2>/dev/null || true; } | \
-        { grep -v "/node_modules/\|\.md$\|/docs/\|\.d\.ts$" || true; } | while read -r file; do
+    cat "$TEMP_DIR/trufflehog_scan_files.txt" | tr '\n' '\0' | \
+        xargs -0 -r rg --files-with-matches --no-heading -e "trufflehog|TruffleHog" \
+            --path-separator / 2>/dev/null | \
+        grep -v "/node_modules/\|\.md$\|/docs/\|\.d\.ts$" | while read -r file; do
         # Check if already flagged as HIGH
         if [[ -n "$file" ]] && ! grep -qF "$file:" "$TEMP_DIR/trufflehog_activity.txt" 2>/dev/null; then
             echo "$file:MEDIUM:Contains trufflehog references in source code" >> "$TEMP_DIR/trufflehog_activity.txt"
         fi
-    done
+    done || true
 
     # MEDIUM PRIORITY: Credential scanning patterns (not in type definitions)
-    { xargs grep -lE "AWS_ACCESS_KEY|GITHUB_TOKEN|NPM_TOKEN" \
-        < "$TEMP_DIR/trufflehog_scan_files.txt" 2>/dev/null || true; } | \
-        { grep -v "/node_modules/\|\.d\.ts$\|/docs/" || true; } | while read -r file; do
+    cat "$TEMP_DIR/trufflehog_scan_files.txt" | tr '\n' '\0' | \
+        xargs -0 -r rg --files-with-matches --no-heading -e "AWS_ACCESS_KEY|GITHUB_TOKEN|NPM_TOKEN" \
+            --path-separator / 2>/dev/null | \
+        grep -v "/node_modules/\|\.d\.ts$\|/docs/" | while read -r file; do
         # Check if already flagged
         if [[ -n "$file" ]] && ! grep -qF "$file:" "$TEMP_DIR/trufflehog_activity.txt" 2>/dev/null; then
             echo "$file:MEDIUM:Contains credential scanning patterns" >> "$TEMP_DIR/trufflehog_activity.txt"
         fi
-    done
+    done || true
 
     # LOW PRIORITY: Environment variable scanning with suspicious patterns
-    { xargs grep -lE "(process\.env|os\.environ|getenv).*(scan|harvest|steal|exfiltrat)" \
-        < "$TEMP_DIR/trufflehog_scan_files.txt" 2>/dev/null || true; } | \
-        { grep -v "/node_modules/\|\.d\.ts$" || true; } | while read -r file; do
+    cat "$TEMP_DIR/trufflehog_scan_files.txt" | tr '\n' '\0' | \
+        xargs -0 -r rg --files-with-matches --no-heading -e "(process\.env|os\.environ|getenv).*(scan|harvest|steal|exfiltrat)" \
+            --path-separator / 2>/dev/null | \
+        grep -v "/node_modules/\|\.d\.ts$" | while read -r file; do
         if [[ -n "$file" ]] && ! grep -qF "$file:" "$TEMP_DIR/trufflehog_activity.txt" 2>/dev/null; then
             echo "$file:LOW:Potentially suspicious environment variable access" >> "$TEMP_DIR/trufflehog_activity.txt"
         fi
-    done
+    done || true
 }
 
 # Function: check_shai_hulud_repos
