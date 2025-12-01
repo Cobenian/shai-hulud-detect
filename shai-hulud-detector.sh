@@ -940,7 +940,8 @@ check_file_hashes() {
     if shasum -a 256 /dev/null &>/dev/null; then
         hash_cmd="shasum -a 256"
     fi
-    xargs -P "$PARALLELISM" $hash_cmd < "$TEMP_DIR/priority_files.txt" 2>/dev/null | \
+    # Use -n 100 to batch files and avoid "argument list too long" on large repos (issue #94)
+    xargs -n 100 -P "$PARALLELISM" $hash_cmd < "$TEMP_DIR/priority_files.txt" 2>/dev/null | \
         awk '{print $1, $2}' > "$TEMP_DIR/file_hashes.txt"
 
     # Create malicious hash lookup pattern for grep
