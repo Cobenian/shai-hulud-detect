@@ -717,11 +717,28 @@ check_destructive_patterns() {
     fi
 
     # Batch 2: JavaScript/Python conditional patterns
+    # Use ripgrep if available (much faster on large files), otherwise use two-stage grep filtering
     if [[ -s "$TEMP_DIR/js_py_files.txt" ]]; then
-        xargs grep -liE "$js_py_conditional_regex" < "$TEMP_DIR/js_py_files.txt" 2>/dev/null | \
-            while IFS= read -r file; do
-                echo "$file:Conditional destruction pattern detected (JS/Python context)" >> "$TEMP_DIR/destructive_patterns.txt"
-            done || true
+        if command -v rg >/dev/null 2>&1; then
+            # FAST PATH: ripgrep handles long lines efficiently without catastrophic backtracking
+            xargs rg -l --no-messages -e "$js_py_conditional_regex" < "$TEMP_DIR/js_py_files.txt" 2>/dev/null | \
+                while IFS= read -r file; do
+                    echo "$file:Conditional destruction pattern detected (JS/Python context)" >> "$TEMP_DIR/destructive_patterns.txt"
+                done || true
+        else
+            # FALLBACK: Two-stage grep to avoid catastrophic backtracking on minified files
+            # Stage 1: Fast keyword filter to find candidate files
+            # These keywords must appear for the conditional pattern to match
+            xargs grep -liE "credential|token|github.*auth" < "$TEMP_DIR/js_py_files.txt" 2>/dev/null > "$TEMP_DIR/js_py_candidates.txt" || true
+
+            # Stage 2: Apply complex regex only to candidate files
+            if [[ -s "$TEMP_DIR/js_py_candidates.txt" ]]; then
+                xargs grep -liE "$js_py_conditional_regex" < "$TEMP_DIR/js_py_candidates.txt" 2>/dev/null | \
+                    while IFS= read -r file; do
+                        echo "$file:Conditional destruction pattern detected (JS/Python context)" >> "$TEMP_DIR/destructive_patterns.txt"
+                    done || true
+            fi
+        fi
     fi
 
     # Batch 3: Shell script conditional patterns
