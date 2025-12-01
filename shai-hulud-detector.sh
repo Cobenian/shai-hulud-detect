@@ -403,12 +403,13 @@ print_status() {
 # Purpose: Find files matching a pattern (case-sensitive)
 # Args: $1 = pattern (stdin = list of files to search)
 # Output: Matching filenames to stdout
+# Note: Uses null-delimited input to handle filenames with spaces (issue #92)
 fast_grep_files() {
     local pattern="$1"
     if [[ "$HAS_RIPGREP" == "true" ]]; then
-        xargs rg -l --no-messages -e "$pattern" 2>/dev/null || true
+        tr '\n' '\0' | xargs -0 rg -l --no-messages -e "$pattern" 2>/dev/null || true
     else
-        xargs grep -lE "$pattern" 2>/dev/null || true
+        tr '\n' '\0' | xargs -0 grep -lE "$pattern" 2>/dev/null || true
     fi
 }
 
@@ -416,12 +417,13 @@ fast_grep_files() {
 # Purpose: Find files matching a pattern (case-insensitive)
 # Args: $1 = pattern (stdin = list of files to search)
 # Output: Matching filenames to stdout
+# Note: Uses null-delimited input to handle filenames with spaces (issue #92)
 fast_grep_files_i() {
     local pattern="$1"
     if [[ "$HAS_RIPGREP" == "true" ]]; then
-        xargs rg -li --no-messages -e "$pattern" 2>/dev/null || true
+        tr '\n' '\0' | xargs -0 rg -li --no-messages -e "$pattern" 2>/dev/null || true
     else
-        xargs grep -liE "$pattern" 2>/dev/null || true
+        tr '\n' '\0' | xargs -0 grep -liE "$pattern" 2>/dev/null || true
     fi
 }
 
@@ -429,12 +431,13 @@ fast_grep_files_i() {
 # Purpose: Find files matching a fixed string (faster, no regex)
 # Args: $1 = literal string (stdin = list of files to search)
 # Output: Matching filenames to stdout
+# Note: Uses null-delimited input to handle filenames with spaces (issue #92)
 fast_grep_files_fixed() {
     local pattern="$1"
     if [[ "$HAS_RIPGREP" == "true" ]]; then
-        xargs rg -l --no-messages --fixed-strings "$pattern" 2>/dev/null || true
+        tr '\n' '\0' | xargs -0 rg -l --no-messages --fixed-strings "$pattern" 2>/dev/null || true
     else
-        xargs grep -lF "$pattern" 2>/dev/null || true
+        tr '\n' '\0' | xargs -0 grep -lF "$pattern" 2>/dev/null || true
     fi
 }
 
@@ -678,14 +681,18 @@ check_discussion_workflows() {
     fi
 
     # Batch 1: Discussion trigger patterns (combined for efficiency)
-    xargs -I {} grep -l -E "on:.*discussion|on:\s*discussion" {} 2>/dev/null < "$TEMP_DIR/valid_workflows.txt" | \
+    # Use null-delimited input to handle filenames with spaces (issue #92)
+    tr '\n' '\0' < "$TEMP_DIR/valid_workflows.txt" | \
+        xargs -0 -I {} grep -l -E "on:.*discussion|on:\s*discussion" {} 2>/dev/null | \
         while IFS= read -r file; do
             echo "$file:Discussion trigger detected" >> "$TEMP_DIR/discussion_workflows.txt"
         done || true
 
     # Batch 2: Self-hosted runners with dynamic payloads (two-stage batch processing)
-    xargs -I {} grep -l "runs-on:.*self-hosted" {} 2>/dev/null < "$TEMP_DIR/valid_workflows.txt" | \
-        xargs -I {} grep -l "\${{ github\.event\..*\.body }}" {} 2>/dev/null | \
+    # Use null-delimited input to handle filenames with spaces (issue #92)
+    tr '\n' '\0' < "$TEMP_DIR/valid_workflows.txt" | \
+        xargs -0 -I {} grep -l "runs-on:.*self-hosted" {} 2>/dev/null | \
+        tr '\n' '\0' | xargs -0 -I {} grep -l "\${{ github\.event\..*\.body }}" {} 2>/dev/null | \
         while IFS= read -r file; do
             echo "$file:Self-hosted runner with dynamic payload execution" >> "$TEMP_DIR/discussion_workflows.txt"
         done || true
@@ -941,7 +948,9 @@ check_file_hashes() {
         hash_cmd="shasum -a 256"
     fi
     # Use -n 100 to batch files and avoid "argument list too long" on large repos (issue #94)
-    xargs -n 100 -P "$PARALLELISM" $hash_cmd < "$TEMP_DIR/priority_files.txt" 2>/dev/null | \
+    # Use null-delimited input to handle filenames with spaces (issue #92)
+    tr '\n' '\0' < "$TEMP_DIR/priority_files.txt" | \
+        xargs -0 -n 100 -P "$PARALLELISM" $hash_cmd 2>/dev/null | \
         awk '{print $1, $2}' > "$TEMP_DIR/file_hashes.txt"
 
     # Create malicious hash lookup pattern for grep
@@ -1161,7 +1170,9 @@ check_packages() {
     # Extract all dependencies from all package.json files using parallel xargs + awk
     # Format: file_path|package_name:version
     # Use awk to parse JSON dependencies - portable and fast
-    xargs -P "$PARALLELISM" -I {} awk -v file="{}" '
+    # Use null-delimited input to handle filenames with spaces (issue #92)
+    tr '\n' '\0' < "$TEMP_DIR/package_files.txt" | \
+        xargs -0 -P "$PARALLELISM" -I {} awk -v file="{}" '
         /"dependencies":|"devDependencies":/ {flag=1; next}
         /^[[:space:]]*\}/ {flag=0}
         flag && /^[[:space:]]*"[^"]+":/ {
@@ -1173,7 +1184,7 @@ check_packages() {
                 print file "|" $0
             }
         }
-    ' {} < "$TEMP_DIR/package_files.txt" > "$TEMP_DIR/all_deps.txt" 2>/dev/null
+    ' {} > "$TEMP_DIR/all_deps.txt" 2>/dev/null
 
     # FAST SET INTERSECTION: Use awk hash lookup instead of grep per line
     print_status "$BLUE" "   Checking dependencies against compromised list..."
