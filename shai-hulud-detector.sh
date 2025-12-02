@@ -1172,19 +1172,19 @@ check_packages() {
     # Use awk to parse JSON dependencies - portable and fast
     # Use null-delimited input to handle filenames with spaces (issue #92)
     tr '\n' '\0' < "$TEMP_DIR/package_files.txt" | \
-        xargs -0 -P "$PARALLELISM" -I {} awk -v file="{}" '
-        /"dependencies":|"devDependencies":/ {flag=1; next}
-        /^[[:space:]]*\}/ {flag=0}
-        flag && /^[[:space:]]*"[^"]+":/ {
-            # Extract "package": "version"
-            gsub(/^[[:space:]]*"/, "")
-            gsub(/":[[:space:]]*"/, ":")
-            gsub(/".*$/, "")
-            if (length($0) > 0 && index($0, ":") > 0) {
-                print file "|" $0
+        xargs -0 -P "$PARALLELISM" -n1 -r awk '
+            /"dependencies":|"devDependencies":/ {flag=1; next}
+            /^[[:space:]]*\}/ {flag=0}
+            flag && /^[[:space:]]*"[^"]+":/ {
+                # Extract "package": "version"
+                gsub(/^[[:space:]]*"/, "")
+                gsub(/":[[:space:]]*"/, ":")
+                gsub(/".*$/, "")
+                if (length($0) > 0 && index($0, ":") > 0) {
+                    print FILENAME "|" $0
+                }
             }
-        }
-    ' {} > "$TEMP_DIR/all_deps.txt" 2>/dev/null
+        ' > "$TEMP_DIR/all_deps.txt" 2>/dev/null
 
     # FAST SET INTERSECTION: Use awk hash lookup instead of grep per line
     print_status "$BLUE" "   Checking dependencies against compromised list..."
