@@ -765,11 +765,13 @@ check_destructive_patterns() {
     # Phase 3 Optimization: Pre-compile combined regex patterns for batch processing
     # Basic destructive patterns - ONLY flag when targeting user directories ($HOME, ~, /home/)
     # Standalone rimraf/unlinkSync/rmSync removed to reduce false positives (GitHub issue #74)
-    local basic_destructive_regex="rm -rf[[:space:]]+(\\\$HOME|~[^a-zA-Z0-9_/]|/home/)|del /s /q[[:space:]]+(%USERPROFILE%|\\\$HOME)|Remove-Item -Recurse[[:space:]]+(\\\$HOME|~[^a-zA-Z0-9_/])|find[[:space:]]+(\\\$HOME|~[^a-zA-Z0-9_/]|/home/).*-exec rm|find[[:space:]]+(\\\$HOME|~[^a-zA-Z0-9_/]|/home/).*-delete|\\\$HOME/[*]|~/[*]|/home/[^/]+/[*]"
+    # Standalone glob patterns ($HOME/*, ~/*) removed - they match comments/docs (GitHub issue #105)
+    local basic_destructive_regex="rm -rf[[:space:]]+(\\\$HOME|~[^a-zA-Z0-9_/]|/home/)|del /s /q[[:space:]]+(%USERPROFILE%|\\\$HOME)|Remove-Item -Recurse[[:space:]]+(\\\$HOME|~[^a-zA-Z0-9_/])|find[[:space:]]+(\\\$HOME|~[^a-zA-Z0-9_/]|/home/).*-exec rm|find[[:space:]]+(\\\$HOME|~[^a-zA-Z0-9_/]|/home/).*-delete"
 
-    # Conditional patterns for JavaScript/Python (limited span patterns)
-    # Note: exec.{1,30}rm limits span to avoid matching minified code where "exec" and "rm" are far apart
-    local js_py_conditional_regex="if.{1,200}credential.{1,50}(fail|error).{1,50}(rm -|fs\.|rimraf|exec|spawn|child_process)|if.{1,200}token.{1,50}not.{1,20}found.{1,50}(rm -|del |fs\.|rimraf|unlinkSync|rmSync)|if.{1,200}github.{1,50}auth.{1,50}fail.{1,50}(rm -|fs\.|rimraf|exec)|catch.{1,100}(rm -rf|fs\.rm|rimraf|exec.{1,30}rm)|error.{1,100}(rm -|del |fs\.|rimraf).{1,100}(\\\$HOME|~/|home.*(directory|folder|path))"
+    # Shai-Hulud 2.0 wiper patterns - SPECIFIC signatures from actual malware (Koi Security disclosure)
+    # These tight patterns eliminate false positives on TypeScript/minified JS (GitHub issue #105)
+    # while still catching the real wiper code that uses Bun.spawnSync, shred, cipher, etc.
+    local shai_hulud_wiper_regex="Bun\.spawnSync.{1,50}(cmd\.exe|bash).{1,100}(del /F|shred|cipher /W)|shred.{1,30}-[nuvz].{1,50}(\\\$HOME|~/)|cipher[[:space:]]*/W:.{0,30}USERPROFILE|del[[:space:]]*/F[[:space:]]*/Q[[:space:]]*/S.{1,30}USERPROFILE|find.{1,30}\\\$HOME.{1,50}shred|rd[[:space:]]*/S[[:space:]]*/Q.{1,30}USERPROFILE"
 
     # Shell-specific patterns (broader patterns for actual shell scripts)
     local shell_conditional_regex="if.*credential.*(fail|error).*rm|if.*token.*not.*found.*(delete|rm)|if.*github.*auth.*fail.*rm|catch.*rm -rf|error.*delete.*home"
@@ -790,29 +792,13 @@ check_destructive_patterns() {
             done
     fi
 
-    # Batch 2: JavaScript/Python conditional patterns
-    # Use ripgrep if available (much faster on large files), otherwise use two-stage grep filtering
+    # Batch 2: JavaScript/Python Shai-Hulud wiper patterns
+    # Simplified to single-pass using tight signatures (no more two-stage grep or backtracking issues)
     if [[ -s "$TEMP_DIR/js_py_files.txt" ]]; then
-        if [[ "$HAS_RIPGREP" == "true" ]]; then
-            # FAST PATH: ripgrep handles long lines efficiently without catastrophic backtracking
-            fast_grep_files_i "$js_py_conditional_regex" < "$TEMP_DIR/js_py_files.txt" | \
-                while IFS= read -r file; do
-                    echo "$file:Conditional destruction pattern detected (JS/Python context)" >> "$TEMP_DIR/destructive_patterns.txt"
-                done
-        else
-            # FALLBACK: Two-stage grep to avoid catastrophic backtracking on minified files
-            # Stage 1: Fast keyword filter to find candidate files
-            # These keywords must appear for the conditional pattern to match
-            fast_grep_files_i "credential|token|github.*auth" < "$TEMP_DIR/js_py_files.txt" > "$TEMP_DIR/js_py_candidates.txt"
-
-            # Stage 2: Apply complex regex only to candidate files
-            if [[ -s "$TEMP_DIR/js_py_candidates.txt" ]]; then
-                fast_grep_files_i "$js_py_conditional_regex" < "$TEMP_DIR/js_py_candidates.txt" | \
-                    while IFS= read -r file; do
-                        echo "$file:Conditional destruction pattern detected (JS/Python context)" >> "$TEMP_DIR/destructive_patterns.txt"
-                    done
-            fi
-        fi
+        fast_grep_files_i "$shai_hulud_wiper_regex" < "$TEMP_DIR/js_py_files.txt" | \
+            while IFS= read -r file; do
+                echo "$file:Shai-Hulud wiper pattern detected (JS/Python context)" >> "$TEMP_DIR/destructive_patterns.txt"
+            done
     fi
 
     # Batch 3: Shell script conditional patterns
