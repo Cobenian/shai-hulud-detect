@@ -55,6 +55,9 @@ chmod +x shai-hulud-detector.sh
 # For comprehensive security scanning
 ./shai-hulud-detector.sh --paranoid /path/to/your/project
 
+# Save findings to a log file for review or CI/CD artifacts
+./shai-hulud-detector.sh --save-log report.log /path/to/your/project
+
 # Check exit code for CI/CD integration
 ./shai-hulud-detector.sh /path/to/your/project
 echo "Exit code: $?"  # 0=clean, 1=high-risk, 2=medium-risk
@@ -230,6 +233,31 @@ case $exit_code in
        ;;
 esac
 ```
+
+### Saving Findings to a Log File
+
+Use `--save-log FILE` to save all detected file paths to a structured log file:
+
+```bash
+./shai-hulud-detector.sh --save-log findings.log /path/to/project
+```
+
+The log file contains file paths grouped by severity level:
+
+```
+# HIGH
+/path/to/malicious-workflow.yml
+/path/to/compromised-package.json
+# MEDIUM
+/path/to/suspicious-content.js
+# LOW
+/path/to/namespace-warning.json
+```
+
+This format is designed for:
+- **CI/CD artifacts**: Store scan results as build artifacts for review
+- **Programmatic parsing**: Easy to parse with simple scripts
+- **Full coverage**: Includes ALL findings without display truncation
 
 ## Testing
 
