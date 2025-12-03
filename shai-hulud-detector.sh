@@ -2215,7 +2215,9 @@ write_log_file() {
         fi
 
         # Namespace warnings (has full paths in format: /path/to/file:namespace_info)
-        [[ -s "$TEMP_DIR/namespace_warnings.txt" ]] && cut -d: -f1 "$TEMP_DIR/namespace_warnings.txt"
+        if [[ -s "$TEMP_DIR/namespace_warnings.txt" ]]; then
+            cut -d: -f1 "$TEMP_DIR/namespace_warnings.txt" || true
+        fi
     } | sort -u >> "$log_file"
 
     print_status "$GREEN" "Log saved to: $log_file"
