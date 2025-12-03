@@ -5,6 +5,28 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.4] - 2025-12-03
+
+### Changed
+- **Default Grep Tool**: Changed default from ripgrep to git-grep for ~40% faster scanning on large codebases
+- **Grep Tool Priority**: Auto-selection now follows: git-grep > ripgrep > grep (based on availability)
+
+### Added
+- **--use-git-grep flag**: Force use of git grep (DFA-based, no backtracking)
+- **--use-ripgrep flag**: Force use of ripgrep
+- **--use-grep flag**: Force use of standard grep
+- **Grep Tool Documentation**: Added explanation of why git-grep is fastest in README.md
+
+### Fixed
+- **PR #110 pipefail bug**: Fixed `--save-log` returning exit code 1 on clean projects with comprehensive `|| true` fixes
+
+### Technical Details
+- Replaced `USE_GIT_GREP` boolean with `GREP_TOOL` string ("git-grep", "ripgrep", "grep")
+- Added `select_grep_tool()` function for auto-detection after argument parsing
+- Flag overrides take priority over auto-detection
+- Script exits with error if user-specified tool is not installed
+- Updated `fast_grep_files()`, `fast_grep_files_i()`, `fast_grep_files_fixed()`, and `fast_grep_quiet()` to use case statements
+
 ## [3.0.3] - 2025-12-02
 
 ### Added

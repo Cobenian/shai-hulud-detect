@@ -107,17 +107,45 @@ BLUE='\033[0;34m'
 ORANGE='\033[38;5;172m'  # Muted orange for stage headers (256-color mode)
 NC='\033[0m' # No Color
 
-# Detect ripgrep availability once at startup for performance optimization
-# ripgrep handles large files and complex patterns much more efficiently than grep
-if command -v rg >/dev/null 2>&1; then
-    HAS_RIPGREP=true
-else
-    HAS_RIPGREP=false
+# Detect available grep tools at startup
+# Priority order: git-grep > ripgrep > grep
+# git-grep is fastest (~40% faster than ripgrep) and uses DFA-based regex (no backtracking)
+
+HAS_GIT_GREP=false
+HAS_RIPGREP=false
+
+# Check for git grep (requires git to be installed)
+if command -v git >/dev/null 2>&1; then
+    HAS_GIT_GREP=true
 fi
 
-# Git grep mode flag - set via --use-git-grep for systems without ripgrep
-# git grep uses a DFA-based regex engine (no backtracking) like ripgrep
-USE_GIT_GREP=false
+# Check for ripgrep
+if command -v rg >/dev/null 2>&1; then
+    HAS_RIPGREP=true
+fi
+
+# Active grep tool selection (set by auto-detection or --use-* flags)
+# Values: "git-grep", "ripgrep", "grep"
+GREP_TOOL=""
+
+# Function: select_grep_tool
+# Purpose: Auto-select the best available grep tool (git-grep > ripgrep > grep)
+# Called after argument parsing to allow --use-* flags to override
+select_grep_tool() {
+    # If user specified a tool via flag, use that (already set in GREP_TOOL)
+    if [[ -n "$GREP_TOOL" ]]; then
+        return
+    fi
+
+    # Auto-select: git-grep > ripgrep > grep
+    if [[ "$HAS_GIT_GREP" == "true" ]]; then
+        GREP_TOOL="git-grep"
+    elif [[ "$HAS_RIPGREP" == "true" ]]; then
+        GREP_TOOL="ripgrep"
+    else
+        GREP_TOOL="grep"
+    fi
+}
 
 # Known malicious file hashed (source: https://socket.dev/blog/ongoing-supply-chain-attack-targets-crowdstrike-npm-packages)
 MALICIOUS_HASHLIST=(
@@ -373,7 +401,7 @@ get_cached_package_dependencies() {
 # Modifies: None
 # Returns: Exits with code 1
 usage() {
-    echo "Usage: $0 [--paranoid] [--parallelism N] [--save-log FILE] [--use-git-grep] <directory_to_scan>"
+    echo "Usage: $0 [OPTIONS] <directory_to_scan>"
     echo
     echo "OPTIONS:"
     echo "  --paranoid         Enable additional security checks (typosquatting, network patterns)"
@@ -381,15 +409,17 @@ usage() {
     echo "  --parallelism N    Set the number of threads to use for parallelized steps (current: ${PARALLELISM})"
     echo "  --save-log FILE    Save all detected file paths to FILE, grouped by severity"
     echo "                     Output format: # HIGH / # MEDIUM / # LOW headers with file paths"
-    echo "  --use-git-grep     Use git grep instead of grep for pattern matching (experimental)"
-    echo "                     Fallback for systems without ripgrep that experience grep hangs"
-    echo "                     git grep uses a DFA-based regex engine (no backtracking)"
+    echo ""
+    echo "GREP TOOL SELECTION (auto-selects fastest available by default: git-grep > ripgrep > grep):"
+    echo "  --use-git-grep     Force use of git grep (fastest, DFA-based, no backtracking)"
+    echo "  --use-ripgrep      Force use of ripgrep (rg)"
+    echo "  --use-grep         Force use of standard grep (may hang on complex patterns)"
     echo ""
     echo "EXAMPLES:"
     echo "  $0 /path/to/your/project                    # Core Shai-Hulud detection only"
     echo "  $0 --paranoid /path/to/your/project         # Core + advanced security checks"
     echo "  $0 --save-log report.log /path/to/project   # Save findings to file"
-    echo "  $0 --use-git-grep /path/to/your/project     # Use git grep if grep hangs"
+    echo "  $0 --use-ripgrep /path/to/your/project      # Force ripgrep for testing"
     exit 1
 }
 
@@ -405,10 +435,10 @@ print_status() {
 }
 
 # =============================================================================
-# Fast Pattern Matching Helpers (ripgrep with grep fallback)
+# Fast Pattern Matching Helpers (git-grep > ripgrep > grep)
 # =============================================================================
-# These helper functions provide a clean abstraction over grep/ripgrep,
-# using ripgrep when available for significantly better performance on large files.
+# These helper functions provide a clean abstraction over grep tools.
+# GREP_TOOL is set by select_grep_tool() based on auto-detection or --use-* flags.
 
 # Function: fast_grep_files
 # Purpose: Find files matching a pattern (case-sensitive)
@@ -417,15 +447,19 @@ print_status() {
 # Note: Uses null-delimited input to handle filenames with spaces (issue #92)
 fast_grep_files() {
     local pattern="$1"
-    if [[ "$USE_GIT_GREP" == "true" ]]; then
-        # git grep uses DFA-based regex (no backtracking) - safe for complex patterns
-        # --no-index allows searching files not managed by git
-        tr '\n' '\0' | xargs -0 git grep -l --no-index -E "$pattern" -- 2>/dev/null || true
-    elif [[ "$HAS_RIPGREP" == "true" ]]; then
-        tr '\n' '\0' | xargs -0 rg -l --no-messages -e "$pattern" 2>/dev/null || true
-    else
-        tr '\n' '\0' | xargs -0 grep -lE "$pattern" 2>/dev/null || true
-    fi
+    case "$GREP_TOOL" in
+        git-grep)
+            # git grep uses DFA-based regex (no backtracking) - safe for complex patterns
+            # --no-index allows searching files not managed by git
+            tr '\n' '\0' | xargs -0 git grep -l --no-index -E "$pattern" -- 2>/dev/null || true
+            ;;
+        ripgrep)
+            tr '\n' '\0' | xargs -0 rg -l --no-messages -e "$pattern" 2>/dev/null || true
+            ;;
+        grep)
+            tr '\n' '\0' | xargs -0 grep -lE "$pattern" 2>/dev/null || true
+            ;;
+    esac
 }
 
 # Function: fast_grep_files_i
@@ -435,13 +469,17 @@ fast_grep_files() {
 # Note: Uses null-delimited input to handle filenames with spaces (issue #92)
 fast_grep_files_i() {
     local pattern="$1"
-    if [[ "$USE_GIT_GREP" == "true" ]]; then
-        tr '\n' '\0' | xargs -0 git grep -li --no-index -E "$pattern" -- 2>/dev/null || true
-    elif [[ "$HAS_RIPGREP" == "true" ]]; then
-        tr '\n' '\0' | xargs -0 rg -li --no-messages -e "$pattern" 2>/dev/null || true
-    else
-        tr '\n' '\0' | xargs -0 grep -liE "$pattern" 2>/dev/null || true
-    fi
+    case "$GREP_TOOL" in
+        git-grep)
+            tr '\n' '\0' | xargs -0 git grep -li --no-index -E "$pattern" -- 2>/dev/null || true
+            ;;
+        ripgrep)
+            tr '\n' '\0' | xargs -0 rg -li --no-messages -e "$pattern" 2>/dev/null || true
+            ;;
+        grep)
+            tr '\n' '\0' | xargs -0 grep -liE "$pattern" 2>/dev/null || true
+            ;;
+    esac
 }
 
 # Function: fast_grep_files_fixed
@@ -451,13 +489,17 @@ fast_grep_files_i() {
 # Note: Uses null-delimited input to handle filenames with spaces (issue #92)
 fast_grep_files_fixed() {
     local pattern="$1"
-    if [[ "$USE_GIT_GREP" == "true" ]]; then
-        tr '\n' '\0' | xargs -0 git grep -l --no-index -F "$pattern" -- 2>/dev/null || true
-    elif [[ "$HAS_RIPGREP" == "true" ]]; then
-        tr '\n' '\0' | xargs -0 rg -l --no-messages --fixed-strings "$pattern" 2>/dev/null || true
-    else
-        tr '\n' '\0' | xargs -0 grep -lF "$pattern" 2>/dev/null || true
-    fi
+    case "$GREP_TOOL" in
+        git-grep)
+            tr '\n' '\0' | xargs -0 git grep -l --no-index -F "$pattern" -- 2>/dev/null || true
+            ;;
+        ripgrep)
+            tr '\n' '\0' | xargs -0 rg -l --no-messages --fixed-strings "$pattern" 2>/dev/null || true
+            ;;
+        grep)
+            tr '\n' '\0' | xargs -0 grep -lF "$pattern" 2>/dev/null || true
+            ;;
+    esac
 }
 
 # Function: fast_grep_quiet
@@ -467,13 +509,17 @@ fast_grep_files_fixed() {
 fast_grep_quiet() {
     local pattern="$1"
     local file="$2"
-    if [[ "$USE_GIT_GREP" == "true" ]]; then
-        git grep -q --no-index -E "$pattern" -- "$file" 2>/dev/null
-    elif [[ "$HAS_RIPGREP" == "true" ]]; then
-        rg -q "$pattern" "$file" 2>/dev/null
-    else
-        grep -qE "$pattern" "$file" 2>/dev/null
-    fi
+    case "$GREP_TOOL" in
+        git-grep)
+            git grep -q --no-index -E "$pattern" -- "$file" 2>/dev/null
+            ;;
+        ripgrep)
+            rg -q "$pattern" "$file" 2>/dev/null
+            ;;
+        grep)
+            grep -qE "$pattern" "$file" 2>/dev/null
+            ;;
+    esac
 }
 
 # Function: show_file_preview
@@ -2785,7 +2831,21 @@ main() {
                 shift
                 ;;
             --use-git-grep)
-                USE_GIT_GREP=true
+                if [[ "$HAS_GIT_GREP" != "true" ]]; then
+                    echo "${RED}Error: --use-git-grep specified but git is not installed${NC}" >&2
+                    exit 1
+                fi
+                GREP_TOOL="git-grep"
+                ;;
+            --use-ripgrep)
+                if [[ "$HAS_RIPGREP" != "true" ]]; then
+                    echo "${RED}Error: --use-ripgrep specified but ripgrep (rg) is not installed${NC}" >&2
+                    exit 1
+                fi
+                GREP_TOOL="ripgrep"
+                ;;
+            --use-grep)
+                GREP_TOOL="grep"
                 ;;
             -*)
                 echo "Unknown option: $1"
@@ -2817,6 +2877,9 @@ main() {
         print_status "$RED" "Error: Unable to access directory '$scan_dir' or convert to absolute path."
         exit 1
     fi
+
+    # Select grep tool (auto-detect or use flag override)
+    select_grep_tool
 
     # Initialize timing
     SCAN_START_TIME=$(date +%s%N 2>/dev/null || echo "$(date +%s)000000000")
