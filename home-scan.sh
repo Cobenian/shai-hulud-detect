@@ -103,12 +103,16 @@ find_git_repos_manual() {
 
 # Main script execution
 main() {
+    declare vuln_repos
+
     # Check if directory exists
     if [ ! -d "$SEARCH_DIR" ]; then
         echo "Error: Directory '$SEARCH_DIR' does not exist."
         exit 1
     fi
     
+    mkdir -p $SEARCH_DIR/shai-detector-output
+
     # Choose which method to use
     if command -v find >/dev/null 2>&1; then
         # Use find method (faster)
@@ -123,9 +127,24 @@ main() {
     fi
 
     echo "Scanning each repo..."
-    for repo in "${SCAN_DIRS[@]}"; do
-        echo "$repo"
+    for repo_path in "${SCAN_DIRS[@]}"; do
+        repo=$(basename "$repo_path")
+        output="$SEARCH_DIR/shai-detector-output/$repo.out.txt"
+        ./shai-hulud-detector.sh "$repo_path" | tee "$output"
+        # Use exit code to check presence
+        if grep -q "No indicators of Shai-Hulud compromise detected" "$output"; then
+            echo "✅ $repo"
+        else
+            echo "❌😳 Problems detected in $repo_path. Please investigate."
+            vuln_repos+=("$repo_path")
+        fi
     done
+
+    # cleanup
+    rm shai-hulud-detector.tmp.txt
+
+    echo "Potentially impacted repos"
+    printf "%s\n" "${vuln_repos[@]}"
 }
 
 # Run main function

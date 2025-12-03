@@ -4,3 +4,5 @@ target
 .claude
 scratch
 *.plan
+shai-hulud-detector.out.txt
+shai-hulud-detector.tmp.txt
