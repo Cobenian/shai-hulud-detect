@@ -5,6 +5,7 @@ SEARCH_DIR="${1:-$HOME}"  # Allow user to specify directory, default to $HOME
 EXCLUDE_DIRS=(".cache" ".local" ".config" "snap" ".snap" ".npm" ".docker" "Library" "node_modules" "vendor" ".gradle" ".m2")
 MAX_DEPTH=10  # Prevent infinite recursion
 COUNT=0
+declare -a SCAN_DIRS
 
 # Function to check if a directory should be excluded
 should_exclude() {
@@ -28,9 +29,11 @@ should_exclude() {
 
 # Function to find git repositories using find command (more efficient)
 find_git_repos_find() {
-    echo "Searching for git repositories in $SEARCH_DIR..."
+    echo "== Searching for git repositories in $SEARCH_DIR..."
     echo "=============================================="
     
+    local -n scan_dirs="$1"  # nameref to array
+    scan_dirs=()  # Clear array
     # Use find command with pruning for better performance
     # found_dir=$(find "$SEARCH_DIR" \
     #     -maxdepth $MAX_DEPTH \
@@ -51,6 +54,7 @@ find_git_repos_find() {
         if [ $exclude_it -eq 0 ]; then
             ((COUNT++))
             echo "[$COUNT] $repo_dir"
+            scan_dirs+=("$repo_dir")
         fi
     done < <(find "$SEARCH_DIR" \
         -maxdepth $MAX_DEPTH \
@@ -59,7 +63,8 @@ find_git_repos_find() {
         -not -path "*/.*/*" 2>/dev/null)
     
     echo "=============================================="
-    echo "Found $COUNT git repositories."
+    echo "== Found $COUNT git repositories. =="
+
 }
 
 # Function to find git repositories recursively (manual method)
@@ -107,7 +112,7 @@ main() {
     # Choose which method to use
     if command -v find >/dev/null 2>&1; then
         # Use find method (faster)
-        find_git_repos_find
+        find_git_repos_find SCAN_DIRS
     else
         # Fall back to manual method
         echo "Searching for git repositories in $SEARCH_DIR..."
@@ -116,6 +121,11 @@ main() {
         echo "=============================================="
         echo "Found $COUNT git repositories."
     fi
+
+    echo "Scanning each repo..."
+    for repo in "${SCAN_DIRS[@]}"; do
+        echo "$repo"
+    done
 }
 
 # Run main function
