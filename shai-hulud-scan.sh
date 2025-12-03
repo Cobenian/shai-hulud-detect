@@ -2,7 +2,7 @@
 
 # Configuration
 SEARCH_DIR="${1:-$HOME}"  # Allow user to specify directory, default to $HOME
-EXCLUDE_DIRS=(".cache" ".local" ".config" "snap" ".snap" ".npm" ".docker" "Library" "node_modules" "vendor" ".gradle" ".m2")
+EXCLUDE_DIRS=(".cache" ".local" ".config" "snap" ".snap" ".npm" ".docker" "Library" "node_modules" "vendor" ".gradle" ".m2", "shai-hulud-detect")
 MAX_DEPTH=10  # Prevent infinite recursion
 COUNT=0
 declare -a SCAN_DIRS
@@ -139,9 +139,6 @@ main() {
             vuln_repos+=("$repo_path")
         fi
     done
-
-    # cleanup
-    rm shai-hulud-detector.tmp.txt
 
     echo "Potentially impacted repos"
     printf "%s\n" "${vuln_repos[@]}"
