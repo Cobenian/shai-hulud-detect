@@ -115,6 +115,10 @@ else
     HAS_RIPGREP=false
 fi
 
+# Git grep mode flag - set via --use-git-grep for systems without ripgrep
+# git grep uses a DFA-based regex engine (no backtracking) like ripgrep
+USE_GIT_GREP=false
+
 # Known malicious file hashed (source: https://socket.dev/blog/ongoing-supply-chain-attack-targets-crowdstrike-npm-packages)
 MALICIOUS_HASHLIST=(
     "de0e25a3e6c1e1e5998b306b7141b3dc4c0088da9d7bb47c1c00c91e6e4f85d6"
@@ -369,7 +373,7 @@ get_cached_package_dependencies() {
 # Modifies: None
 # Returns: Exits with code 1
 usage() {
-    echo "Usage: $0 [--paranoid] [--parallelism N] [--save-log FILE] <directory_to_scan>"
+    echo "Usage: $0 [--paranoid] [--parallelism N] [--save-log FILE] [--use-git-grep] <directory_to_scan>"
     echo
     echo "OPTIONS:"
     echo "  --paranoid         Enable additional security checks (typosquatting, network patterns)"
@@ -377,11 +381,15 @@ usage() {
     echo "  --parallelism N    Set the number of threads to use for parallelized steps (current: ${PARALLELISM})"
     echo "  --save-log FILE    Save all detected file paths to FILE, grouped by severity"
     echo "                     Output format: # HIGH / # MEDIUM / # LOW headers with file paths"
+    echo "  --use-git-grep     Use git grep instead of grep for pattern matching (experimental)"
+    echo "                     Fallback for systems without ripgrep that experience grep hangs"
+    echo "                     git grep uses a DFA-based regex engine (no backtracking)"
     echo ""
     echo "EXAMPLES:"
     echo "  $0 /path/to/your/project                    # Core Shai-Hulud detection only"
     echo "  $0 --paranoid /path/to/your/project         # Core + advanced security checks"
     echo "  $0 --save-log report.log /path/to/project   # Save findings to file"
+    echo "  $0 --use-git-grep /path/to/your/project     # Use git grep if grep hangs"
     exit 1
 }
 
@@ -409,7 +417,11 @@ print_status() {
 # Note: Uses null-delimited input to handle filenames with spaces (issue #92)
 fast_grep_files() {
     local pattern="$1"
-    if [[ "$HAS_RIPGREP" == "true" ]]; then
+    if [[ "$USE_GIT_GREP" == "true" ]]; then
+        # git grep uses DFA-based regex (no backtracking) - safe for complex patterns
+        # --no-index allows searching files not managed by git
+        tr '\n' '\0' | xargs -0 git grep -l --no-index -E "$pattern" -- 2>/dev/null || true
+    elif [[ "$HAS_RIPGREP" == "true" ]]; then
         tr '\n' '\0' | xargs -0 rg -l --no-messages -e "$pattern" 2>/dev/null || true
     else
         tr '\n' '\0' | xargs -0 grep -lE "$pattern" 2>/dev/null || true
@@ -423,7 +435,9 @@ fast_grep_files() {
 # Note: Uses null-delimited input to handle filenames with spaces (issue #92)
 fast_grep_files_i() {
     local pattern="$1"
-    if [[ "$HAS_RIPGREP" == "true" ]]; then
+    if [[ "$USE_GIT_GREP" == "true" ]]; then
+        tr '\n' '\0' | xargs -0 git grep -li --no-index -E "$pattern" -- 2>/dev/null || true
+    elif [[ "$HAS_RIPGREP" == "true" ]]; then
         tr '\n' '\0' | xargs -0 rg -li --no-messages -e "$pattern" 2>/dev/null || true
     else
         tr '\n' '\0' | xargs -0 grep -liE "$pattern" 2>/dev/null || true
@@ -437,7 +451,9 @@ fast_grep_files_i() {
 # Note: Uses null-delimited input to handle filenames with spaces (issue #92)
 fast_grep_files_fixed() {
     local pattern="$1"
-    if [[ "$HAS_RIPGREP" == "true" ]]; then
+    if [[ "$USE_GIT_GREP" == "true" ]]; then
+        tr '\n' '\0' | xargs -0 git grep -l --no-index -F "$pattern" -- 2>/dev/null || true
+    elif [[ "$HAS_RIPGREP" == "true" ]]; then
         tr '\n' '\0' | xargs -0 rg -l --no-messages --fixed-strings "$pattern" 2>/dev/null || true
     else
         tr '\n' '\0' | xargs -0 grep -lF "$pattern" 2>/dev/null || true
@@ -451,7 +467,9 @@ fast_grep_files_fixed() {
 fast_grep_quiet() {
     local pattern="$1"
     local file="$2"
-    if [[ "$HAS_RIPGREP" == "true" ]]; then
+    if [[ "$USE_GIT_GREP" == "true" ]]; then
+        git grep -q --no-index -E "$pattern" -- "$file" 2>/dev/null
+    elif [[ "$HAS_RIPGREP" == "true" ]]; then
         rg -q "$pattern" "$file" 2>/dev/null
     else
         grep -qE "$pattern" "$file" 2>/dev/null
@@ -2763,6 +2781,9 @@ main() {
                 fi
                 save_log="$2"
                 shift
+                ;;
+            --use-git-grep)
+                USE_GIT_GREP=true
                 ;;
             -*)
                 echo "Unknown option: $1"
