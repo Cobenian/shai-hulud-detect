@@ -2631,7 +2631,7 @@ main() {
     # Content analysis
     print_status "$ORANGE" "[Stage 3/6] Content analysis (patterns, crypto, trufflehog, git)"
     check_content "$scan_dir"
-    check_crypto_theft_patterns "$scan_dir"
+    # check_crypto_theft_patterns "$scan_dir"
     check_trufflehog_activity "$scan_dir"
     check_git_branches "$scan_dir"
     print_stage_complete "Content analysis"
@@ -2648,7 +2648,7 @@ main() {
     print_status "$ORANGE" "[Stage 5/6] Advanced detection (discussions, runners, destructive)"
     check_discussion_workflows "$scan_dir"
     check_github_runners "$scan_dir"
-    check_destructive_patterns "$scan_dir"
+    # check_destructive_patterns "$scan_dir"
     check_preinstall_bun_patterns "$scan_dir"
     print_stage_complete "Advanced detection"
 
