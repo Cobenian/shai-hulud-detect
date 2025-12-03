@@ -369,16 +369,19 @@ get_cached_package_dependencies() {
 # Modifies: None
 # Returns: Exits with code 1
 usage() {
-    echo "Usage: $0 [--paranoid] [--parallelism N] <directory_to_scan>"
+    echo "Usage: $0 [--paranoid] [--parallelism N] [--save-log FILE] <directory_to_scan>"
     echo
     echo "OPTIONS:"
     echo "  --paranoid         Enable additional security checks (typosquatting, network patterns)"
     echo "                     These are general security features, not specific to Shai-Hulud"
     echo "  --parallelism N    Set the number of threads to use for parallelized steps (current: ${PARALLELISM})"
+    echo "  --save-log FILE    Save all detected file paths to FILE, grouped by severity"
+    echo "                     Output format: # HIGH / # MEDIUM / # LOW headers with file paths"
     echo ""
     echo "EXAMPLES:"
     echo "  $0 /path/to/your/project                    # Core Shai-Hulud detection only"
     echo "  $0 --paranoid /path/to/your/project         # Core + advanced security checks"
+    echo "  $0 --save-log report.log /path/to/project   # Save findings to file"
     exit 1
 }
 
@@ -2092,6 +2095,114 @@ check_network_exfiltration() {
     done < <(tr '\n' '\0' < "$TEMP_DIR/code_files.txt")
 }
 
+# Function: write_log_file
+# Purpose: Write all detected file paths to a log file, grouped by severity
+# Args: $1 = output file path
+# Modifies: Creates/overwrites the specified output file
+# Returns: None
+write_log_file() {
+    local log_file="$1"
+
+    # Start with empty file
+    : > "$log_file"
+
+    # HIGH RISK files
+    echo "# HIGH" >> "$log_file"
+    {
+        # Workflow files (just file paths)
+        [[ -s "$TEMP_DIR/workflow_files.txt" ]] && cat "$TEMP_DIR/workflow_files.txt"
+
+        # Malicious hashes (extract file path before colon)
+        [[ -s "$TEMP_DIR/malicious_hashes.txt" ]] && cut -d: -f1 "$TEMP_DIR/malicious_hashes.txt"
+
+        # Bun attack files
+        [[ -s "$TEMP_DIR/bun_setup_files.txt" ]] && cat "$TEMP_DIR/bun_setup_files.txt"
+        [[ -s "$TEMP_DIR/bun_environment_files.txt" ]] && cat "$TEMP_DIR/bun_environment_files.txt"
+        [[ -s "$TEMP_DIR/new_workflow_files.txt" ]] && cat "$TEMP_DIR/new_workflow_files.txt"
+        [[ -s "$TEMP_DIR/actions_secrets_files.txt" ]] && cat "$TEMP_DIR/actions_secrets_files.txt"
+
+        # Discussion workflows, runners (extract file path before colon)
+        [[ -s "$TEMP_DIR/discussion_workflows.txt" ]] && cut -d: -f1 "$TEMP_DIR/discussion_workflows.txt"
+        [[ -s "$TEMP_DIR/github_runners.txt" ]] && cut -d: -f1 "$TEMP_DIR/github_runners.txt"
+
+        # Destructive patterns (extract file path before colon)
+        [[ -s "$TEMP_DIR/destructive_patterns.txt" ]] && cut -d: -f1 "$TEMP_DIR/destructive_patterns.txt"
+
+        # Preinstall patterns, SHA1HULUD runners
+        [[ -s "$TEMP_DIR/preinstall_bun_patterns.txt" ]] && cat "$TEMP_DIR/preinstall_bun_patterns.txt"
+        [[ -s "$TEMP_DIR/github_sha1hulud_runners.txt" ]] && cat "$TEMP_DIR/github_sha1hulud_runners.txt"
+
+        # Second coming repos
+        [[ -s "$TEMP_DIR/second_coming_repos.txt" ]] && cat "$TEMP_DIR/second_coming_repos.txt"
+
+        # Compromised packages (extract file path before colon)
+        [[ -s "$TEMP_DIR/compromised_found.txt" ]] && cut -d: -f1 "$TEMP_DIR/compromised_found.txt"
+
+        # Trufflehog activity (extract file path before colon)
+        [[ -s "$TEMP_DIR/trufflehog_activity.txt" ]] && cut -d: -f1 "$TEMP_DIR/trufflehog_activity.txt"
+
+        # Shai-Hulud repos
+        [[ -s "$TEMP_DIR/shai_hulud_repos.txt" ]] && cat "$TEMP_DIR/shai_hulud_repos.txt"
+
+        # High-risk crypto patterns (extract from crypto_patterns.txt)
+        if [[ -s "$TEMP_DIR/crypto_patterns.txt" ]]; then
+            grep -E "(HIGH RISK|Known attacker wallet)" "$TEMP_DIR/crypto_patterns.txt" 2>/dev/null | cut -d: -f1 || true
+        fi
+    } | sort -u >> "$log_file"
+
+    # MEDIUM RISK files
+    echo "# MEDIUM" >> "$log_file"
+    {
+        # Suspicious packages (extract file path)
+        [[ -s "$TEMP_DIR/suspicious_found.txt" ]] && cut -d: -f1 "$TEMP_DIR/suspicious_found.txt"
+
+        # Suspicious content (extract file path)
+        [[ -s "$TEMP_DIR/suspicious_content.txt" ]] && cut -d: -f1 "$TEMP_DIR/suspicious_content.txt"
+
+        # Git branches (extract file path)
+        [[ -s "$TEMP_DIR/git_branches.txt" ]] && cut -d: -f1 "$TEMP_DIR/git_branches.txt"
+
+        # Postinstall hooks
+        [[ -s "$TEMP_DIR/postinstall_hooks.txt" ]] && cat "$TEMP_DIR/postinstall_hooks.txt"
+
+        # Integrity issues (extract file path)
+        [[ -s "$TEMP_DIR/integrity_issues.txt" ]] && cut -d: -f1 "$TEMP_DIR/integrity_issues.txt"
+
+        # Typosquatting warnings (extract file path)
+        [[ -s "$TEMP_DIR/typosquatting_warnings.txt" ]] && cut -d: -f1 "$TEMP_DIR/typosquatting_warnings.txt"
+
+        # Network exfiltration (extract file path)
+        [[ -s "$TEMP_DIR/network_exfiltration_warnings.txt" ]] && cut -d: -f1 "$TEMP_DIR/network_exfiltration_warnings.txt"
+
+        # Medium-risk crypto patterns
+        if [[ -s "$TEMP_DIR/crypto_patterns.txt" ]]; then
+            grep -vE "(HIGH RISK|Known attacker wallet|LOW RISK)" "$TEMP_DIR/crypto_patterns.txt" 2>/dev/null | cut -d: -f1 || true
+        fi
+
+        # Namespace warnings (extract file path from "... (found in FILE)")
+        if [[ -s "$TEMP_DIR/namespace_warnings.txt" ]]; then
+            sed -n 's/.*found in \([^)]*\)).*/\1/p' "$TEMP_DIR/namespace_warnings.txt" || true
+        fi
+    } | sort -u >> "$log_file"
+
+    # LOW RISK files
+    echo "# LOW" >> "$log_file"
+    {
+        # Lockfile safe versions (extract file path)
+        [[ -s "$TEMP_DIR/lockfile_safe_versions.txt" ]] && cut -d: -f1 "$TEMP_DIR/lockfile_safe_versions.txt"
+
+        # Low-risk crypto patterns
+        if [[ -s "$TEMP_DIR/crypto_patterns.txt" ]]; then
+            grep "LOW RISK" "$TEMP_DIR/crypto_patterns.txt" 2>/dev/null | cut -d: -f1 || true
+        fi
+
+        # Namespace warnings (has full paths in format: /path/to/file:namespace_info)
+        [[ -s "$TEMP_DIR/namespace_warnings.txt" ]] && cut -d: -f1 "$TEMP_DIR/namespace_warnings.txt"
+    } | sort -u >> "$log_file"
+
+    print_status "$GREEN" "Log saved to: $log_file"
+}
+
 # Function: generate_report
 # Purpose: Generate comprehensive security report with risk stratification and findings
 # Args: $1 = paranoid_mode ("true" or "false" for extended checks)
@@ -2616,6 +2727,7 @@ generate_report() {
 main() {
     local paranoid_mode=false
     local scan_dir=""
+    local save_log=""
 
     # Load compromised packages from external file
     load_compromised_packages
@@ -2642,6 +2754,14 @@ main() {
                     usage
                 fi
                 PARALLELISM=$2
+                shift
+                ;;
+            --save-log)
+                if [[ -z "$2" || "$2" == -* ]]; then
+                    echo "${RED}error: --save-log requires a file path${NC}" >&2;
+                    usage
+                fi
+                save_log="$2"
                 shift
                 ;;
             -*)
@@ -2743,6 +2863,12 @@ main() {
     # Generate report
     print_status "$BLUE" "Generating report..."
     generate_report "$paranoid_mode"
+
+    # Write log file if requested
+    if [[ -n "$save_log" ]]; then
+        write_log_file "$save_log"
+    fi
+
     print_stage_complete "Total scan time"
 
     # Return appropriate exit code based on findings

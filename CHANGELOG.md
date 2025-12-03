@@ -5,6 +5,22 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.3] - 2025-12-02
+
+### Added
+- **Log File Output**: New `--save-log FILE` argument saves all detected file paths to a structured log file grouped by severity (resolves GitHub issue #104)
+  - Output format: `# HIGH`, `# MEDIUM`, `# LOW` section headers followed by absolute file paths
+  - No truncation - includes ALL findings regardless of display limits
+  - Designed for CI/CD artifacts and programmatic parsing
+
+### Changed
+- **Usage Documentation**: Updated `--help` output and README.md with `--save-log` examples
+
+### Technical Details
+- Added `write_log_file()` function (lines 2098-2204) to generate structured log output
+- Added `--save-log` argument parsing in `main()` (lines 2648-2655)
+- Test suite expanded to 37 tests (34 original + 3 new `--save-log` tests)
+
 ## [3.0.2] - 2025-12-02
 
 ### Fixed

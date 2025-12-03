@@ -140,6 +140,67 @@ echo "========================================"
 echo "  Results: $passed/$total passed, $failed failed"
 echo "========================================"
 
+# Test --save-log feature
+echo ""
+echo "========================================"
+echo "  Testing --save-log feature"
+echo "========================================"
+
+LOG_FILE="/tmp/shai-hulud-test-log-$$.txt"
+
+# Test 1: --save-log creates file with correct structure
+"$BASH_CMD" "$DETECTOR" --save-log "$LOG_FILE" "$SCRIPT_DIR/test-cases/infected-project" >/dev/null 2>&1
+if [[ -f "$LOG_FILE" ]]; then
+    # Check for all three section headers
+    if grep -q "^# HIGH" "$LOG_FILE" && grep -q "^# MEDIUM" "$LOG_FILE" && grep -q "^# LOW" "$LOG_FILE"; then
+        echo -e "${GREEN}PASS${NC}: --save-log creates file with correct section headers"
+        ((passed++))
+    else
+        echo -e "${RED}FAIL${NC}: --save-log missing section headers"
+        ((failed++))
+    fi
+    ((total++))
+
+    # Check that HIGH section has entries (infected-project should have high risk findings)
+    high_count=$(sed -n '/^# HIGH/,/^# MEDIUM/p' "$LOG_FILE" | grep -c "^/" || echo "0")
+    if [[ $high_count -gt 0 ]]; then
+        echo -e "${GREEN}PASS${NC}: --save-log HIGH section has $high_count entries"
+        ((passed++))
+    else
+        echo -e "${RED}FAIL${NC}: --save-log HIGH section is empty for infected-project"
+        ((failed++))
+    fi
+    ((total++))
+else
+    echo -e "${RED}FAIL${NC}: --save-log did not create output file"
+    ((failed++))
+    ((total++))
+fi
+
+# Test 2: Clean project produces empty sections (just headers)
+"$BASH_CMD" "$DETECTOR" --save-log "$LOG_FILE" "$SCRIPT_DIR/test-cases/clean-project" >/dev/null 2>&1
+if [[ -f "$LOG_FILE" ]]; then
+    # Count lines that are file paths (start with /)
+    path_count=$(grep -c "^/" "$LOG_FILE" 2>/dev/null || true)
+    path_count=${path_count:-0}
+    if [[ "$path_count" -eq 0 ]]; then
+        echo -e "${GREEN}PASS${NC}: --save-log clean project has no file entries"
+        ((passed++))
+    else
+        echo -e "${RED}FAIL${NC}: --save-log clean project has unexpected entries ($path_count)"
+        ((failed++))
+    fi
+    ((total++))
+fi
+
+# Cleanup
+rm -f "$LOG_FILE"
+
+echo ""
+echo "========================================"
+echo "  Final Results: $passed/$total passed, $failed failed"
+echo "========================================"
+
 if [[ $failed -gt 0 ]]; then
     exit 1
 else
