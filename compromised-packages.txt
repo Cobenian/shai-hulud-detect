@@ -794,6 +794,7 @@
 @quick-start-soft/quick-task-refine:1.4.2511142126
 @relyt/claude-context-core:0.1.1
 @relyt/claude-context-mcp:0.1.1
+@relyt/mcp-server-relytone:0.0.3
 @rxap/ngx-bootstrap:19.0.3
 @rxap/ngx-bootstrap:19.0.4
 @sameepsi/sor2:2.0.2
@@ -1295,6 +1296,7 @@ hyper-fullfacing:1.0.3
 hyperterm-hipster:1.0.7
 ids-css:1.5.1
 ids-enterprise-mcp-server:0.0.2
+ids-enterprise-ng:20.1.6
 ids-enterprise-typings:20.1.6
 image-to-uri:1.0.1
 image-to-uri:1.0.2
