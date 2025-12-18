@@ -1,0 +1,14 @@
+# workport.manifest.yaml
+# Shai-Hulud Detector - NPM Supply Chain Attack Detection Tool
+
+name: shai-hulud-detect
+type: cli
+run: ./shai-hulud-detector.sh
+
+ops:
+  # Scan a directory for compromised npm packages
+  scan: ./shai-hulud-detector.sh
+  # Run comprehensive paranoid scan
+  scan-paranoid: ./shai-hulud-detector.sh --paranoid
+  # Show help/usage
+  help: ./shai-hulud-detector.sh --help
