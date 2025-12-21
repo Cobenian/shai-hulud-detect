@@ -128,6 +128,9 @@ fi
 # Values: "git-grep", "ripgrep", "grep"
 GREP_TOOL=""
 
+# Semver range checking (opt-in via --check-semver-ranges flag)
+CHECK_SEMVER_RANGES=false
+
 # Function: select_grep_tool
 # Purpose: Auto-select the best available grep tool (git-grep > ripgrep > grep)
 # Called after argument parsing to allow --use-* flags to override
@@ -193,12 +196,13 @@ print_stage_complete() {
 # Associative arrays for O(1) lookups (Bash 5.0+ feature)
 declare -A COMPROMISED_PACKAGES_MAP    # "package:version" -> 1
 declare -A COMPROMISED_NAMESPACES_MAP  # "@namespace" -> 1
+declare -A COMPROMISED_VERSIONS_BY_NAME # "package_name" -> "version1 version2 ..." (for semver range checking)
 
 # Function: load_compromised_packages
 # Purpose: Load compromised package database from external file or fallback list
 # Args: None (reads from compromised-packages.txt in script directory)
-# Modifies: COMPROMISED_PACKAGES_MAP (global associative array)
-# Returns: Populates COMPROMISED_PACKAGES_MAP for O(1) lookups
+# Modifies: COMPROMISED_PACKAGES_MAP, COMPROMISED_VERSIONS_BY_NAME (global associative arrays)
+# Returns: Populates COMPROMISED_PACKAGES_MAP for O(1) lookups, COMPROMISED_VERSIONS_BY_NAME for semver range checking
 load_compromised_packages() {
     local packages_file="$SCRIPT_DIR/compromised-packages.txt"
     local count=0
@@ -212,9 +216,13 @@ load_compromised_packages() {
             tr -d $'\r'
         )
 
-        # Populate associative array for O(1) lookups
+        # Populate associative arrays for O(1) lookups
         for pkg in "${raw_packages[@]}"; do
             COMPROMISED_PACKAGES_MAP["$pkg"]=1
+            # Also build reverse lookup by package name for semver range checking
+            local pkg_name="${pkg%:*}"
+            local pkg_version="${pkg#*:}"
+            COMPROMISED_VERSIONS_BY_NAME["$pkg_name"]+="$pkg_version "
             ((count++)) || true  # Prevent errexit when count starts at 0
         done
 
@@ -233,6 +241,10 @@ load_compromised_packages() {
         )
         for pkg in "${fallback_packages[@]}"; do
             COMPROMISED_PACKAGES_MAP["$pkg"]=1
+            # Also build reverse lookup for fallback packages
+            local pkg_name="${pkg%:*}"
+            local pkg_version="${pkg#*:}"
+            COMPROMISED_VERSIONS_BY_NAME["$pkg_name"]+="$pkg_version "
         done
     fi
 }
@@ -406,6 +418,10 @@ usage() {
     echo "OPTIONS:"
     echo "  --paranoid         Enable additional security checks (typosquatting, network patterns)"
     echo "                     These are general security features, not specific to Shai-Hulud"
+    echo "  --check-semver-ranges"
+    echo "                     Check if package.json semver ranges (^, ~) could resolve to"
+    echo "                     compromised versions. Reports LOW risk if lockfile pins safe version,"
+    echo "                     MEDIUM risk if no lockfile exists."
     echo "  --parallelism N    Set the number of threads to use for parallelized steps (current: ${PARALLELISM})"
     echo "  --save-log FILE    Save all detected file paths to FILE, grouped by severity"
     echo "                     Output format: # HIGH / # MEDIUM / # LOW headers with file paths"
@@ -1274,6 +1290,70 @@ check_packages() {
     done
 
     echo -ne "\r\033[K"
+}
+
+# Function: check_semver_ranges
+# Purpose: Check if package.json semver ranges (^, ~) could resolve to compromised versions
+# Args: $1 = scan_dir (directory to scan)
+# Modifies: lockfile_safe_versions.txt, suspicious_found.txt, compromised_found.txt
+# Returns: Populates findings files based on lockfile analysis
+# Note: Only runs when --check-semver-ranges flag is passed (opt-in)
+check_semver_ranges() {
+    [[ "$CHECK_SEMVER_RANGES" != "true" ]] && return 0
+
+    local scan_dir=$1
+    print_status "$BLUE" "   Checking semver ranges for potential compromised version matches..."
+
+    # Re-use already extracted deps from check_packages (all_deps.txt)
+    # Format: file_path|package_name:version_range
+    local checked=0
+    local matches=0
+
+    while IFS='|' read -r file_path dep_info; do
+        [[ -z "$file_path" || -z "$dep_info" ]] && continue
+
+        local pkg_name="${dep_info%:*}"
+        local version_range="${dep_info#*:}"
+
+        # Skip if no compromised versions for this package
+        [[ -z "${COMPROMISED_VERSIONS_BY_NAME[$pkg_name]}" ]] && continue
+
+        # Skip exact versions (no ^, ~, x, *)
+        [[ ! "$version_range" =~ [\^~xX\*] ]] && continue
+
+        ((checked++)) || true
+
+        # Check each compromised version against the range
+        for comp_version in ${COMPROMISED_VERSIONS_BY_NAME[$pkg_name]}; do
+            if semver_match "$comp_version" "$version_range"; then
+                ((matches++)) || true
+                # Range could match compromised version - check lockfile
+                local pkg_dir
+                pkg_dir=$(dirname "$file_path")
+                local locked_version
+                locked_version=$(get_lockfile_version "$pkg_name" "$pkg_dir" "$scan_dir")
+
+                if [[ -n "$locked_version" ]]; then
+                    if [[ "$locked_version" == "$comp_version" ]]; then
+                        # Lockfile has compromised version - HIGH risk (already detected by check_packages)
+                        # Don't double-report, just skip
+                        :
+                    else
+                        # Lockfile has safe version - LOW risk warning
+                        echo "$file_path:$pkg_name@$version_range (locked to $locked_version, could match $comp_version)" >> "$TEMP_DIR/lockfile_safe_versions.txt"
+                    fi
+                else
+                    # No lockfile - MEDIUM risk
+                    echo "$file_path:$pkg_name@$version_range (no lockfile, could resolve to $comp_version)" >> "$TEMP_DIR/suspicious_found.txt"
+                fi
+                break  # Found a match, no need to check other versions
+            fi
+        done
+    done < "$TEMP_DIR/all_deps.txt"
+
+    if [[ $matches -gt 0 ]]; then
+        print_status "$BLUE" "   Found $matches semver ranges that could match compromised versions (checked $checked ranges)"
+    fi
 }
 
 # Function: check_postinstall_hooks
@@ -2810,6 +2890,9 @@ main() {
             --paranoid)
                 paranoid_mode=true
                 ;;
+            --check-semver-ranges)
+                CHECK_SEMVER_RANGES=true
+                ;;
             --help|-h)
                 usage
                 ;;
@@ -2905,6 +2988,7 @@ main() {
     check_workflow_files "$scan_dir"
     check_file_hashes "$scan_dir"
     check_packages "$scan_dir"
+    check_semver_ranges "$scan_dir"
     check_postinstall_hooks "$scan_dir"
     print_stage_complete "Core detection"
 
