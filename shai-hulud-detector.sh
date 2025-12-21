@@ -420,8 +420,8 @@ usage() {
     echo "                     These are general security features, not specific to Shai-Hulud"
     echo "  --check-semver-ranges"
     echo "                     Check if package.json semver ranges (^, ~) could resolve to"
-    echo "                     compromised versions. Reports LOW risk if lockfile pins safe version,"
-    echo "                     MEDIUM risk if no lockfile exists."
+    echo "                     compromised versions. Reports LOW risk (informational) since"
+    echo "                     packages are largely unpublished from npm."
     echo "  --parallelism N    Set the number of threads to use for parallelized steps (current: ${PARALLELISM})"
     echo "  --save-log FILE    Save all detected file paths to FILE, grouped by severity"
     echo "                     Output format: # HIGH / # MEDIUM / # LOW headers with file paths"
@@ -1343,8 +1343,8 @@ check_semver_ranges() {
                         echo "$file_path:$pkg_name@$version_range (locked to $locked_version, could match $comp_version)" >> "$TEMP_DIR/lockfile_safe_versions.txt"
                     fi
                 else
-                    # No lockfile - MEDIUM risk
-                    echo "$file_path:$pkg_name@$version_range (no lockfile, could resolve to $comp_version)" >> "$TEMP_DIR/suspicious_found.txt"
+                    # No lockfile - LOW risk (packages largely unpublished, only matters with stale caches)
+                    echo "$file_path:$pkg_name@$version_range (no lockfile, could resolve to $comp_version)" >> "$TEMP_DIR/lockfile_safe_versions.txt"
                 fi
                 break  # Found a match, no need to check other versions
             fi

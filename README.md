@@ -137,8 +137,7 @@ Check these security advisories regularly for newly discovered compromised packa
 
 **Semver Range Checking (`--check-semver-ranges`)**
 - Checks if package.json semver ranges (^, ~) could resolve to compromised versions
-- Reports LOW risk if lockfile pins to a safe version (informational warning)
-- Reports MEDIUM risk if no lockfile exists (could resolve to compromised version on install)
+- Reports LOW risk in both cases (informational warning about latent risk)
 - Useful for identifying latent risk in private npm caches that may still have malicious versions
 
 ## Requirements
