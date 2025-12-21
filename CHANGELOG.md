@@ -5,6 +5,20 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.5] - 2025-12-21
+
+### Added
+- **--check-semver-ranges flag**: Opt-in check for package.json semver ranges that could resolve to compromised versions (resolves GitHub issue #109)
+  - Reports LOW risk if lockfile pins to a safe version (informational warning about latent risk)
+  - Reports MEDIUM risk if no lockfile exists (could resolve to compromised version on fresh install)
+  - Uses reverse lookup by package name for O(1) performance instead of O(n*packages)
+  - Reuses dependency extraction from check_packages() - no additional file scanning
+
+### Technical Details
+- Added `COMPROMISED_VERSIONS_BY_NAME` associative array for efficient semver range checking
+- Added `check_semver_ranges()` function that only runs when flag is passed
+- Leverages existing `semver_match()` function that was previously unused
+
 ## [3.0.4] - 2025-12-03
 
 ### Changed
