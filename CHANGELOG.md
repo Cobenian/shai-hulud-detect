@@ -9,8 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **--check-semver-ranges flag**: Opt-in check for package.json semver ranges that could resolve to compromised versions (resolves GitHub issue #109)
-  - Reports LOW risk if lockfile pins to a safe version (informational warning about latent risk)
-  - Reports MEDIUM risk if no lockfile exists (could resolve to compromised version on fresh install)
+  - Reports LOW risk as informational warning about latent risk (packages largely unpublished from npm)
   - Uses reverse lookup by package name for O(1) performance instead of O(n*packages)
   - Reuses dependency extraction from check_packages() - no additional file scanning
 
