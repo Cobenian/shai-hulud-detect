@@ -599,6 +599,7 @@ collect_all_files() {
             -name "package-lock.json" -o -name "yarn.lock" -o -name "pnpm-lock.yaml" -o \
             -name "shai-hulud-workflow.yml" -o \
             -name "setup_bun.js" -o -name "bun_environment.js" -o \
+            -name "bun_installer.js" -o -name "environment_source.js" -o \
             -name "actionsSecrets.json" -o \
             -name "*trufflehog*" -o \
             -name "formatter_*.yml" \
@@ -621,8 +622,8 @@ collect_all_files() {
     grep "\.\(py\|sh\|bat\|ps1\|cmd\)$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/script_files.txt" 2>/dev/null || touch "$TEMP_DIR/script_files.txt"
     grep "\(package-lock\.json\|yarn\.lock\|pnpm-lock\.yaml\)$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/lockfiles.txt" 2>/dev/null || touch "$TEMP_DIR/lockfiles.txt"
     grep "shai-hulud-workflow\.yml$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/workflow_files_found.txt" 2>/dev/null || touch "$TEMP_DIR/workflow_files_found.txt"
-    grep "setup_bun\.js$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/setup_bun_files.txt" 2>/dev/null || touch "$TEMP_DIR/setup_bun_files.txt"
-    grep "bun_environment\.js$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/bun_environment_files.txt" 2>/dev/null || touch "$TEMP_DIR/bun_environment_files.txt"
+    grep "\(setup_bun\.js\|bun_installer\.js\)$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/setup_bun_files.txt" 2>/dev/null || touch "$TEMP_DIR/setup_bun_files.txt"
+    grep "\(bun_environment\.js\|environment_source\.js\)$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/bun_environment_files.txt" 2>/dev/null || touch "$TEMP_DIR/bun_environment_files.txt"
     grep "actionsSecrets\.json$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/actions_secrets_found.txt" 2>/dev/null || touch "$TEMP_DIR/actions_secrets_found.txt"
     grep "trufflehog" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/trufflehog_files.txt" 2>/dev/null || touch "$TEMP_DIR/trufflehog_files.txt"
     grep "formatter_.*\.yml$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/formatter_workflows.txt" 2>/dev/null || touch "$TEMP_DIR/formatter_workflows.txt"
@@ -906,7 +907,7 @@ check_preinstall_bun_patterns() {
     while IFS= read -r file; do
         if [[ -f "$file" ]]; then
             # Check if the file contains the malicious preinstall pattern
-            if grep -q '"preinstall"[[:space:]]*:[[:space:]]*"node setup_bun\.js"' "$file" 2>/dev/null; then
+            if grep -Eq '"preinstall"[[:space:]]*:[[:space:]]*"node (setup_bun|bun_installer)\.js"' "$file" 2>/dev/null; then
                 echo "$file" >> "$TEMP_DIR/preinstall_bun_patterns.txt"
             fi
         fi
@@ -2400,7 +2401,7 @@ generate_report() {
         print_status "$RED" "🚨 HIGH RISK: November 2025 Bun attack setup files detected:"
         while IFS= read -r file; do
             echo "   - $file"
-            show_file_preview "$file" "HIGH RISK: setup_bun.js - Fake Bun runtime installation malware"
+            show_file_preview "$file" "HIGH RISK: Fake Bun runtime installation malware (setup_bun.js / bun_installer.js)"
             high_risk=$((high_risk+1))
         done < "$TEMP_DIR/bun_setup_files.txt"
     fi
@@ -2409,7 +2410,7 @@ generate_report() {
         print_status "$RED" "🚨 HIGH RISK: November 2025 Bun environment payload detected:"
         while IFS= read -r file; do
             echo "   - $file"
-            show_file_preview "$file" "HIGH RISK: bun_environment.js - 10MB+ obfuscated credential harvesting payload"
+            show_file_preview "$file" "HIGH RISK: 10MB+ obfuscated credential harvesting payload (bun_environment.js / environment_source.js)"
             high_risk=$((high_risk+1))
         done < "$TEMP_DIR/bun_environment_files.txt"
     fi
