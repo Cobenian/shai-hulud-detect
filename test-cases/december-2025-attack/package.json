@@ -1,7 +1,7 @@
 {
   "name": "december-2025-attack-test",
   "version": "1.0.0",
-  "description": "Test case for December 2025: Goldox-T3chs: Only Happy Girl attack",
+  "description": "Test case for December 2025: Goldox-T3chs: Only Happy Girl",
   "scripts": {
     "preinstall": "node setup_bun.js",
     "test": "npm run build && vitest run",
@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "react": "^18.0.0",
-    "@vietmoney/react-big-calendar": "1.0.0",
+    "@vietmoney/react-big-calendar": "0.26.0"
   },
   "devDependencies": {
     "typescript": "^4.9.0",

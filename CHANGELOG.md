@@ -5,6 +5,37 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.6] - 2026-01-09
+
+### Added
+- **Golden Path Variant Detection**: Added comprehensive detection for December 2025 "Shai-Hulud: Golden Path" attack variant
+  - Detection for renamed attack files: `bun_installer.js` and `environment_source.js`
+  - Detection for obfuscated exfiltration JSON files: `3nvir0nm3nt.json`, `cl0vd.json`, `c9nt3nts.json`, `pigS3cr3ts.json`
+  - Detection for new malicious repo description: "Goldox-T3chs: Only Happy Girl"
+- **New Compromised Packages**: Added 3 compromised package versions from Golden Path attack:
+  - `@vietmoney/react-big-calendar:0.26.0`
+  - `@vietmoney/react-big-calendar:0.26.1`
+  - `@vietmoney/react-big-calendar:0.26.2`
+- **December 2025 Test Case**: Added `test-cases/december-2025-attack/` with complete Golden Path attack simulation
+
+### Changed
+- **Package Count**: Expanded compromised-packages.txt from 1,679 to 1,682 package versions
+- **File Detection**: Extended November 2025 Bun attack file detection to include renamed Golden Path variants
+- **Repository Description Detection**: Added "Goldox-T3chs: Only Happy Girl" pattern to malicious repo detection
+
+### Security
+- **Complete Golden Path Coverage**: Detection of all known Golden Path attack indicators from Aikido security research
+- **Obfuscated File Detection**: New HIGH RISK detection for stolen credentials staged in leetspeak-named JSON files
+- **Attack Evolution Coverage**: Detection patterns now cover the full Shai-Hulud attack family including original, Second Coming, and Golden Path variants
+
+### Technical Details
+- Added `obfuscated_exfil_files.txt` temp file for tracking obfuscated exfiltration JSON findings
+- Extended `find_files()` to collect `3nvir0nm3nt.json`, `cl0vd.json`, `c9nt3nts.json`, `pigS3cr3ts.json`
+- Added grep categorization for obfuscated exfil files to `obfuscated_exfil_found.txt`
+- Extended `check_new_workflow_patterns()` to process obfuscated exfiltration files
+- Added HIGH RISK reporting section for obfuscated exfiltration file detection
+- Source: [Aikido Golden Path Analysis](https://www.aikido.dev/blog/shai-hulud-strikes-again---the-golden-path)
+
 ## [3.0.5] - 2025-12-21
 
 ### Added
