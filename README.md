@@ -39,6 +39,14 @@ Covers multiple npm supply chain attacks from September 2025 and November 2025:
 - **Files**: `setup_bun.js`, `bun_environment.js` (10MB+ obfuscated payload), `actionsSecrets.json` (double Base64 encoded)
 - **Workflow**: `.github/workflows/formatter_*.yml` files using SHA1HULUD runners
 
+### **Shai-Hulud: Golden Path Variant** (December 28, 2025)
+- **Scope**: Continuation of Second Coming attack with renamed files
+- **Attack**: Same fake Bun runtime technique with obfuscated file names
+- **Method**: Uses `bun_installer.js` and `environment_source.js` (renamed from `setup_bun.js` and `bun_environment.js`)
+- **Exfiltration**: Obfuscated JSON files for staging stolen credentials: `3nvir0nm3nt.json`, `cl0vd.json`, `c9nt3nts.json`, `pigS3cr3ts.json`
+- **Packages**: @vietmoney/react-big-calendar (versions 0.26.0-0.26.2)
+- **Repo Description**: "Goldox-T3chs: Only Happy Girl"
+
 ## Quick Start
 
 ```bash
@@ -70,11 +78,12 @@ echo "Exit code: $?"  # 0=clean, 1=high-risk, 2=medium-risk
 ### High Risk Indicators
 - **Malicious workflow files**: `shai-hulud-workflow.yml` files in `.github/workflows/` (September 2025) and `formatter_*.yml` files using SHA1HULUD runners (November 2025)
 - **Known malicious file hashes**: Files matching any of 7 SHA-256 hashes from different Shai-Hulud worm variants (V1-V7), sourced from [Socket.dev's comprehensive attack analysis](https://socket.dev/blog/ongoing-supply-chain-attack-targets-crowdstrike-npm-packages)
-- **November 2025 Bun attack files**: `setup_bun.js` (fake Bun runtime installer) and `bun_environment.js` (10MB+ obfuscated credential harvesting payload)
-- **Compromised package versions**: Specific versions of 979+ packages from multiple attacks (September & November 2025)
+- **November 2025 Bun attack files**: `setup_bun.js`/`bun_installer.js` (fake Bun runtime installer) and `bun_environment.js`/`environment_source.js` (10MB+ obfuscated credential harvesting payload)
+- **Obfuscated exfiltration files**: `3nvir0nm3nt.json`, `cl0vd.json`, `c9nt3nts.json`, `pigS3cr3ts.json` (Golden Path variant - stolen credentials staged for exfiltration)
+- **Compromised package versions**: Specific versions of 1,682+ packages from multiple attacks (September, November & December 2025)
 - **Suspicious postinstall hooks**: Package.json files with postinstall scripts containing curl, wget, eval commands, or fake Bun installation (`"preinstall": "node setup_bun.js"`)
 - **Trufflehog activity**: Files containing trufflehog references, credential scanning patterns, or November 2025 enhanced patterns (automated TruffleHog download and execution)
-- **Shai-Hulud repositories**: Git repositories named "Shai-Hulud" (used for data exfiltration) or with "Sha1-Hulud: The Second Coming" descriptions
+- **Shai-Hulud repositories**: Git repositories named "Shai-Hulud" (used for data exfiltration) or with "Sha1-Hulud: The Second Coming" or "Goldox-T3chs: Only Happy Girl" descriptions
 - **Secrets exfiltration files**: `actionsSecrets.json` files with double Base64 encoded credentials (November 2025)
 - **SHA1HULUD GitHub Actions runners**: GitHub Actions workflows using malicious runners for credential theft
 
@@ -89,7 +98,7 @@ echo "Exit code: $?"  # 0=clean, 1=high-risk, 2=medium-risk
 ### Package Detection Method
 
 The script loads a list of the compromised packages from an external file (`compromised-packages.txt`) which contains:
-- **979+ confirmed compromised package versions** with exact version numbers (571+ from September 2025 + 300+ from November 2025)
+- **1,682+ confirmed compromised package versions** with exact version numbers (571+ from September 2025 + 1,100+ from November/December 2025)
 - **18+ affected namespaces** for broader detection of packages from compromised maintainer accounts
 
 ### Maintaining and Updating the Package List
@@ -119,7 +128,7 @@ Check these security advisories regularly for newly discovered compromised packa
 3. Test the script to ensure detection works
 4. Consider contributing updates back to this repository
 
-**Coverage Note**: Multiple September and November 2025 attacks affected 979+ packages total. Our detection aims to provide **comprehensive coverage** across the Shai-Hulud worm (517+ packages), Chalk/Debug crypto theft (26+ packages), and "Shai-Hulud: The Second Coming" fake Bun runtime attack (300+ packages). Combined with namespace-based detection and enhanced attack pattern recognition, this provides excellent protection against these sophisticated supply chain compromises.
+**Coverage Note**: Multiple September, November, and December 2025 attacks affected 1,682+ packages total. Our detection aims to provide **comprehensive coverage** across the Shai-Hulud worm (517+ packages), Chalk/Debug crypto theft (26+ packages), "Shai-Hulud: The Second Coming" fake Bun runtime attack (1,100+ packages), and the Golden Path variant. Combined with namespace-based detection and enhanced attack pattern recognition, this provides excellent protection against these sophisticated supply chain compromises.
 
 ### Core vs Paranoid Mode
 
@@ -376,7 +385,7 @@ The `--paranoid` flag enables additional security checks beyond Shai-Hulud-speci
 
 The script performs these checks:
 
-1. **Package Database Loading**: Loads 1,678+ compromised packages from `compromised-packages.txt` into O(1) lookup maps
+1. **Package Database Loading**: Loads 1,682+ compromised packages from `compromised-packages.txt` into O(1) lookup maps
 2. **Workflow Detection**: Searches for `shai-hulud-workflow.yml` files (September 2025) and `formatter_*.yml` files with SHA1HULUD runners (November 2025)
 3. **Hash Verification**: Calculates SHA-256 hashes against 7 known malicious bundle.js variants (V1-V7)
 4. **Package Analysis**: Parses `package.json` files for compromised versions and affected namespaces
@@ -386,14 +395,15 @@ The script performs these checks:
 8. **Cryptocurrency Theft Detection**: Identifies wallet replacement patterns, XMLHttpRequest hijacking, and crypto theft functions
 9. **Trufflehog Activity Detection**: Looks for credential scanning tools and secret harvesting patterns
 10. **Git Analysis**: Checks for suspicious branch names ("shai-hulud")
-11. **Repository Detection**: Identifies "Shai-Hulud" and "Second Coming" repository patterns
-12. **November 2025 Bun Attack Detection**: Identifies `setup_bun.js` and `bun_environment.js` attack files
+11. **Repository Detection**: Identifies "Shai-Hulud", "Second Coming", and "Goldox-T3chs" repository patterns
+12. **November 2025 Bun Attack Detection**: Identifies `setup_bun.js`/`bun_installer.js` and `bun_environment.js`/`environment_source.js` attack files
 13. **GitHub Actions Runner Detection**: Identifies malicious SHA1HULUD runners
 14. **Discussion Workflow Detection**: Identifies workflows that trigger on discussion events (stealth persistence)
 15. **Destructive Payload Detection**: Identifies destructive fallback patterns (`rm -rf`, `fs.rmSync`, etc.)
 16. **Lockfile Integrity Checking**: Analyzes package-lock.json, yarn.lock, and pnpm-lock.yaml for compromised packages
 17. **Typosquatting Detection** (paranoid mode): Identifies packages with names similar to popular packages
 18. **Network Exfiltration Detection** (paranoid mode): Detects suspicious domains and hardcoded IPs
+19. **Obfuscated Exfiltration Detection**: Identifies Golden Path variant staging files (`3nvir0nm3nt.json`, `cl0vd.json`, etc.)
 
 ## Limitations
 
@@ -420,6 +430,7 @@ Always verify findings manually and take appropriate remediation steps.
 - [Aikido: NPM debug and chalk packages compromised](https://www.aikido.dev/blog/npm-debug-and-chalk-packages-compromised)
 - [Semgrep Security Advisory: NPM packages using secret scanning tools to steal credentials](https://semgrep.dev/blog/2025/security-advisory-npm-packages-using-secret-scanning-tools-to-steal-credentials/)
 - [Aikido: S1ngularity-nx attackers strike again](https://www.aikido.dev/blog/s1ngularity-nx-attackers-strike-again)
+- [Aikido: Shai-Hulud strikes again - The Golden Path](https://www.aikido.dev/blog/shai-hulud-strikes-again---the-golden-path)
 
 ### Additional Resources
 - [Socket: Ongoing supply chain attack targets CrowdStrike npm packages](https://socket.dev/blog/ongoing-supply-chain-attack-targets-crowdstrike-npm-packages)

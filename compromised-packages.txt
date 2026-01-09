@@ -939,6 +939,9 @@
 @varsityvibe/validation-schemas:0.6.7
 @varsityvibe/validation-schemas:0.6.8
 @viapip/eslint-config:0.2.4
+@vietmoney/react-big-calendar:0.26.0
+@vietmoney/react-big-calendar:0.26.1
+@vietmoney/react-big-calendar:0.26.2
 @vishadtyagi/full-year-calendar:0.1.11
 @voiceflow/alexa-types:2.15.61
 @voiceflow/anthropic:0.4.4

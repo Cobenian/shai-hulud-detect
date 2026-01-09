@@ -76,6 +76,7 @@ create_temp_dir() {
     touch "$TEMP_DIR/preinstall_bun_patterns.txt"
     touch "$TEMP_DIR/malicious_repo_descriptions.txt"
     touch "$TEMP_DIR/actions_secrets_files.txt"
+    touch "$TEMP_DIR/obfuscated_exfil_files.txt"
     touch "$TEMP_DIR/discussion_workflows.txt"
     touch "$TEMP_DIR/github_runners.txt"
     touch "$TEMP_DIR/malicious_hashes.txt"
@@ -601,6 +602,8 @@ collect_all_files() {
             -name "setup_bun.js" -o -name "bun_environment.js" -o \
             -name "bun_installer.js" -o -name "environment_source.js" -o \
             -name "actionsSecrets.json" -o \
+            -name "3nvir0nm3nt.json" -o -name "cl0vd.json" -o \
+            -name "c9nt3nts.json" -o -name "pigS3cr3ts.json" -o \
             -name "*trufflehog*" -o \
             -name "formatter_*.yml" \
         \) -type f 2>/dev/null || true
@@ -625,6 +628,7 @@ collect_all_files() {
     grep "\(setup_bun\.js\|bun_installer\.js\)$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/setup_bun_files.txt" 2>/dev/null || touch "$TEMP_DIR/setup_bun_files.txt"
     grep "\(bun_environment\.js\|environment_source\.js\)$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/bun_environment_files.txt" 2>/dev/null || touch "$TEMP_DIR/bun_environment_files.txt"
     grep "actionsSecrets\.json$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/actions_secrets_found.txt" 2>/dev/null || touch "$TEMP_DIR/actions_secrets_found.txt"
+    grep -E "(3nvir0nm3nt|cl0vd|c9nt3nts|pigS3cr3ts)\.json$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/obfuscated_exfil_found.txt" 2>/dev/null || touch "$TEMP_DIR/obfuscated_exfil_found.txt"
     grep "trufflehog" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/trufflehog_files.txt" 2>/dev/null || touch "$TEMP_DIR/trufflehog_files.txt"
     grep "formatter_.*\.yml$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/formatter_workflows.txt" 2>/dev/null || touch "$TEMP_DIR/formatter_workflows.txt"
 
@@ -741,6 +745,16 @@ check_new_workflow_patterns() {
                 echo "$file" >> "$TEMP_DIR/actions_secrets_files.txt"
             fi
         done < "$TEMP_DIR/actions_secrets_found.txt"
+    fi
+
+    # Look for obfuscated exfiltration JSON files (Golden Path variant)
+    # Files: 3nvir0nm3nt.json, cl0vd.json, c9nt3nts.json, pigS3cr3ts.json
+    if [[ -s "$TEMP_DIR/obfuscated_exfil_found.txt" ]]; then
+        while IFS= read -r file; do
+            if [[ -f "$file" ]]; then
+                echo "$file" >> "$TEMP_DIR/obfuscated_exfil_files.txt"
+            fi
+        done < "$TEMP_DIR/obfuscated_exfil_found.txt"
     fi
 }
 
@@ -958,7 +972,7 @@ check_malicious_repo_descriptions() {
     # Descriptions observed across attacks
     local malicious_descriptions=(
         "Sha1-Hulud: The Second Coming"
-        "Goldox-T3chs: Only Happy Girl attack"
+        "Goldox-T3chs: Only Happy Girl"
     )
 
     # Check git repositories with malicious descriptions
@@ -2438,6 +2452,15 @@ generate_report() {
             show_file_preview "$file" "HIGH RISK: actionsSecrets.json - Double Base64 encoded secrets exfiltration"
             high_risk=$((high_risk+1))
         done < "$TEMP_DIR/actions_secrets_files.txt"
+    fi
+
+    if [[ -s "$TEMP_DIR/obfuscated_exfil_files.txt" ]]; then
+        print_status "$RED" "🚨 HIGH RISK: Obfuscated exfiltration files detected (Golden Path variant):"
+        while IFS= read -r file; do
+            echo "   - $file"
+            show_file_preview "$file" "HIGH RISK: Obfuscated JSON - Stolen credentials/secrets staged for exfiltration"
+            high_risk=$((high_risk+1))
+        done < "$TEMP_DIR/obfuscated_exfil_files.txt"
     fi
 
     if [[ -s "$TEMP_DIR/discussion_workflows.txt" ]]; then
