@@ -74,7 +74,7 @@ create_temp_dir() {
     touch "$TEMP_DIR/new_workflow_files.txt"
     touch "$TEMP_DIR/github_sha1hulud_runners.txt"
     touch "$TEMP_DIR/preinstall_bun_patterns.txt"
-    touch "$TEMP_DIR/second_coming_repos.txt"
+    touch "$TEMP_DIR/malicious_repo_descriptions.txt"
     touch "$TEMP_DIR/actions_secrets_files.txt"
     touch "$TEMP_DIR/discussion_workflows.txt"
     touch "$TEMP_DIR/github_runners.txt"
@@ -599,6 +599,7 @@ collect_all_files() {
             -name "package-lock.json" -o -name "yarn.lock" -o -name "pnpm-lock.yaml" -o \
             -name "shai-hulud-workflow.yml" -o \
             -name "setup_bun.js" -o -name "bun_environment.js" -o \
+            -name "bun_installer.js" -o -name "environment_source.js" -o \
             -name "actionsSecrets.json" -o \
             -name "*trufflehog*" -o \
             -name "formatter_*.yml" \
@@ -621,8 +622,8 @@ collect_all_files() {
     grep "\.\(py\|sh\|bat\|ps1\|cmd\)$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/script_files.txt" 2>/dev/null || touch "$TEMP_DIR/script_files.txt"
     grep "\(package-lock\.json\|yarn\.lock\|pnpm-lock\.yaml\)$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/lockfiles.txt" 2>/dev/null || touch "$TEMP_DIR/lockfiles.txt"
     grep "shai-hulud-workflow\.yml$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/workflow_files_found.txt" 2>/dev/null || touch "$TEMP_DIR/workflow_files_found.txt"
-    grep "setup_bun\.js$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/setup_bun_files.txt" 2>/dev/null || touch "$TEMP_DIR/setup_bun_files.txt"
-    grep "bun_environment\.js$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/bun_environment_files.txt" 2>/dev/null || touch "$TEMP_DIR/bun_environment_files.txt"
+    grep "\(setup_bun\.js\|bun_installer\.js\)$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/setup_bun_files.txt" 2>/dev/null || touch "$TEMP_DIR/setup_bun_files.txt"
+    grep "\(bun_environment\.js\|environment_source\.js\)$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/bun_environment_files.txt" 2>/dev/null || touch "$TEMP_DIR/bun_environment_files.txt"
     grep "actionsSecrets\.json$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/actions_secrets_found.txt" 2>/dev/null || touch "$TEMP_DIR/actions_secrets_found.txt"
     grep "trufflehog" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/trufflehog_files.txt" 2>/dev/null || touch "$TEMP_DIR/trufflehog_files.txt"
     grep "formatter_.*\.yml$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/formatter_workflows.txt" 2>/dev/null || touch "$TEMP_DIR/formatter_workflows.txt"
@@ -906,7 +907,7 @@ check_preinstall_bun_patterns() {
     while IFS= read -r file; do
         if [[ -f "$file" ]]; then
             # Check if the file contains the malicious preinstall pattern
-            if grep -q '"preinstall"[[:space:]]*:[[:space:]]*"node setup_bun\.js"' "$file" 2>/dev/null; then
+            if grep -Eq '"preinstall"[[:space:]]*:[[:space:]]*"node (setup_bun|bun_installer)\.js"' "$file" 2>/dev/null; then
                 echo "$file" >> "$TEMP_DIR/preinstall_bun_patterns.txt"
             fi
         fi
@@ -935,14 +936,14 @@ check_github_actions_runner() {
     done < "$TEMP_DIR/yaml_files.txt"
 }
 
-# Function: check_second_coming_repos
-# Purpose: Detect repository descriptions with "Sha1-Hulud: The Second Coming" pattern
+# Function: check_malicious_repo_descriptions
+# Purpose: Detect repository descriptions with known malicious patterns
 # Args: $1 = scan_dir (directory to scan)
-# Modifies: SECOND_COMING_REPOS (global array)
-# Returns: Populates array with git repositories matching the description pattern
-check_second_coming_repos() {
+# Modifies: malicious_repo_descriptions.txt (temp file)
+# Returns: Populates temp file with git repositories matching malicious description patterns
+check_malicious_repo_descriptions() {
     local scan_dir=$1
-    print_status "$BLUE" "   Checking for 'Second Coming' repository descriptions..."
+    print_status "$BLUE" "   Checking for malicious repository descriptions..."
 
     # Performance Optimization: Use pre-collected git repositories
     local git_repos_source
@@ -954,25 +955,32 @@ check_second_coming_repos() {
         git_repos_source="$TEMP_DIR/git_repos_fallback.txt"
     fi
 
+    # Descriptions observed across attacks
+    local malicious_descriptions=(
+        "Sha1-Hulud: The Second Coming"
+        "Goldox-T3chs: Only Happy Girl attack"
+    )
+
     # Check git repositories with malicious descriptions
     while IFS= read -r repo_dir; do
         if [[ -d "$repo_dir/.git" ]]; then
             # Check git config for repository description with timeout
-            local description
+            local description=""
             if command -v timeout >/dev/null 2>&1; then
                 # GNU timeout is available
-                if description=$(timeout 5s git -C "$repo_dir" config --get --local --null --default "" repository.description 2>/dev/null | tr -d '\0'); then
-                    if [[ "$description" == *"Sha1-Hulud: The Second Coming"* ]]; then
-                        echo "$repo_dir" >> "$TEMP_DIR/second_coming_repos.txt"
-                    fi
-                fi
+                description=$(timeout 5s git -C "$repo_dir" config --get --local --null --default "" repository.description 2>/dev/null | tr -d '\0') || description=""
             else
                 # Fallback for systems without timeout command (e.g., macOS)
-                if description=$(git -C "$repo_dir" config --get --local --null --default "" repository.description 2>/dev/null | tr -d '\0'); then
-                    if [[ "$description" == *"Sha1-Hulud: The Second Coming"* ]]; then
-                        echo "$repo_dir" >> "$TEMP_DIR/second_coming_repos.txt"
+                description=$(git -C "$repo_dir" config --get --local --null --default "" repository.description 2>/dev/null | tr -d '\0') || description=""
+            fi
+
+            if [[ -n "$description" ]]; then
+                for malicious_desc in "${malicious_descriptions[@]}"; do
+                    if [[ "$description" == *"$malicious_desc"* ]]; then
+                        echo "$repo_dir:Description: $description" >> "$TEMP_DIR/malicious_repo_descriptions.txt"
+                        break
                     fi
-                fi
+                done
             fi
             # Skip repositories where git command times out or fails
         fi
@@ -2278,7 +2286,7 @@ write_log_file() {
         [[ -s "$TEMP_DIR/github_sha1hulud_runners.txt" ]] && cat "$TEMP_DIR/github_sha1hulud_runners.txt" || true
 
         # Second coming repos
-        [[ -s "$TEMP_DIR/second_coming_repos.txt" ]] && cat "$TEMP_DIR/second_coming_repos.txt" || true
+        [[ -s "$TEMP_DIR/malicious_repo_descriptions.txt" ]] && cat "$TEMP_DIR/malicious_repo_descriptions.txt" || true
 
         # Compromised packages (extract file path before colon)
         [[ -s "$TEMP_DIR/compromised_found.txt" ]] && cut -d: -f1 "$TEMP_DIR/compromised_found.txt" || true
@@ -2400,7 +2408,7 @@ generate_report() {
         print_status "$RED" "🚨 HIGH RISK: November 2025 Bun attack setup files detected:"
         while IFS= read -r file; do
             echo "   - $file"
-            show_file_preview "$file" "HIGH RISK: setup_bun.js - Fake Bun runtime installation malware"
+            show_file_preview "$file" "HIGH RISK: Fake Bun runtime installation malware (setup_bun.js / bun_installer.js)"
             high_risk=$((high_risk+1))
         done < "$TEMP_DIR/bun_setup_files.txt"
     fi
@@ -2409,7 +2417,7 @@ generate_report() {
         print_status "$RED" "🚨 HIGH RISK: November 2025 Bun environment payload detected:"
         while IFS= read -r file; do
             echo "   - $file"
-            show_file_preview "$file" "HIGH RISK: bun_environment.js - 10MB+ obfuscated credential harvesting payload"
+            show_file_preview "$file" "HIGH RISK: 10MB+ obfuscated credential harvesting payload (bun_environment.js / environment_source.js)"
             high_risk=$((high_risk+1))
         done < "$TEMP_DIR/bun_environment_files.txt"
     fi
@@ -2501,13 +2509,15 @@ generate_report() {
         done < "$TEMP_DIR/github_sha1hulud_runners.txt"
     fi
 
-    if [[ -s "$TEMP_DIR/second_coming_repos.txt" ]]; then
-        print_status "$RED" "🚨 HIGH RISK: 'Shai-Hulud: The Second Coming' repositories detected:"
-        while IFS= read -r repo_dir; do
+    if [[ -s "$TEMP_DIR/malicious_repo_descriptions.txt" ]]; then
+        print_status "$RED" "🚨 HIGH RISK: Malicious repository descriptions detected:"
+        while IFS= read -r repo_entry; do
+            local repo_dir="${repo_entry%%:*}"
+            local repo_info="${repo_entry#*:}"
             echo "   - $repo_dir"
-            echo "     Repository description: Sha1-Hulud: The Second Coming."
+            [[ -n "$repo_info" && "$repo_info" != "$repo_dir" ]] && echo "     ${repo_info#*: }"
             high_risk=$((high_risk+1))
-        done < "$TEMP_DIR/second_coming_repos.txt"
+        done < "$TEMP_DIR/malicious_repo_descriptions.txt"
     fi
 
     # Report compromised packages
@@ -3017,9 +3027,9 @@ main() {
     print_stage_complete "Advanced detection"
 
     # Final checks
-    print_status "$ORANGE" "[Stage 6/6] Final checks (actions runner, second coming repos)"
+    print_status "$ORANGE" "[Stage 6/6] Final checks (actions runner, malicious repo descriptions)"
     check_github_actions_runner "$scan_dir"
-    check_second_coming_repos "$scan_dir"
+    check_malicious_repo_descriptions "$scan_dir"
     print_stage_complete "Final checks"
 
     # Run additional security checks only in paranoid mode
