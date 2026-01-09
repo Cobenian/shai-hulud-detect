@@ -74,7 +74,7 @@ create_temp_dir() {
     touch "$TEMP_DIR/new_workflow_files.txt"
     touch "$TEMP_DIR/github_sha1hulud_runners.txt"
     touch "$TEMP_DIR/preinstall_bun_patterns.txt"
-    touch "$TEMP_DIR/second_coming_repos.txt"
+    touch "$TEMP_DIR/malicious_repo_descriptions.txt"
     touch "$TEMP_DIR/actions_secrets_files.txt"
     touch "$TEMP_DIR/discussion_workflows.txt"
     touch "$TEMP_DIR/github_runners.txt"
@@ -936,14 +936,14 @@ check_github_actions_runner() {
     done < "$TEMP_DIR/yaml_files.txt"
 }
 
-# Function: check_second_coming_repos
-# Purpose: Detect repository descriptions with "Sha1-Hulud: The Second Coming" pattern
+# Function: check_malicious_repo_descriptions
+# Purpose: Detect repository descriptions with known malicious patterns
 # Args: $1 = scan_dir (directory to scan)
-# Modifies: SECOND_COMING_REPOS (global array)
-# Returns: Populates array with git repositories matching the description pattern
-check_second_coming_repos() {
+# Modifies: malicious_repo_descriptions.txt (temp file)
+# Returns: Populates temp file with git repositories matching malicious description patterns
+check_malicious_repo_descriptions() {
     local scan_dir=$1
-    print_status "$BLUE" "   Checking for 'Second Coming' repository descriptions..."
+    print_status "$BLUE" "   Checking for malicious repository descriptions..."
 
     # Performance Optimization: Use pre-collected git repositories
     local git_repos_source
@@ -955,25 +955,32 @@ check_second_coming_repos() {
         git_repos_source="$TEMP_DIR/git_repos_fallback.txt"
     fi
 
+    # Descriptions observed across attacks
+    local malicious_descriptions=(
+        "Sha1-Hulud: The Second Coming"
+        "Goldox-T3chs: Only Happy Girl attack"
+    )
+
     # Check git repositories with malicious descriptions
     while IFS= read -r repo_dir; do
         if [[ -d "$repo_dir/.git" ]]; then
             # Check git config for repository description with timeout
-            local description
+            local description=""
             if command -v timeout >/dev/null 2>&1; then
                 # GNU timeout is available
-                if description=$(timeout 5s git -C "$repo_dir" config --get --local --null --default "" repository.description 2>/dev/null | tr -d '\0'); then
-                    if [[ "$description" == *"Sha1-Hulud: The Second Coming"* ]]; then
-                        echo "$repo_dir" >> "$TEMP_DIR/second_coming_repos.txt"
-                    fi
-                fi
+                description=$(timeout 5s git -C "$repo_dir" config --get --local --null --default "" repository.description 2>/dev/null | tr -d '\0') || description=""
             else
                 # Fallback for systems without timeout command (e.g., macOS)
-                if description=$(git -C "$repo_dir" config --get --local --null --default "" repository.description 2>/dev/null | tr -d '\0'); then
-                    if [[ "$description" == *"Sha1-Hulud: The Second Coming"* ]]; then
-                        echo "$repo_dir" >> "$TEMP_DIR/second_coming_repos.txt"
+                description=$(git -C "$repo_dir" config --get --local --null --default "" repository.description 2>/dev/null | tr -d '\0') || description=""
+            fi
+
+            if [[ -n "$description" ]]; then
+                for malicious_desc in "${malicious_descriptions[@]}"; do
+                    if [[ "$description" == *"$malicious_desc"* ]]; then
+                        echo "$repo_dir:Description: $description" >> "$TEMP_DIR/malicious_repo_descriptions.txt"
+                        break
                     fi
-                fi
+                done
             fi
             # Skip repositories where git command times out or fails
         fi
@@ -2279,7 +2286,7 @@ write_log_file() {
         [[ -s "$TEMP_DIR/github_sha1hulud_runners.txt" ]] && cat "$TEMP_DIR/github_sha1hulud_runners.txt" || true
 
         # Second coming repos
-        [[ -s "$TEMP_DIR/second_coming_repos.txt" ]] && cat "$TEMP_DIR/second_coming_repos.txt" || true
+        [[ -s "$TEMP_DIR/malicious_repo_descriptions.txt" ]] && cat "$TEMP_DIR/malicious_repo_descriptions.txt" || true
 
         # Compromised packages (extract file path before colon)
         [[ -s "$TEMP_DIR/compromised_found.txt" ]] && cut -d: -f1 "$TEMP_DIR/compromised_found.txt" || true
@@ -2502,13 +2509,15 @@ generate_report() {
         done < "$TEMP_DIR/github_sha1hulud_runners.txt"
     fi
 
-    if [[ -s "$TEMP_DIR/second_coming_repos.txt" ]]; then
-        print_status "$RED" "🚨 HIGH RISK: 'Shai-Hulud: The Second Coming' repositories detected:"
-        while IFS= read -r repo_dir; do
+    if [[ -s "$TEMP_DIR/malicious_repo_descriptions.txt" ]]; then
+        print_status "$RED" "🚨 HIGH RISK: Malicious repository descriptions detected:"
+        while IFS= read -r repo_entry; do
+            local repo_dir="${repo_entry%%:*}"
+            local repo_info="${repo_entry#*:}"
             echo "   - $repo_dir"
-            echo "     Repository description: Sha1-Hulud: The Second Coming."
+            [[ -n "$repo_info" && "$repo_info" != "$repo_dir" ]] && echo "     ${repo_info#*: }"
             high_risk=$((high_risk+1))
-        done < "$TEMP_DIR/second_coming_repos.txt"
+        done < "$TEMP_DIR/malicious_repo_descriptions.txt"
     fi
 
     # Report compromised packages
@@ -3018,9 +3027,9 @@ main() {
     print_stage_complete "Advanced detection"
 
     # Final checks
-    print_status "$ORANGE" "[Stage 6/6] Final checks (actions runner, second coming repos)"
+    print_status "$ORANGE" "[Stage 6/6] Final checks (actions runner, malicious repo descriptions)"
     check_github_actions_runner "$scan_dir"
-    check_second_coming_repos "$scan_dir"
+    check_malicious_repo_descriptions "$scan_dir"
     print_stage_complete "Final checks"
 
     # Run additional security checks only in paranoid mode
