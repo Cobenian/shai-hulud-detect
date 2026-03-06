@@ -197,6 +197,78 @@ fi
 # Cleanup
 rm -f "$LOG_FILE"
 
+# Test ignore-list functionality
+echo ""
+echo "========================================"
+echo "  Testing ignore list functionality"
+echo "========================================"
+
+# Test markers (path-based assertions avoid unrelated global findings)
+DISCUSSION_MARKER="discussion-workflows/.github/workflows/discussion.yaml"
+AUTO_MARKER="ignore-auto-load/.github/workflows/shai-hulud-workflow.yml"
+
+# Test 1: --ignore suppresses matching workflow file path
+ignore_result=$("$BASH_CMD" "$DETECTOR" --ignore ".github/workflows/" "$SCRIPT_DIR/test-cases/discussion-workflows" 2>&1)
+if ! echo "$ignore_result" | grep -q "$DISCUSSION_MARKER"; then
+    echo -e "${GREEN}PASS${NC}: --ignore suppresses matching workflow path output"
+    ((passed++))
+else
+    echo -e "${RED}FAIL${NC}: --ignore did not suppress expected workflow path output"
+    ((failed++))
+fi
+((total++))
+
+# Test 2: --ignore with non-matching pattern does not suppress real findings
+ignore_nomatch_result=$("$BASH_CMD" "$DETECTOR" --ignore "definitely-no-match-pattern-12345" "$SCRIPT_DIR/test-cases/infected-project" 2>&1)
+ignore_nomatch_exit=$?
+if [[ "$ignore_nomatch_exit" -eq 1 ]] && echo "$ignore_nomatch_result" | grep -q "HIGH RISK"; then
+    echo -e "${GREEN}PASS${NC}: non-matching --ignore does not hide HIGH risk findings"
+    ((passed++))
+else
+    echo -e "${RED}FAIL${NC}: non-matching --ignore unexpectedly changed detection behavior"
+    ((failed++))
+fi
+((total++))
+
+# Test 3: --ignore-file suppresses matching findings from file patterns
+IGNORE_FILE="/tmp/shai-hulud-ignore-$$.txt"
+echo ".github/workflows/" > "$IGNORE_FILE"
+ignore_file_result=$("$BASH_CMD" "$DETECTOR" --ignore-file "$IGNORE_FILE" "$SCRIPT_DIR/test-cases/discussion-workflows" 2>&1)
+if ! echo "$ignore_file_result" | grep -q "$DISCUSSION_MARKER"; then
+    echo -e "${GREEN}PASS${NC}: --ignore-file suppresses matching workflow path output"
+    ((passed++))
+else
+    echo -e "${RED}FAIL${NC}: --ignore-file did not suppress expected workflow path output"
+    ((failed++))
+fi
+((total++))
+rm -f "$IGNORE_FILE"
+
+# Test 4: .shai-hulud-ignore auto-load suppresses fixture workflow path by default
+auto_ignore_result=$("$BASH_CMD" "$DETECTOR" "$SCRIPT_DIR/test-cases/ignore-auto-load" 2>&1)
+if ! echo "$auto_ignore_result" | grep -q "$AUTO_MARKER"; then
+    echo -e "${GREEN}PASS${NC}: .shai-hulud-ignore is auto-loaded"
+    ((passed++))
+else
+    echo -e "${RED}FAIL${NC}: .shai-hulud-ignore was not auto-loaded as expected"
+    ((failed++))
+fi
+((total++))
+
+# Test 5: explicit --ignore-file path disables auto-load fallback
+EMPTY_IGNORE_FILE="/tmp/shai-hulud-empty-ignore-$$.txt"
+: > "$EMPTY_IGNORE_FILE"
+no_auto_result=$("$BASH_CMD" "$DETECTOR" --ignore-file "$EMPTY_IGNORE_FILE" "$SCRIPT_DIR/test-cases/ignore-auto-load" 2>&1)
+if echo "$no_auto_result" | grep -q "$AUTO_MARKER"; then
+    echo -e "${GREEN}PASS${NC}: explicit --ignore-file disables auto-load fallback"
+    ((passed++))
+else
+    echo -e "${RED}FAIL${NC}: explicit --ignore-file did not override auto-load behavior"
+    ((failed++))
+fi
+((total++))
+rm -f "$EMPTY_IGNORE_FILE"
+
 echo ""
 echo "========================================"
 echo "  Final Results: $passed/$total passed, $failed failed"

@@ -1,0 +1,12 @@
+name: ignored-shai-hulud-workflow
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Example
+        run: echo "test fixture for ignore auto-load"
