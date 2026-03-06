@@ -1530,8 +1530,10 @@ check_packages() {
     # BATCH OPTIMIZATION: Extract all deps using parallel processing
     print_status "$BLUE" "   Extracting dependencies from all package.json files..."
 
-    # Create optimized lookup table from compromised packages (sorted for join)
-    awk -F: '{print $1":"$2}' $SCRIPT_DIR/compromised-packages.txt | LC_ALL=C sort > "$TEMP_DIR/compromised_lookup.txt"
+    # Create optimized lookup table from compromised packages (sorted for set intersection)
+    # NOTE: This intentionally uses the in-memory COMPROMISED_PACKAGES_MAP, so the script
+    # still works when copied without the companion compromised-packages.txt file.
+    { for pkg in "${!COMPROMISED_PACKAGES_MAP[@]}"; do echo "$pkg"; done; } | LC_ALL=C sort > "$TEMP_DIR/compromised_lookup.txt"
 
     # Extract all dependencies from all package.json files using parallel xargs + awk
     # Format: file_path|package_name:version
