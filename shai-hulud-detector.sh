@@ -23,12 +23,21 @@ set -eo pipefail
 # Script directory for locating companion files (compromised-packages.txt)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Script filename/path (used for self-exclusion)
+SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
+SCRIPT_PATH="$SCRIPT_DIR/$SCRIPT_NAME"
+
 # Global temp directory for file-based storage
 TEMP_DIR=""
 
 # Global variables for risk tracking (used for exit codes)
 high_risk=0
 medium_risk=0
+
+# Ignore list support (file-path substring matches)
+# - Always ignores the detector itself to prevent self-matches when scanning a directory containing this script.
+IGNORE_FILE=""
+declare -a IGNORE_PATTERNS=()
 
 # Function: create_temp_dir
 # Purpose: Create cross-platform temporary directory for findings storage
@@ -429,6 +438,9 @@ usage() {
     echo "  --parallelism N    Set the number of threads to use for parallelized steps (current: ${PARALLELISM})"
     echo "  --save-log FILE    Save all detected file paths to FILE, grouped by severity"
     echo "                     Output format: # HIGH / # MEDIUM / # LOW headers with file paths"
+    echo "  --ignore-file FILE Load ignore patterns from FILE (one per line, '#' comments)"
+    echo "                     If <directory_to_scan> contains .shai-hulud-ignore, it is loaded automatically"
+    echo "  --ignore PATTERN   Ignore any file/finding where the path contains PATTERN (repeatable)"
     echo ""
     echo "GREP TOOL SELECTION (auto-selects fastest available by default: git-grep > ripgrep > grep):"
     echo "  --use-git-grep     Force use of git grep (fastest, DFA-based, no backtracking)"
@@ -439,6 +451,8 @@ usage() {
     echo "  $0 /path/to/your/project                    # Core Shai-Hulud detection only"
     echo "  $0 --paranoid /path/to/your/project         # Core + advanced security checks"
     echo "  $0 --save-log report.log /path/to/project   # Save findings to file"
+    echo "  $0 --ignore-file .shai-hulud-ignore /path/to/project   # Suppress known-safe matches"
+    echo "  $0 --ignore node_modules/ /path/to/project              # Ignore noisy directories"
     echo "  $0 --use-ripgrep /path/to/your/project      # Force ripgrep for testing"
     exit 1
 }
@@ -452,6 +466,215 @@ print_status() {
     local color=$1
     local message=$2
     echo -e "${color}${message}${NC}"
+}
+
+# =============================================================================
+# Ignore List Helpers
+# =============================================================================
+
+# Function: trim_whitespace
+# Purpose: Normalize input by removing CRLF and trimming leading/trailing whitespace
+# Args: $1 = raw input string
+# Modifies: None
+# Returns: Prints normalized string to stdout
+trim_whitespace() {
+    local s="${1:-}"
+    s="${s//$'\r'/}"
+    s="${s#"${s%%[![:space:]]*}"}"
+    s="${s%"${s##*[![:space:]]}"}"
+    printf '%s' "$s"
+}
+
+# Function: add_ignore_pattern
+# Purpose: Add a single ignore pattern to IGNORE_PATTERNS after normalization
+# Args: $1 = ignore pattern substring
+# Modifies: IGNORE_PATTERNS array
+# Returns: 0 (no-op for empty patterns)
+add_ignore_pattern() {
+    local pattern
+    pattern=$(trim_whitespace "${1:-}")
+    [[ -z "$pattern" ]] && return 0
+
+    # Drop leading "./" for convenience
+    while [[ "$pattern" == "./"* ]]; do
+        pattern="${pattern#./}"
+    done
+
+    IGNORE_PATTERNS+=("$pattern")
+}
+
+# Function: load_ignore_file
+# Purpose: Load ignore patterns from a file, skipping blanks and comments
+# Args: $1 = path to ignore file
+# Modifies: IGNORE_PATTERNS array
+# Returns: 0 (safe no-op when file does not exist)
+load_ignore_file() {
+    local ignore_file="$1"
+    [[ -f "$ignore_file" ]] || return 0
+
+    while IFS= read -r line; do
+        line=$(trim_whitespace "$line")
+        [[ -z "$line" ]] && continue
+        [[ "$line" == \#* ]] && continue
+        add_ignore_pattern "$line"
+    done < "$ignore_file" || true
+}
+
+# Function: init_ignore_patterns
+# Purpose: Initialize effective ignore patterns from defaults, file, and CLI flags
+# Args: $1 = scan directory, $2 = optional ignore file, $@ = extra CLI patterns
+# Modifies: IGNORE_PATTERNS array, IGNORE_FILE
+# Returns: 0 on success, exits on invalid ignore-file path
+init_ignore_patterns() {
+    local scan_dir="$1"
+    local ignore_file="$2"
+    shift 2 || true
+
+    IGNORE_PATTERNS=()
+    add_ignore_pattern "$SCRIPT_NAME"
+    add_ignore_pattern "$SCRIPT_PATH"
+
+    if [[ -n "$ignore_file" ]]; then
+        if [[ ! -f "$ignore_file" ]]; then
+            print_status "$RED" "Error: Ignore file '$ignore_file' does not exist."
+            exit 1
+        fi
+        IGNORE_FILE="$ignore_file"
+        load_ignore_file "$ignore_file"
+    else
+        local auto_ignore_file="$scan_dir/.shai-hulud-ignore"
+        if [[ -f "$auto_ignore_file" ]]; then
+            IGNORE_FILE="$auto_ignore_file"
+            load_ignore_file "$auto_ignore_file"
+        else
+            IGNORE_FILE=""
+        fi
+    fi
+
+    local pattern
+    for pattern in "$@"; do
+        add_ignore_pattern "$pattern"
+    done
+}
+
+# Function: is_ignored_path
+# Purpose: Check whether a path should be ignored based on substring matching
+# Args: $1 = candidate file path
+# Modifies: None
+# Returns: 0 if ignored, 1 otherwise
+is_ignored_path() {
+    local candidate_path="$1"
+    local pattern
+
+    for pattern in "${IGNORE_PATTERNS[@]}"; do
+        [[ -z "$pattern" ]] && continue
+        if [[ "$candidate_path" == *"$pattern"* ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Function: filter_lines_file_in_place
+# Purpose: Remove ignored paths from a findings/inventory file in-place
+# Args: $1 = file containing one path-based entry per line
+# Modifies: Rewrites target file (temporary file + atomic move)
+# Returns: 0 when complete or when file/pattern set is empty
+filter_lines_file_in_place() {
+    local file="$1"
+    [[ -f "$file" ]] || return 0
+    [[ ${#IGNORE_PATTERNS[@]} -gt 0 ]] || return 0
+
+    local tmp="${file}.tmp"
+    : > "$tmp"
+
+    while IFS= read -r line; do
+        line="${line//$'\r'/}"
+        [[ -z "$line" ]] && continue
+
+        local path="${line%%:*}"
+        if is_ignored_path "$path"; then
+            continue
+        fi
+
+        echo "$line" >> "$tmp"
+    done < "$file" || true
+
+    mv "$tmp" "$file"
+}
+
+# Function: apply_ignore_filters_to_inventory
+# Purpose: Apply ignore filtering to all precomputed inventory/cache file lists
+# Args: None (uses TEMP_DIR and IGNORE_PATTERNS)
+# Modifies: Inventory files in TEMP_DIR
+# Returns: 0 after filtering all known inventory files
+apply_ignore_filters_to_inventory() {
+    local inventory_files=(
+        "$TEMP_DIR/all_files_raw.txt"
+        "$TEMP_DIR/package_files.txt"
+        "$TEMP_DIR/code_files.txt"
+        "$TEMP_DIR/yaml_files.txt"
+        "$TEMP_DIR/script_files.txt"
+        "$TEMP_DIR/lockfiles.txt"
+        "$TEMP_DIR/workflow_files_found.txt"
+        "$TEMP_DIR/setup_bun_files.txt"
+        "$TEMP_DIR/bun_environment_files.txt"
+        "$TEMP_DIR/actions_secrets_found.txt"
+        "$TEMP_DIR/obfuscated_exfil_found.txt"
+        "$TEMP_DIR/trufflehog_files.txt"
+        "$TEMP_DIR/formatter_workflows.txt"
+        "$TEMP_DIR/github_workflows.txt"
+        "$TEMP_DIR/git_repos.txt"
+        "$TEMP_DIR/suspicious_dirs.txt"
+    )
+
+    local f
+    for f in "${inventory_files[@]}"; do
+        filter_lines_file_in_place "$f"
+    done
+}
+
+# Function: apply_ignore_filters_to_findings
+# Purpose: Apply ignore filtering to all generated findings output files
+# Args: None (uses TEMP_DIR and IGNORE_PATTERNS)
+# Modifies: Findings files in TEMP_DIR
+# Returns: 0 after filtering all known findings files
+apply_ignore_filters_to_findings() {
+    local finding_files=(
+        "$TEMP_DIR/workflow_files.txt"
+        "$TEMP_DIR/malicious_hashes.txt"
+        "$TEMP_DIR/compromised_found.txt"
+        "$TEMP_DIR/suspicious_found.txt"
+        "$TEMP_DIR/suspicious_content.txt"
+        "$TEMP_DIR/crypto_patterns.txt"
+        "$TEMP_DIR/git_branches.txt"
+        "$TEMP_DIR/postinstall_hooks.txt"
+        "$TEMP_DIR/trufflehog_activity.txt"
+        "$TEMP_DIR/shai_hulud_repos.txt"
+        "$TEMP_DIR/namespace_warnings.txt"
+        "$TEMP_DIR/integrity_issues.txt"
+        "$TEMP_DIR/typosquatting_warnings.txt"
+        "$TEMP_DIR/network_exfiltration_warnings.txt"
+        "$TEMP_DIR/lockfile_safe_versions.txt"
+        "$TEMP_DIR/bun_setup_files.txt"
+        "$TEMP_DIR/bun_environment_files.txt"
+        "$TEMP_DIR/new_workflow_files.txt"
+        "$TEMP_DIR/github_sha1hulud_runners.txt"
+        "$TEMP_DIR/preinstall_bun_patterns.txt"
+        "$TEMP_DIR/malicious_repo_descriptions.txt"
+        "$TEMP_DIR/actions_secrets_files.txt"
+        "$TEMP_DIR/obfuscated_exfil_files.txt"
+        "$TEMP_DIR/discussion_workflows.txt"
+        "$TEMP_DIR/sandworm_mode_workflows.txt"
+        "$TEMP_DIR/github_runners.txt"
+        "$TEMP_DIR/destructive_patterns.txt"
+        "$TEMP_DIR/trufflehog_patterns.txt"
+    )
+
+    local f
+    for f in "${finding_files[@]}"; do
+        filter_lines_file_in_place "$f"
+    done
 }
 
 # =============================================================================
@@ -1380,8 +1603,10 @@ check_packages() {
     # BATCH OPTIMIZATION: Extract all deps using parallel processing
     print_status "$BLUE" "   Extracting dependencies from all package.json files..."
 
-    # Create optimized lookup table from compromised packages (sorted for join)
-    awk -F: '{print $1":"$2}' $SCRIPT_DIR/compromised-packages.txt | LC_ALL=C sort > "$TEMP_DIR/compromised_lookup.txt"
+    # Create optimized lookup table from compromised packages (sorted for set intersection)
+    # NOTE: This intentionally uses the in-memory COMPROMISED_PACKAGES_MAP, so the script
+    # still works when copied without the companion compromised-packages.txt file.
+    { for pkg in "${!COMPROMISED_PACKAGES_MAP[@]}"; do echo "$pkg"; done; } | LC_ALL=C sort > "$TEMP_DIR/compromised_lookup.txt"
 
     # Extract all dependencies from all package.json files using parallel xargs + awk
     # Format: file_path|package_name:version
@@ -3060,6 +3285,8 @@ main() {
     local paranoid_mode=false
     local scan_dir=""
     local save_log=""
+    local ignore_file=""
+    local -a ignore_patterns=()
 
     # Load compromised packages from external file
     load_compromised_packages
@@ -3097,6 +3324,22 @@ main() {
                     usage
                 fi
                 save_log="$2"
+                shift
+                ;;
+            --ignore-file)
+                if [[ -z "$2" || "$2" == -* ]]; then
+                    echo "${RED}error: --ignore-file requires a file path${NC}" >&2;
+                    usage
+                fi
+                ignore_file="$2"
+                shift
+                ;;
+            --ignore)
+                if [[ -z "$2" || "$2" == -* ]]; then
+                    echo "${RED}error: --ignore requires a pattern${NC}" >&2;
+                    usage
+                fi
+                ignore_patterns+=("$2")
                 shift
                 ;;
             --use-git-grep)
@@ -3150,6 +3393,9 @@ main() {
     # Select grep tool (auto-detect or use flag override)
     select_grep_tool
 
+    # Initialize ignore patterns (also excludes this detector script from scans)
+    init_ignore_patterns "$scan_dir" "$ignore_file" "${ignore_patterns[@]}"
+
     # Initialize timing
     SCAN_START_TIME=$(date +%s%N 2>/dev/null || echo "$(date +%s)000000000")
 
@@ -3164,6 +3410,9 @@ main() {
     # Collect all files in a single pass for performance optimization
     print_status "$ORANGE" "[Stage 1/6] Collecting file inventory for analysis"
     collect_all_files "$scan_dir"
+
+    # Apply ignore filters to the collected inventory (prevents self-matches and supports user ignore lists)
+    apply_ignore_filters_to_inventory
 
     # Show summary of collected files
     local total_files=$(wc -l < "$TEMP_DIR/all_files_raw.txt" 2>/dev/null || echo "0")
@@ -3217,6 +3466,9 @@ main() {
         check_network_exfiltration "$scan_dir"
         print_stage_complete "Paranoid mode checks"
     fi
+
+    # Apply ignore filters to any generated findings (covers checks that do not use the inventory lists)
+    apply_ignore_filters_to_findings
 
     # Generate report
     print_status "$BLUE" "Generating report..."
