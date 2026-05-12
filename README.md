@@ -19,7 +19,21 @@ The detector auto-detects which package ecosystems your project uses and runs th
 - **npm**: detected via `package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`
 - **PyPI**: detected via `pyproject.toml`, `requirements.txt`, `requirements-*.txt`, `Pipfile`, `Pipfile.lock`, `poetry.lock`, `uv.lock`, `setup.py`, `setup.cfg`
 
-Marker discovery excludes `node_modules/`, `.venv/`, `venv/`, `.tox/`, and `site-packages/`. Override with `--ecosystem=npm`, `--ecosystem=pypi`, `--ecosystem=all`, or a comma-separated list. PyPI parsers are pure-bash awk (no Python required) and support exact version pins; range specifiers (`>=`, `^`, `~=`) are intentionally skipped in manifests since lockfiles always carry exact versions.
+Override auto-detection with `--ecosystem=npm`, `--ecosystem=pypi`, `--ecosystem=all`, or a comma-separated list. PyPI parsers are pure-bash awk (no Python required) and support exact version pins; range specifiers (`>=`, `^`, `~=`) are intentionally skipped in manifests since lockfiles always carry exact versions.
+
+### What gets scanned vs. what we use for auto-detection
+
+**Important distinction:** when the detector auto-detects which ecosystems your project uses, it deliberately ignores marker files found under `node_modules/`, `vendor/`, `.venv/`, `venv/`, `.tox/`, `site-packages/`, `dist/`, `build/`, and similar dependency/build trees. That is **only** to avoid mis-classifying your project (e.g. flagging a pure-JS project as "Python" just because a bundled npm package happens to include a `requirements.txt` for its docs tooling).
+
+The exclusion has **no effect on malware scanning**. Content inside `node_modules/` and equivalent directories is still fully scanned for:
+
+- **Compromised package versions** — `check_packages` reads every `package.json` in the tree (including `node_modules/<pkg>/package.json` for all transitive deps) and compares against the 2,100+ confirmed bad version list
+- **Lockfile integrity** — `package-lock.json`, `yarn.lock`, and `pnpm-lock.yaml` are parsed; every transitively-resolved package is checked
+- **Malicious file hashes** — SHA-256 hashes of priority files (`bundle.js`, `setup_bun.js`, `router_init.js`, etc.) are computed even inside `node_modules/`
+- **Payload filenames** — `router_init.js`, `tanstack_runner.js`, `setup_bun.js`, etc. are flagged anywhere in the tree
+- **Content patterns** — wipe-threat strings, C2 domains, malicious commit SHAs, and threat-actor references are grepped across all collected code files
+
+The two specific places where `node_modules` *is* skipped at the content level are the **paranoid-mode-only** typosquatting and network-exfiltration heuristics. Those are name-similarity / domain-substring heuristics meaningful for your declared code and dependencies, not for thousands of legit transitive deps. Compromised-version detection (the core of this tool) is unaffected and runs against every package, transitive or not.
 
 ## Overview
 

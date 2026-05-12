@@ -227,6 +227,23 @@ declare -a SUPPORTED_ECOSYSTEMS=("npm" "pypi")
 declare -a ACTIVE_ECOSYSTEMS=()
 ECOSYSTEM_OVERRIDE=""  # set by --ecosystem flag; empty = auto-detect
 
+# Dispatch table: ecosystem -> space-separated list of check function names.
+# This is the extension point for adding new ecosystems (hex, go, cargo, gem...).
+# To add a new ecosystem:
+#   1. Add a marker pattern to ECOSYSTEM_MARKERS
+#   2. Add an exclude-paths pattern to ECOSYSTEM_EXCLUDE_PATHS
+#   3. Add the ecosystem name to SUPPORTED_ECOSYSTEMS
+#   4. Write a parser + check_<eco>_packages function
+#   5. Add a row here mapping the ecosystem to its check function(s)
+#   6. Teach load_compromised_packages to recognize the new "<eco>:" prefix
+#   7. Extend collect_all_files with the relevant manifest filenames
+# Nothing in main() needs to change - the dispatcher walks ACTIVE_ECOSYSTEMS
+# and invokes whatever functions this table lists for each active ecosystem.
+declare -A ECOSYSTEM_CHECK_FUNCTIONS=(
+    ["npm"]="check_packages check_semver_ranges"
+    ["pypi"]="check_pypi_packages"
+)
+
 # Function: ecosystem_active
 # Purpose: O(1) check whether an ecosystem is in the active set
 # Args: $1 = ecosystem name (e.g. "npm" or "pypi")
@@ -2714,6 +2731,30 @@ check_package_integrity() {
 # Returns: Populates TYPOSQUATTING_WARNINGS with Unicode chars, confusables, and similar names
 check_typosquatting() {
     local scan_dir=$1
+    print_status "$BLUE" "   Checking for typosquatting in package.json files..."
+
+    # PERF: Pre-filter package_files.txt to exclude node_modules / vendor / build.
+    # Typosquatting is a name-similarity heuristic that's meaningful for YOUR
+    # declared dependencies, not for the thousands of transitive deps already
+    # resolved inside node_modules. Scanning node_modules here triggers
+    # hundreds of thousands of `echo | grep` subshells (length, alpha, unicode,
+    # 6 confusables, and 26 popular-package comparisons per package name) and
+    # produces noisy false positives on legitimate ecosystem packages whose
+    # names happen to look like popular ones (react-*, eslint-*, babel-*).
+    # This filter matches industry convention (npm audit, socket.dev) of
+    # checking only top-level project manifests.
+    if [[ -s "$TEMP_DIR/package_files.txt" ]]; then
+        grep -vE "/(node_modules|vendor|\.git|dist|build|_build|deps|\.next|coverage|site-packages|\.venv|venv)/" \
+            "$TEMP_DIR/package_files.txt" 2>/dev/null > "$TEMP_DIR/typosquatting_targets.txt" || \
+            touch "$TEMP_DIR/typosquatting_targets.txt"
+    else
+        touch "$TEMP_DIR/typosquatting_targets.txt"
+    fi
+    local target_count
+    target_count=$(wc -l < "$TEMP_DIR/typosquatting_targets.txt" 2>/dev/null | tr -d ' ')
+    local total_count
+    total_count=$(wc -l < "$TEMP_DIR/package_files.txt" 2>/dev/null | tr -d ' ')
+    print_status "$BLUE" "   Scanning $target_count manifest(s) for typosquatting (filtered from $total_count total)..."
 
     # Popular packages commonly targeted for typosquatting
     local popular_packages=(
@@ -2894,8 +2935,9 @@ check_typosquatting() {
 
             done <<< "$package_names"
         fi
-    # Use pre-categorized files from collect_all_files (performance optimization)
-    done < <(tr '\n' '\0' < "$TEMP_DIR/package_files.txt")
+    # Use the pre-filtered target list (excludes node_modules / vendor / build artifacts).
+    # See PERF note at top of function.
+    done < <(tr '\n' '\0' < "$TEMP_DIR/typosquatting_targets.txt")
 }
 
 # Function: check_network_exfiltration
@@ -2905,6 +2947,30 @@ check_typosquatting() {
 # Returns: Populates network_exfiltration_warnings.txt with hardcoded IPs and suspicious domains
 check_network_exfiltration() {
     local scan_dir=$1
+    print_status "$BLUE" "   Checking for network exfiltration patterns..."
+
+    # PERF: Pre-filter the file list to exclude node_modules, vendor, dist, build,
+    # and minified bundles BEFORE looping. Without this, large projects with
+    # node_modules can spawn 70,000+ git grep subprocesses (~5-10ms each) on
+    # files that the per-check filters would skip anyway. The DNS / WebSocket /
+    # X-header / btoa checks below were also previously unfiltered, so this
+    # pre-filter also closes that gap.
+    #
+    # Skip patterns mirror the per-check filters already present below plus
+    # build/dist artifacts that contain bundled vendor code. ".git" is also
+    # excluded so we don't scan packed git objects.
+    if [[ -s "$TEMP_DIR/code_files.txt" ]]; then
+        grep -vE "/(node_modules|vendor|\.git|dist|build|_build|deps|\.next|coverage|site-packages|\.venv|venv)/" \
+            "$TEMP_DIR/code_files.txt" 2>/dev/null > "$TEMP_DIR/network_exfil_targets.txt" || \
+            touch "$TEMP_DIR/network_exfil_targets.txt"
+    else
+        touch "$TEMP_DIR/network_exfil_targets.txt"
+    fi
+    local target_count
+    target_count=$(wc -l < "$TEMP_DIR/network_exfil_targets.txt" 2>/dev/null | tr -d ' ')
+    local total_count
+    total_count=$(wc -l < "$TEMP_DIR/code_files.txt" 2>/dev/null | tr -d ' ')
+    print_status "$BLUE" "   Scanning $target_count files for network exfiltration (filtered from $total_count total)..."
 
     # Suspicious domains and patterns beyond webhook.site
     local suspicious_domains=(
@@ -2946,17 +3012,22 @@ check_network_exfiltration() {
             # Check for suspicious domains (but avoid package-lock.json and vendor files to reduce noise)
             if [[ "$file" != *"package-lock.json"* && "$file" != *"yarn.lock"* && "$file" != *"/vendor/"* && "$file" != *"/node_modules/"* ]]; then
                 for domain in "${suspicious_domains[@]}"; do
+                    # FIX: Escape literal dots in the domain before interpolating into the regex.
+                    # Without this, "t.me" matches "time"/"theme", "ix.io" matches "ixaio", etc.,
+                    # producing a flood of false positives in any file containing those words.
+                    # Keep $domain itself unescaped for the human-readable error messages below.
+                    local domain_esc="${domain//./\\.}"
                     # Use word boundaries and URL patterns to avoid false positives like "timeZone" containing "t.me"
                     # Updated pattern to catch property values like hostname: 'webhook.site'
-                    if grep -qE "https?://[^[:space:]]*$domain|[[:space:]:,\"\']$domain[[:space:]/\"\',;]" "$file" 2>/dev/null; then
+                    if grep -qE "https?://[^[:space:]]*$domain_esc|[[:space:]:,\"\']$domain_esc[[:space:]/\"\',;]" "$file" 2>/dev/null; then
                         # Additional check - make sure it's not just a comment or documentation
                         local suspicious_usage
-                        suspicious_usage=$(grep -E "https?://[^[:space:]]*$domain|[[:space:]:,\"\']$domain[[:space:]/\"\',;]" "$file" 2>/dev/null | grep -vE "^[[:space:]]*#|^[[:space:]]*//" 2>/dev/null | head -1 2>/dev/null || true) || true
+                        suspicious_usage=$(grep -E "https?://[^[:space:]]*$domain_esc|[[:space:]:,\"\']$domain_esc[[:space:]/\"\',;]" "$file" 2>/dev/null | grep -vE "^[[:space:]]*#|^[[:space:]]*//" 2>/dev/null | head -1 2>/dev/null || true) || true
                         if [[ -n "$suspicious_usage" ]]; then
                             # Get line number and context
                             # FIX: grep -n prefixes lines with "NNN:" so we must account for that in comment filtering
                             local line_info
-                            line_info=$(grep -nE "https?://[^[:space:]]*$domain|[[:space:]:,\"\']$domain[[:space:]/\"\',;]" "$file" 2>/dev/null | grep -vE "^[0-9]+:[[:space:]]*#|^[0-9]+:[[:space:]]*//" 2>/dev/null | head -1 2>/dev/null || true) || true
+                            line_info=$(grep -nE "https?://[^[:space:]]*$domain_esc|[[:space:]:,\"\']$domain_esc[[:space:]/\"\',;]" "$file" 2>/dev/null | grep -vE "^[0-9]+:[[:space:]]*#|^[0-9]+:[[:space:]]*//" 2>/dev/null | head -1 2>/dev/null || true) || true
                             local line_num
                             line_num=$(echo "$line_info" | cut -d: -f1 2>/dev/null || true) || true
 
@@ -2964,7 +3035,7 @@ check_network_exfiltration() {
                             if [[ "$file" == *".min.js"* ]] || [[ $(echo "$suspicious_usage" | wc -c 2>/dev/null || true) -gt 150 ]]; then
                                 # Extract just around the domain
                                 local snippet
-                                snippet=$(echo "$suspicious_usage" | grep -o ".\{0,20\}$domain.\{0,20\}" 2>/dev/null | head -1 2>/dev/null || true) || true
+                                snippet=$(echo "$suspicious_usage" | grep -o ".\{0,20\}$domain_esc.\{0,20\}" 2>/dev/null | head -1 2>/dev/null || true) || true
                                 if [[ -n "$line_num" ]]; then
                                     echo "$file:Suspicious domain found: $domain at line $line_num: ...${snippet}..." >> "$TEMP_DIR/network_exfiltration_warnings.txt"
                                 else
@@ -3057,8 +3128,9 @@ check_network_exfiltration() {
             fi
 
         fi
-    # Use pre-categorized files from collect_all_files (performance optimization)
-    done < <(tr '\n' '\0' < "$TEMP_DIR/code_files.txt")
+    # Use the pre-filtered target list (excludes node_modules / vendor / build artifacts).
+    # This is the perf fix that prevents 70k+ wasted git grep subprocesses on large projects.
+    done < <(tr '\n' '\0' < "$TEMP_DIR/network_exfil_targets.txt")
 }
 
 # Function: write_log_file
@@ -3907,22 +3979,26 @@ main() {
     ecosystem_banner
 
     # Run core Shai-Hulud detection checks (sequential for reliability).
-    # Ecosystem-specific checks are gated on detect_ecosystems(). Auto-detect mode
-    # always activates "npm" when any package.json / npm lockfile exists in the tree,
-    # which preserves the prior CI/CD contract for bare invocations. Explicit
-    # --ecosystem=<list> respects the user's choice. Content-pattern checks below
-    # (workflows, hashes, postinstall hooks, mini-shai-hulud, axios, sandworm, etc.)
-    # always run regardless of ecosystem - they target attack artifacts, not packages.
+    # Ecosystem-specific checks are dispatched via the ECOSYSTEM_CHECK_FUNCTIONS
+    # table so adding a new ecosystem requires zero changes in main(). Auto-detect
+    # mode always activates "npm" when any package.json / npm lockfile exists in
+    # the tree, preserving the prior CI/CD contract for bare invocations.
+    # Explicit --ecosystem=<list> respects the user's choice. Content-pattern
+    # checks below (workflows, hashes, postinstall hooks, mini-shai-hulud, axios,
+    # sandworm, etc.) always run regardless of ecosystem - they target attack
+    # artifacts, not packages.
     print_status "$ORANGE" "[Stage 2/6] Core detection (workflows, hashes, packages, hooks)"
     check_workflow_files "$scan_dir"
     check_file_hashes "$scan_dir"
-    if ecosystem_active "npm"; then
-        check_packages "$scan_dir"
-        check_semver_ranges "$scan_dir"
-    fi
-    if ecosystem_active "pypi"; then
-        check_pypi_packages "$scan_dir"
-    fi
+    local _eco _fn
+    for _eco in "${ACTIVE_ECOSYSTEMS[@]}"; do
+        # ${!arr[@]} -> keys; -v test on the assoc array
+        if [[ -v ECOSYSTEM_CHECK_FUNCTIONS[$_eco] ]]; then
+            for _fn in ${ECOSYSTEM_CHECK_FUNCTIONS[$_eco]}; do
+                "$_fn" "$scan_dir"
+            done
+        fi
+    done
     check_postinstall_hooks "$scan_dir"
     print_stage_complete "Core detection"
 
