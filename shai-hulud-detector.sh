@@ -49,6 +49,14 @@ BULK_DEPTH=3
 # (hidden dirs like .git/.venv/.cache are skipped separately). Leading/trailing spaces
 # matter: membership is tested with the pattern *" $name "*.
 _BULK_NOISE_DIRS=" node_modules vendor bower_components jspm_packages dist build _build out target coverage venv env virtualenv __pycache__ site-packages Pods Carthage deps obj bin "
+# Absolute path of the resolved --bulk-output directory, set early in run_bulk_scan so
+# discovery can skip its own output target if --bulk-output happens to be inside one of
+# the scan roots. Empty when --bulk is not in use.
+BULK_OUTPUT_ABS=""
+# Path of a file accumulating stderr from `find` during bulk discovery. We capture
+# permission-denied (and any other discovery-time) errors here so we can surface them
+# at the end of the run instead of silently dropping them. Empty when --bulk is not in use.
+BULK_UNREADABLE_LOG=""
 
 # Function: create_temp_dir
 # Purpose: Create cross-platform temporary directory for findings storage
@@ -3917,6 +3925,67 @@ _bulk_section_lines() {
     ' "$1"
 }
 
+# Function: _bulk_is_in_output_dir
+# Purpose: Hardening (b) — is the given absolute path the resolved --bulk-output
+#          directory, or somewhere inside it? Used by discovery to refuse to scan
+#          the bulk output directory if it happens to live inside a scan root.
+# Args: $1 = absolute path to test
+# Returns: 0 if equal to or inside BULK_OUTPUT_ABS, 1 otherwise
+_bulk_is_in_output_dir() {
+    local candidate="$1"
+    [[ -z "$BULK_OUTPUT_ABS" ]] && return 1
+    [[ "$candidate" == "$BULK_OUTPUT_ABS" ]] && return 0
+    [[ "$candidate" == "$BULK_OUTPUT_ABS"/* ]] && return 0
+    return 1
+}
+
+# Function: _bulk_resolve_abs
+# Purpose: Resolve a (possibly non-existent) path to an absolute path, without
+#          requiring the directory to exist yet. Used to resolve --bulk-output
+#          *before* discovery runs so we can exclude it from the scan, even when
+#          the output dir will only be created after discovery succeeds.
+# Args: $1 = path (absolute or relative to PWD)
+# Output: absolute path on stdout (no symlink/.. canonicalization beyond basic PWD prefixing)
+_bulk_resolve_abs() {
+    local p="$1"
+    [[ -z "$p" ]] && return 0
+    if [[ "$p" == /* ]]; then
+        printf '%s\n' "$p"
+    else
+        printf '%s/%s\n' "$PWD" "$p"
+    fi
+}
+
+# Function: _bulk_collect_unreadable
+# Purpose: Hardening (a) — collect every directory the bulk run could not read.
+#          Combines two sources:
+#            * the stderr accumulator from `find` (covers the case where find
+#              itself couldn't read a directory's contents — usually because a
+#              parent has mode 000 / 600);
+#            * a parallel ".cd" accumulator written by the discovery loop when
+#              an individual child is visible to find but not readable/enterable
+#              (the more common chmod-000-on-one-subdir case).
+#          Output is one absolute path per line, sorted and de-duplicated.
+# Args: $1 = path to the stderr log (the ".cd" accumulator is "$1.cd")
+# Output: zero or more absolute paths to stdout
+_bulk_collect_unreadable() {
+    local log="$1"
+    {
+        if [[ -s "$log" ]]; then
+            # find error formats we handle:
+            #   macOS/BSD:  "find: /path: Permission denied"
+            #   GNU/Linux:  "find: '/path': Permission denied"
+            grep -E ": Permission denied$" "$log" 2>/dev/null | \
+                sed -E -e 's/^find:[[:space:]]+//' \
+                       -e "s/^['\"]//" \
+                       -e "s/['\"]?: Permission denied$//"
+        fi
+        if [[ -s "$log.cd" ]]; then
+            cat "$log.cd"
+        fi
+    } 2>/dev/null | LC_ALL=C sort -u
+}
+
 # Function: _bulk_dir_is_project
 # Purpose: Heuristic — does this directory look like the root of a single project?
 #          (a git checkout, or a directory holding a recognised package manifest/lockfile)
@@ -3946,6 +4015,13 @@ _bulk_dir_is_project() {
 _bulk_discover() {
     local dir="$1" depth="$2" maxdepth="$3"
 
+    # Hardening (b): never descend into the --bulk-output directory if it happens to
+    # be inside one of the scan roots. Otherwise an output-inside-scan-root setup
+    # would self-reference: previous run's report files become next run's scan targets.
+    if [[ -n "$BULK_OUTPUT_ABS" ]] && _bulk_is_in_output_dir "$dir"; then
+        return 1
+    fi
+
     if _bulk_dir_is_project "$dir"; then
         printf '%s\n' "$dir"
         return 0
@@ -3956,16 +4032,32 @@ _bulk_discover() {
     fi
 
     # Child directories worth descending into (skip hidden + well-known noise dirs).
+    # find's stderr is captured (not discarded) so permission-denied paths can be
+    # surfaced at the end of the run — see hardening (a) in run_bulk_scan.
     local -a kids=()
-    local k bn
+    local k bn k_orig
     while IFS= read -r k; do
         [[ -d "$k" ]] || continue
         bn="$(basename "$k")"
         [[ "$bn" == .* ]] && continue                       # hidden dirs (.git, .cache, .venv, ...)
         [[ "$_BULK_NOISE_DIRS" == *" $bn "* ]] && continue  # node_modules / vendor / build / ...
+        # Hardening (a): detect the common case of a chmod-000 (or chmod 700 owned by
+        # someone else) subdirectory. find listed the directory entry but we can't
+        # actually enter it, so log it and move on instead of silently dropping it.
+        if ! [[ -r "$k" && -x "$k" ]]; then
+            [[ -n "$BULK_UNREADABLE_LOG" ]] && printf '%s\n' "$k" >> "$BULK_UNREADABLE_LOG.cd"
+            continue
+        fi
+        k_orig="$k"
         k="$(cd "$k" 2>/dev/null && pwd || true)"
-        [[ -n "$k" && -d "$k" ]] && kids+=("$k")
-    done < <(find "$dir" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) 2>/dev/null | LC_ALL=C sort)
+        if [[ -z "$k" || ! -d "$k" ]]; then
+            [[ -n "$BULK_UNREADABLE_LOG" ]] && printf '%s\n' "$k_orig" >> "$BULK_UNREADABLE_LOG.cd"
+            continue
+        fi
+        # Skip the resolved output directory and anything inside it.
+        [[ -n "$BULK_OUTPUT_ABS" ]] && _bulk_is_in_output_dir "$k" && continue
+        kids+=("$k")
+    done < <(find "$dir" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) 2>>"${BULK_UNREADABLE_LOG:-/dev/null}" | LC_ALL=C sort)
 
     if [[ ${#kids[@]} -eq 0 ]]; then
         printf '%s\n' "$dir"          # nothing underneath — scan $dir as-is
@@ -3997,17 +4089,19 @@ _bulk_discover() {
 # Args: $1  = report path
 #       $2  = rows file (TSV: sev_key emoji label name path H M L rc findings_rel console_rel)
 #       $3  = skipped file (TSV: name path)
-#       $4  = comma-joined resolved scan roots
-#       $5  = paranoid_mode ("true"/"false")
-#       $6  = absolute path to this script
-#       $7..$13 = n_total n_high n_error n_medium n_low n_clean n_skipped
-#       $14..   = per-project child flags (e.g. --paranoid --parallelism 8)
+#       $4  = unreadable-dirs file (one absolute path per line; may be empty)
+#       $5  = comma-joined resolved scan roots
+#       $6  = paranoid_mode ("true"/"false")
+#       $7  = absolute path to this script
+#       $8..$14 = n_total n_high n_error n_medium n_low n_clean n_skipped
+#       $15..   = per-project child flags (e.g. --paranoid --parallelism 8)
 # Modifies: writes $1
 _bulk_write_report() {
-    local report="$1" rows_file="$2" skipped_file="$3" resolved_roots="$4"
-    local paranoid_mode="$5" self_script="$6"
-    local n_total="$7" n_high="$8" n_error="$9" n_medium="${10}" n_low="${11}" n_clean="${12}" n_skipped="${13}"
-    shift 13
+    local report="$1" rows_file="$2" skipped_file="$3" unreadable_file="$4"
+    local resolved_roots="$5"
+    local paranoid_mode="$6" self_script="$7"
+    local n_total="$8" n_high="$9" n_error="${10}" n_medium="${11}" n_low="${12}" n_clean="${13}" n_skipped="${14}"
+    shift 14
     local child_flags_str="$*"
     local per_repo_dir; per_repo_dir="$(dirname "$report")/per-repo"
     local now; now="$(date '+%Y-%m-%d %H:%M:%S %Z' 2>/dev/null || date '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date)"
@@ -4148,6 +4242,25 @@ _bulk_write_report() {
                 echo "  run \`./shai-hulud-detector.sh .\` from inside it."
             done < "$skipped_file"
         fi
+        # Hardening (a): list directories that `find` couldn't read during discovery.
+        # These are NOT silent skips — a real audit should know which directories were
+        # invisible to it. The scan exit code is unaffected; this is informational only.
+        if [[ -n "$unreadable_file" && -s "$unreadable_file" ]]; then
+            local _n_unread
+            _n_unread="$(wc -l < "$unreadable_file" 2>/dev/null | tr -d ' ')"
+            echo
+            echo "## Unreadable directories ($_n_unread)"
+            echo
+            echo "These directories were encountered during discovery but could not be read by the"
+            echo "scanning user (permission denied). They were skipped entirely — none of their"
+            echo "contents were examined for compromised packages or attack indicators. If any of"
+            echo "them might contain projects you intended to audit, re-run the scan with the"
+            echo "appropriate read access (or as the directory owner)."
+            echo
+            while IFS= read -r _u; do
+                [[ -n "$_u" ]] && echo "- \`$_u\`"
+            done < "$unreadable_file"
+        fi
         echo
         echo "## Re-running this scan"
         echo
@@ -4202,6 +4315,23 @@ run_bulk_scan() {
         grep)     child_flags+=("--use-grep")     ;;
     esac
 
+    # Hardening (b): resolve --bulk-output to an absolute path BEFORE discovery so
+    # _bulk_discover can refuse to descend into it. The directory itself is created
+    # later (only once we've confirmed there is work to do); resolution here just
+    # gives us a stable path to compare candidates against.
+    local _bulk_out_input="$out_dir"
+    [[ -n "$_bulk_out_input" ]] || _bulk_out_input="shai-hulud-bulk-report-$(date +%Y%m%d-%H%M%S)"
+    BULK_OUTPUT_ABS="$(_bulk_resolve_abs "$_bulk_out_input")"
+
+    # Hardening (a): set up two accumulators so permission-denied directories
+    # surfaced during discovery can be reported instead of silently dropped.
+    # The .log file collects find's stderr (for cases where find itself can't
+    # read a directory); the .log.cd file collects entries that are visible to
+    # find but fail at our subsequent `cd`/readability check.
+    BULK_UNREADABLE_LOG="$TEMP_DIR/bulk_unreadable.log"
+    : > "$BULK_UNREADABLE_LOG"
+    : > "$BULK_UNREADABLE_LOG.cd"
+
     # Discover scan targets under each --bulk parent. The parent itself is always treated
     # as a bucket: we look at its immediate children and let _bulk_discover() decide, per
     # child, whether to take it whole (a project / a monorepo / a plain folder) or descend
@@ -4216,13 +4346,25 @@ run_bulk_scan() {
             continue
         fi
         root="$(cd "$root" && pwd)"
+        local _child_orig
         while IFS= read -r child; do
             [[ -d "$child" ]] || continue                       # follows symlinks; drops broken links
             child_bn="$(basename "$child")"
             [[ "$child_bn" == .* ]] && continue                 # hidden dirs
             [[ "$_BULK_NOISE_DIRS" == *" $child_bn "* ]] && continue
+            # Hardening (a): record dirs we can't read/enter instead of silently dropping.
+            if ! [[ -r "$child" && -x "$child" ]]; then
+                [[ -n "$BULK_UNREADABLE_LOG" ]] && printf '%s\n' "$child" >> "$BULK_UNREADABLE_LOG.cd"
+                continue
+            fi
+            _child_orig="$child"
             child="$(cd "$child" 2>/dev/null && pwd || true)"   # canonicalise; skip if unreadable
-            [[ -n "$child" && -d "$child" ]] || continue
+            if [[ -z "$child" || ! -d "$child" ]]; then
+                [[ -n "$BULK_UNREADABLE_LOG" ]] && printf '%s\n' "$_child_orig" >> "$BULK_UNREADABLE_LOG.cd"
+                continue
+            fi
+            # Hardening (b): skip the resolved output dir / anything inside it.
+            _bulk_is_in_output_dir "$child" && continue
             discovered="$(_bulk_discover "$child" 1 "$BULK_DEPTH" || true)"   # one abs path per line; rc informational
             while IFS= read -r tgt; do
                 [[ -n "$tgt" ]] || continue
@@ -4230,11 +4372,29 @@ run_bulk_scan() {
                 _seen["$tgt"]=1
                 targets+=("$tgt")
             done <<< "$discovered"
-        done < <(find "$root" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) 2>/dev/null | LC_ALL=C sort)
+        done < <(find "$root" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) 2>>"$BULK_UNREADABLE_LOG" | LC_ALL=C sort)
     done
+
+    # Hardening (a): collect the list of paths that find couldn't read so we can
+    # surface them after the bulk run (and so --bulk-list can print them too).
+    local -a unreadable_dirs=()
+    local _u
+    while IFS= read -r _u; do
+        [[ -n "$_u" ]] && unreadable_dirs+=("$_u")
+    done < <(_bulk_collect_unreadable "$BULK_UNREADABLE_LOG")
 
     if [[ ${#targets[@]} -eq 0 ]]; then
         print_status "$YELLOW" "No projects found under: ${roots[*]} — nothing to do."
+        # Hardening (a): still warn if some directories were unreadable, since that
+        # is exactly the kind of run where the user might wrongly conclude there's
+        # nothing to scan when in fact projects existed behind locked permissions.
+        if [[ ${#unreadable_dirs[@]} -gt 0 ]]; then
+            print_status "$YELLOW" "⚠️  Skipped ${#unreadable_dirs[@]} director$([[ ${#unreadable_dirs[@]} -eq 1 ]] && echo "y" || echo "ies") during discovery (permission denied):"
+            for _u in "${unreadable_dirs[@]}"; do
+                print_status "$YELLOW" "   - $_u"
+            done
+            print_status "$YELLOW" "   Re-run with read access to include them, or skip this warning by running as the directory owner."
+        fi
         exit 0
     fi
 
@@ -4244,11 +4404,21 @@ run_bulk_scan() {
     while IFS= read -r tgt; do [[ -n "$tgt" ]] && targets+=("$tgt"); done <<< "$_sorted"
 
     # --bulk-list: just report what would be scanned (after the same self-repo skip) and stop.
+    # Hardening (a): if `find` couldn't read any directory during discovery, surface
+    # those paths on stderr so the user sees what was missed before kicking off a
+    # full bulk scan against the same tree.
     if [[ "$BULK_LIST" == "true" ]]; then
         for tgt in "${targets[@]}"; do
             [[ -n "$self_repo" && "$tgt" == "$self_repo" ]] && continue
             printf '%s\n' "$tgt"
         done
+        if [[ ${#unreadable_dirs[@]} -gt 0 ]]; then
+            printf '\nSkipped %d director%s during discovery (permission denied):\n' \
+                "${#unreadable_dirs[@]}" "$([[ ${#unreadable_dirs[@]} -eq 1 ]] && echo "y" || echo "ies")" >&2
+            for _u in "${unreadable_dirs[@]}"; do
+                printf '  - %s\n' "$_u" >&2
+            done
+        fi
         exit 0
     fi
 
@@ -4345,9 +4515,19 @@ run_bulk_scan() {
             "per-repo/$(basename "$repo_log")" "per-repo/$(basename "$console_log")" >> "$rows_file"
     done
 
+    # Hardening (a): persist the unreadable directories to a file the report writer
+    # can include in the aggregate Markdown.
+    local unreadable_file="$TEMP_DIR/bulk_unreadable_dirs.txt"
+    : > "$unreadable_file"
+    if [[ ${#unreadable_dirs[@]} -gt 0 ]]; then
+        for _u in "${unreadable_dirs[@]}"; do
+            printf '%s\n' "$_u" >> "$unreadable_file"
+        done
+    fi
+
     echo
     print_status "$GREEN" "All scans complete — writing aggregate report..."
-    _bulk_write_report "$report" "$rows_file" "$skipped_file" "$resolved_roots" "$paranoid_mode" "$self_script" \
+    _bulk_write_report "$report" "$rows_file" "$skipped_file" "$unreadable_file" "$resolved_roots" "$paranoid_mode" "$self_script" \
         "$n_total" "$n_high" "$n_error" "$n_medium" "$n_low" "$n_clean" "$n_skipped" "${child_flags[@]}"
 
     echo
@@ -4360,6 +4540,15 @@ run_bulk_scan() {
     if [[ "$n_medium" -gt 0 ]]; then print_status "$YELLOW" "  🟡 MEDIUM RISK ........... $n_medium"; else print_status "$GREEN" "  🟡 MEDIUM RISK ........... 0"; fi
     print_status "$BLUE"  "  ℹ️  Clean (low-risk notes) $n_low"
     print_status "$GREEN" "  ✅ Clean ................. $n_clean"
+    # Hardening (a): tell the user how many directories were unreadable during
+    # discovery (and therefore not scanned). The full list is in the aggregate report.
+    if [[ ${#unreadable_dirs[@]} -gt 0 ]]; then
+        print_status "$YELLOW" "  ⚠️  Unreadable (permission denied): ${#unreadable_dirs[@]}"
+        for _u in "${unreadable_dirs[@]}"; do
+            print_status "$YELLOW" "        - $_u"
+        done
+        print_status "$YELLOW" "     Listed under \"Unreadable directories\" in the aggregate report."
+    fi
     print_status "$BLUE"  "============================================================"
     print_status "$GREEN" "  📄 Aggregate report: $report"
     print_status "$BLUE"  "  📁 Per-project logs: $per_repo_dir/"

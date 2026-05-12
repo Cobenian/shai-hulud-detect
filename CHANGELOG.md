@@ -5,6 +5,16 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.1] - 2026-05-12
+
+### Added
+- **Bulk-mode unreadable-directory reporting**: `--bulk` discovery now records directories it could not read (chmod-000 / chmod-700-owned-by-someone-else / find permission errors) instead of silently dropping them. The unreadable paths are surfaced in three places: on stderr from `--bulk-list`, in the on-console `BULK SCAN SUMMARY` section under "Unreadable (permission denied)", and in a new "Unreadable directories" section of `aggregate-report.md`. The scan exit code is unaffected — this is informational only — but a real audit now sees which directories were invisible to it instead of falsely concluding nothing was missed.
+- **Bulk-mode regression tests**: Two new tests in `run-tests.sh` lock in the hardenings: one builds a tree with a chmod-000 project and asserts that the path appears in `--bulk-list` (stderr) and in the aggregate report; the other points `--bulk-output` at a directory inside the scan root with leftover prior-run content and asserts that the output directory is excluded from discovery (so previous-run report files are never re-scanned as fake projects).
+
+### Fixed
+- **`--bulk-output` self-reference when placed inside a scan root**: if `--bulk-output` resolved to a path inside one of the `--bulk` scan roots, the output directory itself was treated as a scan target. On first run this just inflated the scanned count; on repeat runs the prior run's `aggregate-report.md` and `per-repo/*.console.txt` files (which legitimately quote attack indicator strings) could trigger content-pattern false positives. The output directory is now resolved to an absolute path before discovery starts and excluded from candidate consideration, both at the top-level discovery loop and inside `_bulk_discover`'s recursive descent.
+- **Bulk-mode silent permission-denied skips**: `find` errors during discovery were redirected to `/dev/null`, and the discovery loop's `cd "$child" && pwd` step silently dropped any directory whose read or execute bit was unset. These paths are now captured into a per-run accumulator (`find` stderr lines parsed for the macOS and GNU "Permission denied" formats, plus a parallel record of directories that fail our subsequent readability check) and merged into a sorted, de-duplicated list that is shown to the user.
+
 ## [3.2.0] - 2026-05-12
 
 ### Added
