@@ -1,0 +1,10 @@
+{
+  "name": "polyglot-attack-test",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Polyglot project: pins compromised npm @tanstack/react-router AND PyPI mistralai. Ecosystem auto-detection should pick up both and report both.",
+  "dependencies": {
+    "@tanstack/react-router": "1.169.5",
+    "react": "18.2.0"
+  }
+}

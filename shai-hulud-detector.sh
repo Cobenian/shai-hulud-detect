@@ -83,6 +83,11 @@ create_temp_dir() {
     touch "$TEMP_DIR/axios_attack_indicators.txt"
     touch "$TEMP_DIR/mini_shai_hulud_indicators.txt"
     touch "$TEMP_DIR/mini_shai_hulud_host_artifacts.txt"
+    touch "$TEMP_DIR/pypi_manifests.txt"
+    touch "$TEMP_DIR/pypi_lockfiles.txt"
+    touch "$TEMP_DIR/pypi_deps_normalized.txt"
+    touch "$TEMP_DIR/pypi_compromised_lookup.txt"
+    touch "$TEMP_DIR/pypi_matched_deps.txt"
     touch "$TEMP_DIR/github_runners.txt"
     touch "$TEMP_DIR/malicious_hashes.txt"
     touch "$TEMP_DIR/destructive_patterns.txt"
@@ -202,10 +207,113 @@ print_stage_complete() {
     print_status "$BLUE" "   $stage_name completed [$elapsed]"
 }
 
+# =============================================================================
+# Ecosystem abstraction
+# =============================================================================
+# The detector supports multiple package ecosystems. Each ecosystem declares:
+#   - Marker files (presence indicates the ecosystem is in use)
+#   - Path patterns to exclude when looking for markers (e.g. node_modules)
+# detect_ecosystems() populates ACTIVE_ECOSYSTEMS based on the scan tree.
+# Override via --ecosystem=<list> on the command line.
+declare -A ECOSYSTEM_MARKERS=(
+    ["npm"]="package.json|package-lock.json|yarn.lock|pnpm-lock.yaml"
+    ["pypi"]="pyproject.toml|requirements.txt|requirements-dev.txt|requirements-prod.txt|Pipfile|Pipfile.lock|poetry.lock|uv.lock|setup.py|setup.cfg"
+)
+declare -A ECOSYSTEM_EXCLUDE_PATHS=(
+    ["npm"]="node_modules"
+    ["pypi"]="node_modules|\\.venv|/venv/|\\.tox|site-packages"
+)
+declare -a SUPPORTED_ECOSYSTEMS=("npm" "pypi")
+declare -a ACTIVE_ECOSYSTEMS=()
+ECOSYSTEM_OVERRIDE=""  # set by --ecosystem flag; empty = auto-detect
+
+# Function: ecosystem_active
+# Purpose: O(1) check whether an ecosystem is in the active set
+# Args: $1 = ecosystem name (e.g. "npm" or "pypi")
+# Returns: 0 if active, 1 otherwise
+ecosystem_active() {
+    local target="$1"
+    local eco
+    for eco in "${ACTIVE_ECOSYSTEMS[@]}"; do
+        [[ "$eco" == "$target" ]] && return 0
+    done
+    return 1
+}
+
+# Function: detect_ecosystems
+# Purpose: Populate ACTIVE_ECOSYSTEMS based on marker files in the scan tree,
+#          unless overridden by --ecosystem flag.
+# Args: None (consumes ECOSYSTEM_OVERRIDE and $TEMP_DIR/all_files_raw.txt)
+# Modifies: ACTIVE_ECOSYSTEMS
+detect_ecosystems() {
+    ACTIVE_ECOSYSTEMS=()
+
+    if [[ -n "$ECOSYSTEM_OVERRIDE" ]]; then
+        if [[ "$ECOSYSTEM_OVERRIDE" == "all" ]]; then
+            ACTIVE_ECOSYSTEMS=("${SUPPORTED_ECOSYSTEMS[@]}")
+            return 0
+        fi
+        local IFS=','
+        local eco
+        for eco in $ECOSYSTEM_OVERRIDE; do
+            eco="${eco// /}"
+            # Validate
+            local valid=false
+            local s
+            for s in "${SUPPORTED_ECOSYSTEMS[@]}"; do
+                [[ "$eco" == "$s" ]] && valid=true
+            done
+            if [[ "$valid" == "true" ]]; then
+                ACTIVE_ECOSYSTEMS+=("$eco")
+            else
+                print_status "$RED" "Error: unknown ecosystem '$eco' in --ecosystem. Supported: ${SUPPORTED_ECOSYSTEMS[*]}, all"
+                exit 1
+            fi
+        done
+        return 0
+    fi
+
+    # Auto-detect from marker files in the file inventory
+    local eco markers exclude
+    for eco in "${SUPPORTED_ECOSYSTEMS[@]}"; do
+        markers="${ECOSYSTEM_MARKERS[$eco]}"
+        exclude="${ECOSYSTEM_EXCLUDE_PATHS[$eco]}"
+        # Match any line whose basename is one of the marker files, excluding
+        # paths that contain ecosystem-irrelevant directories.
+        if grep -E "/($markers)$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null | \
+           grep -vE "/($exclude)/" 2>/dev/null | head -n1 | grep -q .; then
+            ACTIVE_ECOSYSTEMS+=("$eco")
+        fi
+    done
+}
+
+# Function: ecosystem_banner
+# Purpose: Print a one-line summary of detected ecosystems and their marker counts
+# Args: None
+ecosystem_banner() {
+    if [[ ${#ACTIVE_ECOSYSTEMS[@]} -eq 0 ]]; then
+        print_status "$YELLOW" "   No package-manifest markers detected. Content-pattern checks will still run."
+        return 0
+    fi
+    local eco markers exclude count summary=""
+    for eco in "${ACTIVE_ECOSYSTEMS[@]}"; do
+        markers="${ECOSYSTEM_MARKERS[$eco]}"
+        exclude="${ECOSYSTEM_EXCLUDE_PATHS[$eco]}"
+        count=$(grep -E "/($markers)$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null | \
+                grep -vE "/($exclude)/" 2>/dev/null | wc -l | tr -d ' ')
+        if [[ -z "$summary" ]]; then
+            summary="$eco ($count marker file(s))"
+        else
+            summary="$summary, $eco ($count marker file(s))"
+        fi
+    done
+    print_status "$GREEN" "   Detected ecosystems: $summary"
+}
+
 # Associative arrays for O(1) lookups (Bash 5.0+ feature)
-declare -A COMPROMISED_PACKAGES_MAP    # "package:version" -> 1
-declare -A COMPROMISED_NAMESPACES_MAP  # "@namespace" -> 1
-declare -A COMPROMISED_VERSIONS_BY_NAME # "package_name" -> "version1 version2 ..." (for semver range checking)
+declare -A COMPROMISED_PACKAGES_MAP    # "ecosystem:package:version" -> 1
+declare -A COMPROMISED_NAMESPACES_MAP  # "@namespace" -> 1 (npm only)
+declare -A COMPROMISED_VERSIONS_BY_NAME # "package_name" -> "version1 version2 ..." (npm only, for semver range checking)
 
 # Function: load_compromised_packages
 # Purpose: Load compromised package database from external file or fallback list
@@ -216,26 +324,58 @@ load_compromised_packages() {
     local packages_file="$SCRIPT_DIR/compromised-packages.txt"
     local count=0
 
+    # Entries may be ecosystem-prefixed ("pypi:name:version", "npm:name:version")
+    # or bare ("name:version"), in which case they default to npm. The internal
+    # map key is always "ecosystem:name:version" for unambiguous lookups.
+    local pypi_count=0 npm_count=0
+
     if [[ -f "$packages_file" ]]; then
-        # Use mapfile to read all valid lines at once, then populate associative array
-        local -a raw_packages
-        mapfile -t raw_packages < <(
+        local -a raw_lines
+        mapfile -t raw_lines < <(
             grep -v '^[[:space:]]*#' "$packages_file" | \
-            grep -E '^[a-zA-Z@][^:]+:[0-9]+\.[0-9]+\.[0-9]+' | \
+            grep -vE '^[[:space:]]*$' | \
             tr -d $'\r'
         )
 
-        # Populate associative arrays for O(1) lookups
-        for pkg in "${raw_packages[@]}"; do
-            COMPROMISED_PACKAGES_MAP["$pkg"]=1
-            # Also build reverse lookup by package name for semver range checking
-            local pkg_name="${pkg%:*}"
-            local pkg_version="${pkg#*:}"
-            COMPROMISED_VERSIONS_BY_NAME["$pkg_name"]+="$pkg_version "
-            ((count++)) || true  # Prevent errexit when count starts at 0
+        local line eco pkg_name pkg_version key
+        for line in "${raw_lines[@]}"; do
+            if [[ "$line" == pypi:* ]]; then
+                eco="pypi"
+                pkg_name="${line#pypi:}"
+                pkg_name="${pkg_name%:*}"
+                pkg_version="${line##*:}"
+                # Validate version shape (PyPI versions vary widely; accept any non-empty)
+                [[ -z "$pkg_version" || "$pkg_version" == "$line" ]] && continue
+                key="pypi:$pkg_name:$pkg_version"
+                COMPROMISED_PACKAGES_MAP["$key"]=1
+                ((pypi_count++)) || true
+                ((count++)) || true
+            elif [[ "$line" == npm:* ]]; then
+                eco="npm"
+                pkg_name="${line#npm:}"
+                pkg_name="${pkg_name%:*}"
+                pkg_version="${line##*:}"
+                [[ -z "$pkg_version" || "$pkg_version" == "$line" ]] && continue
+                # Require semver-ish version for npm
+                [[ "$pkg_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]] || continue
+                key="npm:$pkg_name:$pkg_version"
+                COMPROMISED_PACKAGES_MAP["$key"]=1
+                COMPROMISED_VERSIONS_BY_NAME["$pkg_name"]+="$pkg_version "
+                ((npm_count++)) || true
+                ((count++)) || true
+            elif [[ "$line" =~ ^[@a-zA-Z][^:]+:[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+                # Bare entry -> npm
+                pkg_name="${line%:*}"
+                pkg_version="${line#*:}"
+                key="npm:$pkg_name:$pkg_version"
+                COMPROMISED_PACKAGES_MAP["$key"]=1
+                COMPROMISED_VERSIONS_BY_NAME["$pkg_name"]+="$pkg_version "
+                ((npm_count++)) || true
+                ((count++)) || true
+            fi
         done
 
-        print_status "$BLUE" "📦 Loaded $count compromised packages from $packages_file (O(1) lookup enabled)"
+        print_status "$BLUE" "📦 Loaded $count compromised packages from $packages_file (npm: $npm_count, pypi: $pypi_count)"
     else
         # Fallback to embedded list if file not found
         print_status "$YELLOW" "⚠️  Warning: $packages_file not found, using embedded package list"
@@ -248,9 +388,9 @@ load_compromised_packages() {
             "koa2-swagger-ui:5.11.1"
             "koa2-swagger-ui:5.11.2"
         )
+        local pkg
         for pkg in "${fallback_packages[@]}"; do
-            COMPROMISED_PACKAGES_MAP["$pkg"]=1
-            # Also build reverse lookup for fallback packages
+            COMPROMISED_PACKAGES_MAP["npm:$pkg"]=1
             local pkg_name="${pkg%:*}"
             local pkg_version="${pkg#*:}"
             COMPROMISED_VERSIONS_BY_NAME["$pkg_name"]+="$pkg_version "
@@ -288,9 +428,11 @@ done
 # Function: is_compromised_package
 # Purpose: O(1) lookup to check if a package:version is compromised
 # Args: $1 = package:version string
+#       $2 = ecosystem (default: npm)
 # Returns: 0 if compromised, 1 if not
 is_compromised_package() {
-    [[ -v COMPROMISED_PACKAGES_MAP["$1"] ]]
+    local eco="${2:-npm}"
+    [[ -v COMPROMISED_PACKAGES_MAP["$eco:$1"] ]]
 }
 
 # Function: is_compromised_namespace
@@ -436,6 +578,9 @@ usage() {
     echo "                     Off by default. CRITICAL: revoking a monitored GitHub token while"
     echo "                     the service is active is designed to trigger a destructive wipe;"
     echo "                     stop and remove the service before rotating credentials."
+    echo "  --ecosystem LIST   Restrict ecosystem-specific checks to a comma-separated list."
+    echo "                     Supported values: npm, pypi, all (default: auto-detect from"
+    echo "                     marker files). Content-pattern checks always run regardless."
     echo "  --parallelism N    Set the number of threads to use for parallelized steps (current: ${PARALLELISM})"
     echo "  --save-log FILE    Save all detected file paths to FILE, grouped by severity"
     echo "                     Output format: # HIGH / # MEDIUM / # LOW headers with file paths"
@@ -621,7 +766,11 @@ collect_all_files() {
             -name "formatter_*.yml" -o \
             -name "router_init.js" -o -name "tanstack_runner.js" -o \
             -name "gh-token-monitor.sh" -o -name "com.user.gh-token-monitor.plist" -o \
-            -name "gh-token-monitor.service" \
+            -name "gh-token-monitor.service" -o \
+            -name "pyproject.toml" -o -name "Pipfile" -o -name "Pipfile.lock" -o \
+            -name "poetry.lock" -o -name "uv.lock" -o \
+            -name "requirements.txt" -o -name "requirements-*.txt" -o -name "*-requirements.txt" -o \
+            -name "setup.py" -o -name "setup.cfg" \
         \) -type f 2>/dev/null || true
     } > "$TEMP_DIR/all_files_raw.txt"
 
@@ -648,6 +797,13 @@ collect_all_files() {
     grep "trufflehog" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/trufflehog_files.txt" 2>/dev/null || touch "$TEMP_DIR/trufflehog_files.txt"
     grep "formatter_.*\.yml$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/formatter_workflows.txt" 2>/dev/null || touch "$TEMP_DIR/formatter_workflows.txt"
     grep -E "(router_init|tanstack_runner)\.js$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/mini_shai_hulud_artifact_files.txt" 2>/dev/null || touch "$TEMP_DIR/mini_shai_hulud_artifact_files.txt"
+
+    # PyPI manifests/lockfiles. Exclude virtualenv / site-packages / node_modules trees
+    # so we don't trip over copies of dependency manifests bundled inside installed packages.
+    grep -E "/(pyproject\.toml|Pipfile|setup\.py|setup\.cfg|requirements[^/]*\.txt|[^/]*-requirements\.txt)$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null | \
+        grep -vE "/(node_modules|\.venv|venv|\.tox|site-packages)/" > "$TEMP_DIR/pypi_manifests.txt" || touch "$TEMP_DIR/pypi_manifests.txt"
+    grep -E "/(poetry\.lock|uv\.lock|Pipfile\.lock)$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null | \
+        grep -vE "/(node_modules|\.venv|venv|\.tox|site-packages)/" > "$TEMP_DIR/pypi_lockfiles.txt" || touch "$TEMP_DIR/pypi_lockfiles.txt"
 
     # Filter GitHub workflow files specifically
     grep "/.github/workflows/.*\.ya\?ml$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/github_workflows.txt" 2>/dev/null || touch "$TEMP_DIR/github_workflows.txt"
@@ -1034,6 +1190,364 @@ check_mini_shai_hulud_indicators() {
     fi
     if [[ -s "$TEMP_DIR/mini_shai_hulud_host_artifacts.txt" ]]; then
         sort -u "$TEMP_DIR/mini_shai_hulud_host_artifacts.txt" -o "$TEMP_DIR/mini_shai_hulud_host_artifacts.txt"
+    fi
+}
+
+# =============================================================================
+# PyPI ecosystem support
+# =============================================================================
+# Pure-bash/awk parsers for Python manifests and lockfiles. Each parser reads
+# a single file and emits one normalized "name:version" line per exact-pinned
+# dependency it finds. Names are PEP 503 normalized (lowercase, runs of
+# [-_.] collapsed to a single hyphen). Range specifiers (>=, ^, ~=, etc.)
+# are intentionally ignored in manifests; lockfiles always have exact versions
+# so transitive compromises are caught there.
+
+# Function: parse_requirements_txt
+# Args: stdin = requirements.txt contents
+# Output: normalized name:version lines for "name==version" pins
+parse_requirements_txt() {
+    awk '
+        function normalize(n,    out) {
+            out = tolower(n)
+            gsub(/[._]+/, "-", out)
+            return out
+        }
+        {
+            # Strip inline comment, trim whitespace
+            sub(/[ \t]+#.*$/, "")
+            gsub(/^[ \t]+|[ \t]+$/, "")
+            if (length($0) == 0) next
+            if (substr($0,1,1) == "#") next
+            if (substr($0,1,1) == "-") next            # options, -r, -e
+            if ($0 ~ /^https?:/ || $0 ~ /^git\+/ || $0 ~ /^file:/) next
+            # Strip env markers
+            sub(/[ \t]*;.*$/, "")
+            # Strip extras: name[a,b]==1.0 -> name==1.0
+            sub(/\[[^]]*\]/, "")
+            gsub(/[ \t]/, "")
+            # Match name==version pin (allow trailing comma-separated specifiers but
+            # only take the == component)
+            if (match($0, /^[A-Za-z0-9_.-]+==[A-Za-z0-9_.+!*-]+/)) {
+                pair = substr($0, RSTART, RLENGTH)
+                eq = index(pair, "==")
+                name = substr(pair, 1, eq - 1)
+                ver  = substr(pair, eq + 2)
+                # PEP 440 local-version segment (e.g. 1.0+local) - strip + for matching
+                # against PyPI canonical versions (best-effort)
+                printf("%s:%s\n", normalize(name), ver)
+            }
+        }
+    '
+}
+
+# Function: parse_pyproject_toml
+# Args: $1 = path to pyproject.toml
+# Output: normalized name:version lines for PEP 621 + Poetry exact pins
+parse_pyproject_toml() {
+    local file="$1"
+    [[ -f "$file" ]] || return 0
+    awk '
+        function normalize(n,    out) {
+            out = tolower(n)
+            gsub(/[._]+/, "-", out)
+            return out
+        }
+        function process_pep508_array_chunk(s,    pos, dep, eq, name, ver) {
+            # Pull out every "..."-quoted dep specifier on this line
+            while (1) {
+                pos = match(s, /"[^"]+"/)
+                if (pos == 0) break
+                dep = substr(s, pos + 1, RLENGTH - 2)
+                s = substr(s, pos + RLENGTH)
+                # Strip extras and env markers, collapse whitespace
+                sub(/\[[^]]*\]/, "", dep)
+                sub(/[ \t]*;.*$/, "", dep)
+                gsub(/[ \t]/, "", dep)
+                # Match exact pin name==version
+                if (match(dep, /^[A-Za-z0-9_.-]+==[A-Za-z0-9_.+!*-]+$/)) {
+                    eq = index(dep, "==")
+                    name = substr(dep, 1, eq - 1)
+                    ver = substr(dep, eq + 2)
+                    printf("%s:%s\n", normalize(name), ver)
+                }
+            }
+        }
+        BEGIN {
+            section = ""
+            in_pep621_deps_array = 0
+            in_poetry_deps = 0
+        }
+        # Track section headers (TOML [section.path])
+        /^\[/ {
+            line = $0
+            sub(/[ \t]+#.*$/, "", line)
+            sub(/[ \t]+$/, "", line)
+            section = line
+            in_pep621_deps_array = 0
+            in_poetry_deps = 0
+            if (section ~ /^\[tool\.poetry\.dependencies\]$/ ||
+                section ~ /^\[tool\.poetry\.dev-dependencies\]$/ ||
+                section ~ /^\[tool\.poetry\.group\.[^.]+\.dependencies\]$/) {
+                in_poetry_deps = 1
+            }
+            next
+        }
+        # PEP 621: dependencies = [ ... ] inside [project] or [project.optional-dependencies]
+        section == "[project]" && /^[ \t]*dependencies[ \t]*=[ \t]*\[/ {
+            chunk = $0
+            sub(/^[^[]*\[/, "", chunk)
+            process_pep508_array_chunk(chunk)
+            if (chunk ~ /\]/) {
+                in_pep621_deps_array = 0
+            } else {
+                in_pep621_deps_array = 1
+            }
+            next
+        }
+        in_pep621_deps_array {
+            chunk = $0
+            process_pep508_array_chunk(chunk)
+            if (chunk ~ /\]/) in_pep621_deps_array = 0
+            next
+        }
+        # Poetry: name = "version" inside [tool.poetry.dependencies]
+        in_poetry_deps && /^[ \t]*[A-Za-z0-9_.-]+[ \t]*=[ \t]*/ {
+            line = $0
+            sub(/[ \t]+#.*$/, "", line)
+            # Extract key
+            key = line
+            sub(/[ \t]*=.*/, "", key)
+            gsub(/[ \t]/, "", key)
+            if (tolower(key) == "python") next
+            # Value can be a bare string "1.2.3" or a table { version = "1.2.3", ... }
+            val = line
+            sub(/^[^=]*=[ \t]*/, "", val)
+            ver = ""
+            if (match(val, /^"[^"]+"/)) {
+                ver = substr(val, RSTART + 1, RLENGTH - 2)
+            } else if (match(val, /version[ \t]*=[ \t]*"[^"]+"/)) {
+                inner = substr(val, RSTART, RLENGTH)
+                sub(/^version[ \t]*=[ \t]*"/, "", inner)
+                sub(/".*$/, "", inner)
+                ver = inner
+            }
+            # Only emit if version is an exact-looking number (no ^, ~, *, >, <, =)
+            if (ver != "" && ver !~ /[\^~*<>= ,]/) {
+                printf("%s:%s\n", normalize(key), ver)
+            }
+            next
+        }
+    ' "$file"
+}
+
+# Function: parse_pipfile
+# Args: $1 = path to Pipfile
+# Output: normalized name:version lines for "name = \"==X.Y.Z\"" pins
+parse_pipfile() {
+    local file="$1"
+    [[ -f "$file" ]] || return 0
+    awk '
+        function normalize(n,    out) {
+            out = tolower(n)
+            gsub(/[._]+/, "-", out)
+            return out
+        }
+        BEGIN { in_pkgs = 0 }
+        /^\[/ {
+            line = $0
+            sub(/[ \t]+$/, "", line)
+            if (line == "[packages]" || line == "[dev-packages]") {
+                in_pkgs = 1
+            } else {
+                in_pkgs = 0
+            }
+            next
+        }
+        in_pkgs && /^[ \t]*[A-Za-z0-9_.-]+[ \t]*=/ {
+            line = $0
+            sub(/[ \t]+#.*$/, "", line)
+            key = line
+            sub(/[ \t]*=.*/, "", key)
+            gsub(/[ \t]/, "", key)
+            val = line
+            sub(/^[^=]*=[ \t]*/, "", val)
+            ver = ""
+            if (match(val, /^"==[A-Za-z0-9_.+!-]+"/)) {
+                ver = substr(val, RSTART + 3, RLENGTH - 4)
+            } else if (match(val, /version[ \t]*=[ \t]*"==[A-Za-z0-9_.+!-]+"/)) {
+                inner = substr(val, RSTART, RLENGTH)
+                sub(/^version[ \t]*=[ \t]*"==/, "", inner)
+                sub(/".*$/, "", inner)
+                ver = inner
+            }
+            if (ver != "") printf("%s:%s\n", normalize(key), ver)
+        }
+    ' "$file"
+}
+
+# Function: parse_lock_blocks
+# Args: $1 = path to poetry.lock or uv.lock (both use [[package]] blocks)
+# Output: normalized name:version lines, one per package
+parse_lock_blocks() {
+    local file="$1"
+    [[ -f "$file" ]] || return 0
+    awk '
+        function normalize(n,    out) {
+            out = tolower(n)
+            gsub(/[._]+/, "-", out)
+            return out
+        }
+        function flush() {
+            if (in_block && name != "" && version != "") {
+                printf("%s:%s\n", name, version)
+            }
+            name = ""
+            version = ""
+        }
+        BEGIN { in_block = 0; name = ""; version = "" }
+        /^\[\[package\]\]/ {
+            flush()
+            in_block = 1
+            next
+        }
+        /^\[/ {
+            flush()
+            in_block = 0
+            next
+        }
+        in_block && /^name[ \t]*=[ \t]*"[^"]+"/ {
+            v = $0
+            sub(/^name[ \t]*=[ \t]*"/, "", v)
+            sub(/".*$/, "", v)
+            name = normalize(v)
+            next
+        }
+        in_block && /^version[ \t]*=[ \t]*"[^"]+"/ {
+            v = $0
+            sub(/^version[ \t]*=[ \t]*"/, "", v)
+            sub(/".*$/, "", v)
+            version = v
+            next
+        }
+        END { flush() }
+    ' "$file"
+}
+
+# Function: parse_pipfile_lock
+# Args: $1 = path to Pipfile.lock (JSON)
+# Output: normalized name:version lines from "default" and "develop" sections
+parse_pipfile_lock() {
+    local file="$1"
+    [[ -f "$file" ]] || return 0
+    awk '
+        function normalize(n,    out) {
+            out = tolower(n)
+            gsub(/[._]+/, "-", out)
+            return out
+        }
+        BEGIN { name = "" }
+        # A package entry: indented "name": {
+        /^[ \t]{6,}"[A-Za-z0-9_.-]+":[ \t]*\{[ \t]*$/ {
+            line = $0
+            sub(/^[ \t]+"/, "", line)
+            sub(/":.*$/, "", line)
+            name = normalize(line)
+            next
+        }
+        name != "" && /"version":[ \t]*"==[A-Za-z0-9_.+!-]+"/ {
+            v = $0
+            sub(/.*"version":[ \t]*"==/, "", v)
+            sub(/".*$/, "", v)
+            printf("%s:%s\n", name, v)
+        }
+        # Reset name when leaving the entry block
+        /^[ \t]{4,6}\}/ { name = "" }
+    ' "$file"
+}
+
+# Function: extract_pypi_deps
+# Args: $1 = path to a Python manifest or lockfile
+# Output: normalized name:version lines
+# Dispatches to the right parser based on basename. Unknown filenames are ignored.
+extract_pypi_deps() {
+    local file="$1"
+    local base
+    base=$(basename "$file")
+    case "$base" in
+        requirements*.txt|*-requirements.txt)
+            parse_requirements_txt < "$file"
+            ;;
+        pyproject.toml)
+            parse_pyproject_toml "$file"
+            ;;
+        Pipfile)
+            parse_pipfile "$file"
+            ;;
+        Pipfile.lock)
+            parse_pipfile_lock "$file"
+            ;;
+        poetry.lock|uv.lock)
+            parse_lock_blocks "$file"
+            ;;
+        # setup.py / setup.cfg deliberately not parsed in v1 (best-effort, fragile).
+        # Users get lockfile-level coverage which is authoritative.
+    esac
+}
+
+# Function: check_pypi_packages
+# Purpose: Scan PyPI manifests and lockfiles for compromised packages
+# Args: $1 = scan_dir
+# Modifies: $TEMP_DIR/compromised_found.txt (shared with npm check)
+check_pypi_packages() {
+    local scan_dir=$1
+
+    # Build the PyPI compromised lookup once (sorted for set intersection)
+    awk -F: '
+        /^[[:space:]]*#/ || NF < 3 { next }
+        $1 == "pypi" { print $2":"$3 }
+    ' "$SCRIPT_DIR/compromised-packages.txt" | LC_ALL=C sort > "$TEMP_DIR/pypi_compromised_lookup.txt"
+
+    if [[ ! -s "$TEMP_DIR/pypi_compromised_lookup.txt" ]]; then
+        # No PyPI entries in the database - nothing to do
+        return 0
+    fi
+
+    local manifest_count lockfile_count
+    manifest_count=$(wc -l < "$TEMP_DIR/pypi_manifests.txt" 2>/dev/null | tr -d ' ' || echo "0")
+    lockfile_count=$(wc -l < "$TEMP_DIR/pypi_lockfiles.txt" 2>/dev/null | tr -d ' ' || echo "0")
+
+    if [[ "$manifest_count" == "0" && "$lockfile_count" == "0" ]]; then
+        return 0
+    fi
+
+    print_status "$BLUE" "   Checking $manifest_count PyPI manifest(s) and $lockfile_count lockfile(s)..."
+
+    # Aggregate normalized deps: "file_path|name:version"
+    : > "$TEMP_DIR/pypi_all_deps.txt"
+    local file
+    while IFS= read -r file; do
+        [[ -z "$file" || ! -f "$file" ]] && continue
+        extract_pypi_deps "$file" | while IFS= read -r dep; do
+            [[ -n "$dep" ]] && echo "$file|$dep"
+        done >> "$TEMP_DIR/pypi_all_deps.txt"
+    done < <(cat "$TEMP_DIR/pypi_manifests.txt" "$TEMP_DIR/pypi_lockfiles.txt" 2>/dev/null)
+
+    if [[ ! -s "$TEMP_DIR/pypi_all_deps.txt" ]]; then
+        return 0
+    fi
+
+    # Fast set intersection against the PyPI compromised list
+    cut -d'|' -f2 "$TEMP_DIR/pypi_all_deps.txt" | LC_ALL=C sort | uniq > "$TEMP_DIR/pypi_deps_only.txt"
+    LC_ALL=C comm -12 "$TEMP_DIR/pypi_compromised_lookup.txt" "$TEMP_DIR/pypi_deps_only.txt" > "$TEMP_DIR/pypi_matched_deps.txt"
+
+    if [[ -s "$TEMP_DIR/pypi_matched_deps.txt" ]]; then
+        while IFS= read -r matched_dep; do
+            { grep -F "|$matched_dep" "$TEMP_DIR/pypi_all_deps.txt" || true; } | while IFS='|' read -r file_path dep; do
+                [[ -n "$file_path" ]] && \
+                    echo "$file_path:[PyPI] ${dep/:/@}" >> "$TEMP_DIR/compromised_found.txt"
+            done
+        done < "$TEMP_DIR/pypi_matched_deps.txt"
     fi
 }
 
@@ -1534,8 +2048,15 @@ check_packages() {
     # BATCH OPTIMIZATION: Extract all deps using parallel processing
     print_status "$BLUE" "   Extracting dependencies from all package.json files..."
 
-    # Create optimized lookup table from compromised packages (sorted for join)
-    awk -F: '{print $1":"$2}' $SCRIPT_DIR/compromised-packages.txt | LC_ALL=C sort > "$TEMP_DIR/compromised_lookup.txt"
+    # Create optimized lookup table from compromised packages (sorted for join).
+    # Filter to npm-only entries: bare "name:version" lines OR "npm:name:version".
+    # PyPI-prefixed lines and comments are excluded.
+    awk -F: '
+        /^[[:space:]]*#/ || NF < 2 { next }
+        $1 == "npm" && NF >= 3 { print $2":"$3; next }
+        $1 == "pypi" { next }
+        /^[@a-zA-Z]/ { print $1":"$2 }
+    ' "$SCRIPT_DIR/compromised-packages.txt" | LC_ALL=C sort > "$TEMP_DIR/compromised_lookup.txt"
 
     # Extract all dependencies from all package.json files using parallel xargs + awk
     # Format: file_path|package_name:version
@@ -2167,8 +2688,8 @@ check_package_integrity() {
                     current_pkg = ""
                 }
             ' "$lockfile" 2>/dev/null | while IFS=: read -r pkg_name pkg_version; do
-                # Check if this package:version is compromised using O(1) lookup
-                if [[ -v COMPROMISED_PACKAGES_MAP["$pkg_name:$pkg_version"] ]]; then
+                # Check if this package:version is compromised using O(1) lookup (npm)
+                if [[ -v COMPROMISED_PACKAGES_MAP["npm:$pkg_name:$pkg_version"] ]]; then
                     echo "$org_file:Compromised package in lockfile: $pkg_name@$pkg_version" >> "$TEMP_DIR/integrity_issues.txt"
                 fi
             done
@@ -3272,6 +3793,21 @@ main() {
             --check-host)
                 check_host=true
                 ;;
+            --ecosystem)
+                if [[ -z "$2" || "$2" == -* ]]; then
+                    echo "${RED}error: --ecosystem requires a value (npm, pypi, all, or comma-separated list)${NC}" >&2
+                    usage
+                fi
+                ECOSYSTEM_OVERRIDE="$2"
+                shift
+                ;;
+            --ecosystem=*)
+                ECOSYSTEM_OVERRIDE="${1#--ecosystem=}"
+                if [[ -z "$ECOSYSTEM_OVERRIDE" ]]; then
+                    echo "${RED}error: --ecosystem= requires a value${NC}" >&2
+                    usage
+                fi
+                ;;
             --check-semver-ranges)
                 CHECK_SEMVER_RANGES=true
                 ;;
@@ -3365,12 +3901,28 @@ main() {
     local total_files=$(wc -l < "$TEMP_DIR/all_files_raw.txt" 2>/dev/null || echo "0")
     print_stage_complete "File collection ($total_files files)"
 
-    # Run core Shai-Hulud detection checks (sequential for reliability)
+    # Auto-detect (or honor override of) active ecosystems for ecosystem-specific checks.
+    # npm checks always run; ecosystem detection only gates additive checks like PyPI.
+    detect_ecosystems
+    ecosystem_banner
+
+    # Run core Shai-Hulud detection checks (sequential for reliability).
+    # Ecosystem-specific checks are gated on detect_ecosystems(). Auto-detect mode
+    # always activates "npm" when any package.json / npm lockfile exists in the tree,
+    # which preserves the prior CI/CD contract for bare invocations. Explicit
+    # --ecosystem=<list> respects the user's choice. Content-pattern checks below
+    # (workflows, hashes, postinstall hooks, mini-shai-hulud, axios, sandworm, etc.)
+    # always run regardless of ecosystem - they target attack artifacts, not packages.
     print_status "$ORANGE" "[Stage 2/6] Core detection (workflows, hashes, packages, hooks)"
     check_workflow_files "$scan_dir"
     check_file_hashes "$scan_dir"
-    check_packages "$scan_dir"
-    check_semver_ranges "$scan_dir"
+    if ecosystem_active "npm"; then
+        check_packages "$scan_dir"
+        check_semver_ranges "$scan_dir"
+    fi
+    if ecosystem_active "pypi"; then
+        check_pypi_packages "$scan_dir"
+    fi
     check_postinstall_hooks "$scan_dir"
     print_stage_complete "Core detection"
 

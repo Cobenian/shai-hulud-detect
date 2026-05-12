@@ -1,0 +1,8 @@
+# TEST FIXTURE - Safe versions of the packages targeted by the Mini Shai-Hulud
+# PyPI spread. mistralai==2.4.5 is one minor patch below the compromised 2.4.6;
+# guardrails-ai==0.10.0 is one patch below 0.10.1. Should NOT trigger detection.
+
+mistralai==2.4.5
+guardrails-ai==0.10.0
+requests==2.31.0
+numpy==1.26.0

@@ -1,0 +1,8 @@
+# TEST FIXTURE - PyPI side of the May 2026 Mini Shai-Hulud campaign.
+# mistralai==2.4.6 was confirmed compromised by Socket on 2026-05-12.
+# Real users hitting this version need to pin to a safe release and audit
+# for the dropper's filesystem persistence artifacts.
+
+mistralai==2.4.6
+requests==2.31.0
+numpy==1.26.0

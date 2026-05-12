@@ -58,6 +58,10 @@ declare -A EXPECTED=(
     ["tanstack-attack"]="1|yes|no|no"          # HIGH: May 2026 Mini Shai-Hulud TanStack IOCs (router_init.js, wipe-threat, malicious optionalDependencies, compromised package versions)
     ["tanstack-clean"]="0|no|no|no"            # Clean: last-known-good @tanstack versions (1.169.4)
     ["mini-shai-hulud-dead-mans-switch"]="1|yes|no|no"  # HIGH: in-tree dead-man's-switch artifacts (gh-token-monitor.sh, plist)
+    ["pypi-attack-requirements"]="1|yes|no|no" # HIGH: PyPI mistralai==2.4.6 (Mini Shai-Hulud cross-ecosystem spread)
+    ["pypi-attack-poetry"]="1|yes|no|no"       # HIGH: PyPI guardrails-ai==0.10.1 in pyproject.toml + poetry.lock
+    ["polyglot-attack"]="1|yes|no|no"          # HIGH: both npm (@tanstack/react-router) AND PyPI (mistralai) compromises in one repo
+    ["pypi-clean"]="0|no|no|no"                # Clean: safe versions of campaign-targeted PyPI packages
     ["semver-matching"]="0|no|no|yes"          # LOW: semver edge cases
     ["semver-wildcards"]="0|no|no|no"          # Clean
     ["spaces-in-filenames"]="0|no|no|no"       # Clean: handles spaces in filenames (issue #92)
