@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  TEST FIXTURE - Stand-in for the Mini Shai-Hulud LaunchAgent persistence file.
+  The real artifact lives at ~/Library/LaunchAgents/com.user.gh-token-monitor.plist
+  and keeps the monitor running across reboots. This file is inert (no Program
+  key, no ProgramArguments) and exists only to exercise filename-match detection.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.user.gh-token-monitor.test-fixture</string>
+  <key>Disabled</key>
+  <true/>
+</dict>
+</plist>

@@ -5,6 +5,59 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.9] - 2026-05-12
+
+### Added
+- **May 2026 Mini Shai-Hulud / TanStack TheBeautifulSandsOfTime Coverage**: Added detection for the self-spreading TeamPCP campaign that compromised the TanStack release pipeline on May 11, 2026 and propagated to multiple other namespaces.
+- **New Compromised Package Versions**: Added 408 confirmed malicious package versions across the affected namespaces:
+  - 84 versions across 42 `@tanstack/*` packages (two versions per package, published roughly six minutes apart)
+  - 9 versions across `@mistralai/mistralai`, `@mistralai/mistralai-azure`, `@mistralai/mistralai-gcp`
+  - 4 versions of `@opensearch-project/opensearch` (3.5.3, 3.6.2, 3.7.0, 3.8.0)
+  - 80 versions across the `@uipath/*` namespace
+  - 109 versions across the `@squawk/*` namespace
+  - 24 versions across `@tallyui/*`
+  - 18 versions of `@beproduct/nestjs-auth`
+  - 6 versions of `@taskflow-corp/cli` and 5 of `@tolka/cli`
+  - 12 versions across `@supersurkhet/*`
+  - 8 versions across `@draftauth/*` and `@draftlab/*`
+  - 3 versions across `@cap-js/*`, 2 of `@dirigible-ai/sdk`, 3 of `@mesadev/*`, 4 of `@ml-toolkit-ts/*`
+  - Standalone packages: `agentwork-cli` (2), `cmux-agent-mcp` (6), `cross-stitch` (5), `git-branch-selector` (5), `git-git-git` (5), `mbt` (1), `ml-toolkit-ts` (2), `nextmove-mcp` (5), `safe-action` (2), `ts-dna` (5), `wot-api` (4)
+- **Mini Shai-Hulud IOC Detection**:
+  - Detects payload file names `router_init.js` and `tanstack_runner.js` anywhere in the scan tree
+  - Detects SHA-256 hash matches for `router_init.js` (`ab4fcadaec49c03278063dd269ea5eef82d24f2124a8e15d7b90f2fa8601266c`), `tanstack_runner.js` (`2ec78d556d696e208927cc503d48e4b5eb56b31abc2870c2ed2e98d6be27fc96`), and the malicious `@tanstack/setup` `package.json` (`7c12d8614c624c70d6dd6fc2ee289332474abaa38f70ebe2cdef064923ca3a9b`)
+  - Detects the wipe-threat token description string `IfYouRevokeThisTokenItWillWipeTheComputerOfTheOwner`
+  - Detects marker exfiltration repo names `siridar-ghola-567` and `tleilaxu-ornithopter-43` and the repo description `A Mini Shai-Hulud has Appeared`
+  - Detects C2 domains `api.masscan.cloud`, `git-tanstack.com`, `filev2.getsession.org`, `seed1.getsession.org`
+  - Detects threat-actor account reference `voicproducoes`
+  - Detects malicious orphan-commit SHA `79ac49eedf774dd4b0cfa308722bc463cfe5885c`
+  - Detects campaign-specific PBKDF2 master key (`0c0e873033875f1bc471eda37e3b9d0f9b89bd41a4bbb4f86746caa2176c40aa`) and salt (`svksjrhjkcejg`)
+  - Detects structural `package.json` signals: malicious `optionalDependencies` referencing `github:tanstack/router#79ac49ee`, `prepare` script invoking `bun run tanstack_runner.js`, and references to the fake `@tanstack/setup` package
+- **Dead-Man's-Switch Detection (`--check-host` flag, off by default)**:
+  - When enabled, scans `$HOME` for `gh-token-monitor` persistence artifacts: `~/Library/LaunchAgents/com.user.gh-token-monitor.plist`, `~/.config/systemd/user/gh-token-monitor.service`, `~/.local/bin/gh-token-monitor.sh`, `~/.config/gh-token-monitor/token`
+  - Always detects these artifacts when they appear inside the scan directory, regardless of `--check-host`
+  - Findings include a CRITICAL warning that revoking the monitored GitHub token while the service is active is designed to trigger a destructive wipe; a safe remediation order is printed (stop service, delete files, verify no monitor process, then rotate tokens)
+- **Mini Shai-Hulud Test Cases**:
+  - Added `test-cases/tanstack-attack/` to validate Mini Shai-Hulud IOC detection (compromised package versions, orphan-commit `optionalDependencies`, prepare hook, in-content IOCs)
+  - Added `test-cases/mini-shai-hulud-dead-mans-switch/` to validate in-tree dead-man's-switch artifact detection
+  - Added `test-cases/tanstack-clean/` to confirm last-known-good `@tanstack/*` versions (1.169.4) are not flagged
+
+### Changed
+- **Package Count**: Expanded `compromised-packages.txt` from 1,703 to 2,111 confirmed package versions.
+- **Malicious Hash List**: Expanded `MALICIOUS_HASHLIST` from 7 to 10 known SHA-256 hashes.
+- **Data Freshness**: Updated `compromised-packages.txt` metadata from "Last updated: March 2026" to "Last updated: May 2026".
+- **Documentation**: Updated `README.md` campaign scope, detection capabilities, test suite count (now 39 cases), and references to include the May 2026 Mini Shai-Hulud campaign and the new `--check-host` flag.
+
+### Security
+- Added high-confidence detection for the May 2026 Mini Shai-Hulud / TanStack TheBeautifulSandsOfTime campaign documented in:
+  - https://www.stepsecurity.io/blog/mini-shai-hulud-is-back-a-self-spreading-supply-chain-attack-hits-the-npm-ecosystem
+  - https://socket.dev/blog/tanstack-npm-packages-compromised-mini-shai-hulud-supply-chain-attack
+  - https://semgrep.dev/blog/2026/tanstack-router-packages-hit-by-coordinated-supply-chain-attack/
+  - https://www.wiz.io/blog/mini-shai-hulud-strikes-again-tanstack-more-npm-packages-compromised
+  - https://snyk.io/blog/tanstack-npm-packages-compromised/
+  - https://www.aikido.dev/blog/mini-shai-hulud-is-back-tanstack-compromised
+  - https://www.endorlabs.com/learn/shai-hulud-compromises-the-tanstack-ecosystem-80-packages-compromised
+  - https://tanstack.com/blog/npm-supply-chain-compromise-postmortem
+
 ## [3.0.8] - 2026-03-31
 
 ### Added

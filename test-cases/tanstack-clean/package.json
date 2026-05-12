@@ -1,0 +1,10 @@
+{
+  "name": "tanstack-clean-test",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Last-known-good TanStack versions (pre-May-11-2026). Should NOT trigger detection.",
+  "dependencies": {
+    "@tanstack/react-router": "1.169.4",
+    "@tanstack/router-core": "1.169.4"
+  }
+}

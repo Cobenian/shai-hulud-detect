@@ -10,11 +10,11 @@
 
 <img src="shai_hulu_detector.jpg" alt="sshd" width="80%" />
 
-A Bash tool that helps you spot known traces of the September 2025 through March 2026 npm supply-chain attacks—including the Shai-Hulud self-replicating worm, the chalk/debug crypto-theft incident, the "Shai-Hulud: The Second Coming" fake Bun runtime attack, the February 2026 SANDWORM_MODE campaign, and the March 2026 axios supply chain compromise. It cross-checks 1,703+ confirmed bad package versions across multiple campaigns and checks for the most relevant red flags in your project.
+A Bash tool that helps you spot known traces of the September 2025 through May 2026 npm supply-chain attacks—including the Shai-Hulud self-replicating worm, the chalk/debug crypto-theft incident, the "Shai-Hulud: The Second Coming" fake Bun runtime attack, the February 2026 SANDWORM_MODE campaign, the March 2026 axios supply chain compromise, and the May 2026 Mini Shai-Hulud / TanStack TheBeautifulSandsOfTime campaign. It cross-checks 2,100+ confirmed bad package versions across multiple campaigns and checks for the most relevant red flags in your project.
 
 ## Overview
 
-Covers multiple npm supply chain attacks from September 2025 through March 2026:
+Covers multiple npm supply chain attacks from September 2025 through May 2026:
 
 ### **Chalk/Debug Crypto Theft Attack** (September 8, 2025)
 - **Scope**: 18+ packages with 2+ billion weekly downloads
@@ -65,6 +65,17 @@ Covers multiple npm supply chain attacks from September 2025 through March 2026:
 - **Anti-forensics**: Dropper overwrites its own package.json version from 4.2.1 to 4.2.0
 - **Source**: [StepSecurity analysis](https://www.stepsecurity.io/blog/axios-compromised-on-npm-malicious-versions-drop-remote-access-trojan)
 
+### **Mini Shai-Hulud / TanStack TheBeautifulSandsOfTime** (May 11, 2026)
+- **Scope**: 400+ compromised package versions across @tanstack (84 versions / 42 packages), @mistralai, @opensearch-project, @uipath, @squawk, @draftlab, @draftauth, @tallyui, @beproduct, and many others
+- **Attack**: Self-spreading worm with a dead-man's-switch — hijacks legitimate release pipelines via `pull_request_target` "Pwn Request" + GitHub Actions cache poisoning + runtime OIDC token extraction; first known case of a malicious npm package shipped with valid SLSA provenance
+- **Method**: A `2.3MB` obfuscated `router_init.js` / `tanstack_runner.js` is smuggled into each tarball and triggered through an `optionalDependencies` entry pointing at an orphan commit in an attacker-owned fork; the payload installs a `gh-token-monitor` service (LaunchAgent on macOS, systemd `--user` on Linux) that polls `api.github.com/user` every 60 s and is designed to **wipe the host if the monitored GitHub token is revoked**
+- **C2**: `api.masscan.cloud`, `git-tanstack.com`, `filev2.getsession.org`, `seed1.getsession.org`
+- **Threat actor**: TeamPCP (npm/GitHub account `voicproducoes`)
+- **Wipe-threat marker**: npm token description literally reads `IfYouRevokeThisTokenItWillWipeTheComputerOfTheOwner`
+- **Marker repos**: `siridar-ghola-567`, `tleilaxu-ornithopter-43` (description: "A Mini Shai-Hulud has Appeared")
+- **Remediation caveat**: **Stop and remove the `gh-token-monitor` service BEFORE rotating tokens.** Run with `--check-host` to detect persistence artifacts.
+- **Sources**: [StepSecurity](https://www.stepsecurity.io/blog/mini-shai-hulud-is-back-a-self-spreading-supply-chain-attack-hits-the-npm-ecosystem) · [Socket](https://socket.dev/blog/tanstack-npm-packages-compromised-mini-shai-hulud-supply-chain-attack) · [Semgrep](https://semgrep.dev/blog/2026/tanstack-router-packages-hit-by-coordinated-supply-chain-attack/) · [Wiz](https://www.wiz.io/blog/mini-shai-hulud-strikes-again-tanstack-more-npm-packages-compromised) · [Snyk](https://snyk.io/blog/tanstack-npm-packages-compromised/) · [Aikido](https://www.aikido.dev/blog/mini-shai-hulud-is-back-tanstack-compromised) · [TanStack postmortem](https://tanstack.com/blog/npm-supply-chain-compromise-postmortem)
+
 ## Quick Start
 
 ```bash
@@ -95,10 +106,10 @@ echo "Exit code: $?"  # 0=clean, 1=high-risk, 2=medium-risk
 
 ### High Risk Indicators
 - **Malicious workflow files**: `shai-hulud-workflow.yml` files in `.github/workflows/` (September 2025), `formatter_*.yml` files using SHA1HULUD runners (November 2025), and SANDWORM_MODE workflow IoCs including `ci-quality/code-quality-check@v1` and poisoned `quality.yml` workflow references (February 2026)
-- **Known malicious file hashes**: Files matching any of 7 SHA-256 hashes from different Shai-Hulud worm variants (V1-V7), sourced from [Socket.dev's comprehensive attack analysis](https://socket.dev/blog/ongoing-supply-chain-attack-targets-crowdstrike-npm-packages)
+- **Known malicious file hashes**: Files matching any of 10 SHA-256 hashes spanning the Shai-Hulud worm variants (V1-V7), the Mini Shai-Hulud `router_init.js` / `tanstack_runner.js` payloads, and the malicious `@tanstack/setup` package.json — sourced from [Socket.dev's comprehensive attack analysis](https://socket.dev/blog/ongoing-supply-chain-attack-targets-crowdstrike-npm-packages) and [StepSecurity's Mini Shai-Hulud disclosure](https://www.stepsecurity.io/blog/mini-shai-hulud-is-back-a-self-spreading-supply-chain-attack-hits-the-npm-ecosystem)
 - **November 2025 Bun attack files**: `setup_bun.js`/`bun_installer.js` (fake Bun runtime installer) and `bun_environment.js`/`environment_source.js` (10MB+ obfuscated credential harvesting payload)
 - **Obfuscated exfiltration files**: `3nvir0nm3nt.json`, `cl0vd.json`, `c9nt3nts.json`, `pigS3cr3ts.json` (Golden Path variant - stolen credentials staged for exfiltration)
-- **Compromised package versions**: Specific versions of 1,703+ packages from multiple attacks (September 2025 through March 2026)
+- **Compromised package versions**: Specific versions of 2,100+ packages from multiple attacks (September 2025 through May 2026)
 - **Suspicious postinstall hooks**: Package.json files with postinstall scripts containing curl, wget, eval commands, or fake Bun installation (`"preinstall": "node setup_bun.js"`)
 - **Trufflehog activity**: Files containing trufflehog references, credential scanning patterns, or November 2025 enhanced patterns (automated TruffleHog download and execution)
 - **Shai-Hulud repositories**: Git repositories named "Shai-Hulud" (used for data exfiltration) or with "Sha1-Hulud: The Second Coming" or "Goldox-T3chs: Only Happy Girl" descriptions
@@ -106,6 +117,8 @@ echo "Exit code: $?"  # 0=clean, 1=high-risk, 2=medium-risk
 - **SHA1HULUD GitHub Actions runners**: GitHub Actions workflows using malicious runners for credential theft
 - **SANDWORM_MODE workflow IoCs**: Workflow files containing `ci-quality/code-quality-check@v1`, actor aliases (`official334`, `javaorg`), or related propagation module references
 - **Axios supply chain attack IoCs**: C2 domain `sfrclak.com` / IP `142.11.206.73`, XOR key `OrDeR_7077`, `plain-crypto-js` dependency (malicious RAT dropper), and filesystem persistence artifacts (March 2026)
+- **Mini Shai-Hulud / TanStack IoCs**: `router_init.js` / `tanstack_runner.js` payload files (May 2026); wipe-threat token-description string `IfYouRevokeThisTokenItWillWipeTheComputerOfTheOwner`; marker repos `siridar-ghola-567` / `tleilaxu-ornithopter-43`; C2 domains `api.masscan.cloud`, `git-tanstack.com`, `filev2.getsession.org`, `seed1.getsession.org`; threat-actor reference `voicproducoes`; malicious orphan-commit SHA `79ac49eedf774dd4b0cfa308722bc463cfe5885c`; campaign-specific PBKDF2 constants; structural `package.json` signals (orphan-commit `optionalDependencies`, `bun run tanstack_runner.js` prepare hook, fake `@tanstack/setup` reference)
+- **Mini Shai-Hulud dead-man's-switch artifacts** (opt-in via `--check-host`): `~/Library/LaunchAgents/com.user.gh-token-monitor.plist`, `~/.config/systemd/user/gh-token-monitor.service`, `~/.local/bin/gh-token-monitor.sh`, `~/.config/gh-token-monitor/token` — reported with a CRITICAL warning that revoking a monitored GitHub token before stopping the service is designed to trigger a destructive wipe
 
 ### Medium Risk Indicators
 - **Suspicious content patterns**: References to `webhook.site` and the malicious endpoint `bb8ca5f6-4175-45d2-b042-fc9ebb8170b7`
@@ -118,8 +131,8 @@ echo "Exit code: $?"  # 0=clean, 1=high-risk, 2=medium-risk
 ### Package Detection Method
 
 The script loads a list of the compromised packages from an external file (`compromised-packages.txt`) which contains:
-- **1,703+ confirmed compromised package versions** with exact version numbers (September 2025 through March 2026 campaigns)
-- **18+ affected namespaces** for broader detection of packages from compromised maintainer accounts
+- **2,100+ confirmed compromised package versions** with exact version numbers (September 2025 through May 2026 campaigns)
+- **30+ affected namespaces** for broader detection of packages from compromised maintainer accounts
 
 ### Maintaining and Updating the Package List
 
@@ -142,6 +155,10 @@ Check these security advisories regularly for newly discovered compromised packa
 - **[Socket.dev Blog](https://socket.dev/blog/sandworm-mode-npm-worm-ai-toolchain-poisoning)** - SANDWORM_MODE AI toolchain poisoning campaign
 - **[HelixGuard](https://helixguard.ai/blog/malicious-sha1hulud-2025-11-24)** - Second Coming analysis
 - **[StepSecurity Blog](https://www.stepsecurity.io/blog/axios-compromised-on-npm-malicious-versions-drop-remote-access-trojan)** - March 2026 axios supply chain compromise
+- **[StepSecurity Blog](https://www.stepsecurity.io/blog/mini-shai-hulud-is-back-a-self-spreading-supply-chain-attack-hits-the-npm-ecosystem)** - May 2026 Mini Shai-Hulud / TanStack TheBeautifulSandsOfTime campaign
+- **[Socket.dev Blog](https://socket.dev/blog/tanstack-npm-packages-compromised-mini-shai-hulud-supply-chain-attack)** - Mini Shai-Hulud TanStack package inventory
+- **[Semgrep Blog](https://semgrep.dev/blog/2026/tanstack-router-packages-hit-by-coordinated-supply-chain-attack/)** - Mini Shai-Hulud full IoC list
+- **[TanStack Postmortem](https://tanstack.com/blog/npm-supply-chain-compromise-postmortem)** - Authoritative incident postmortem
 
 ### How to Add Newly Discovered Packages
 
@@ -150,7 +167,7 @@ Check these security advisories regularly for newly discovered compromised packa
 3. Test the script to ensure detection works
 4. Consider contributing updates back to this repository
 
-**Coverage Note**: Multiple campaigns from September 2025 through March 2026 affected 1,703+ packages total. Our detection aims to provide **comprehensive coverage** across the Shai-Hulud worm (517+ packages), Chalk/Debug crypto theft (26+ packages), "Shai-Hulud: The Second Coming" fake Bun runtime attack (1,100+ packages), the Golden Path variant, the February 2026 SANDWORM_MODE campaign, and the March 2026 axios supply chain compromise.
+**Coverage Note**: Multiple campaigns from September 2025 through May 2026 affected 2,100+ packages total. Our detection aims to provide **comprehensive coverage** across the Shai-Hulud worm (517+ packages), Chalk/Debug crypto theft (26+ packages), "Shai-Hulud: The Second Coming" fake Bun runtime attack (1,100+ packages), the Golden Path variant, the February 2026 SANDWORM_MODE campaign, the March 2026 axios supply chain compromise, and the May 2026 Mini Shai-Hulud / TanStack TheBeautifulSandsOfTime campaign (400+ packages).
 
 ### Core vs Paranoid Mode
 
@@ -307,7 +324,7 @@ This format is designed for:
 
 ## Testing
 
-The repository includes a comprehensive test suite with 32 test cases. Use the automated test runner to validate all cases:
+The repository includes a comprehensive test suite with 39 test cases. Use the automated test runner to validate all cases:
 
 ```bash
 # Run the full test suite (recommended)
@@ -389,6 +406,15 @@ You can also run individual test cases manually:
 # Test axios supply chain attack IOC detection (should show HIGH risk for C2, XOR key, plain-crypto-js)
 ./shai-hulud-detector.sh test-cases/axios-attack
 
+# Test Mini Shai-Hulud / TanStack TheBeautifulSandsOfTime IOC detection (May 2026; should show HIGH risk)
+./shai-hulud-detector.sh test-cases/tanstack-attack
+
+# Test Mini Shai-Hulud dead-man's-switch artifact detection (should show HIGH risk + wipe warning)
+./shai-hulud-detector.sh test-cases/mini-shai-hulud-dead-mans-switch
+
+# Test last-known-good @tanstack/* versions (should be clean — no false positives)
+./shai-hulud-detector.sh test-cases/tanstack-clean
+
 # Test GitHub Actions runner detection (should show CRITICAL risk for SHA1HULUD self-hosted runners)
 ./shai-hulud-detector.sh test-cases/github-actions-runners
 
@@ -413,9 +439,9 @@ The `--paranoid` flag enables additional security checks beyond Shai-Hulud-speci
 
 The script performs these checks:
 
-1. **Package Database Loading**: Loads 1,703+ compromised packages from `compromised-packages.txt` into O(1) lookup maps
-2. **Workflow Detection**: Searches for `shai-hulud-workflow.yml` files (September 2025), `formatter_*.yml` files with SHA1HULUD runners (November 2025), SANDWORM_MODE workflow IoCs (February 2026), and axios supply chain attack IoCs (March 2026)
-3. **Hash Verification**: Calculates SHA-256 hashes against 7 known malicious bundle.js variants (V1-V7)
+1. **Package Database Loading**: Loads 2,100+ compromised packages from `compromised-packages.txt` into O(1) lookup maps
+2. **Workflow Detection**: Searches for `shai-hulud-workflow.yml` files (September 2025), `formatter_*.yml` files with SHA1HULUD runners (November 2025), SANDWORM_MODE workflow IoCs (February 2026), axios supply chain attack IoCs (March 2026), and Mini Shai-Hulud TanStack IoCs (May 2026)
+3. **Hash Verification**: Calculates SHA-256 hashes against 10 known malicious file hashes — 7 Shai-Hulud worm `bundle.js` variants (V1-V7), `router_init.js`, `tanstack_runner.js`, and the malicious `@tanstack/setup` package.json
 4. **Package Analysis**: Parses `package.json` files for compromised versions and affected namespaces
 5. **Semver Range Checking** (opt-in with `--check-semver-ranges`): Checks if version ranges could resolve to compromised versions
 6. **Postinstall Hook Detection**: Identifies suspicious postinstall/preinstall scripts containing curl, wget, eval, or fake Bun patterns
@@ -432,6 +458,7 @@ The script performs these checks:
 17. **Typosquatting Detection** (paranoid mode): Identifies packages with names similar to popular packages
 18. **Network Exfiltration Detection** (paranoid mode): Detects suspicious domains and hardcoded IPs
 19. **Obfuscated Exfiltration Detection**: Identifies Golden Path variant staging files (`3nvir0nm3nt.json`, `cl0vd.json`, etc.)
+20. **Mini Shai-Hulud / TanStack TheBeautifulSandsOfTime Detection** (May 2026): Identifies `router_init.js` / `tanstack_runner.js` payloads, the wipe-threat token-description string, marker repos, C2 domains, threat-actor references, malicious orphan-commit `optionalDependencies`, fake `@tanstack/setup` references, and (opt-in via `--check-host`) the `gh-token-monitor` dead-man's-switch persistence artifacts on the host. CRITICAL: revoking a monitored GitHub token while the service is active is designed to trigger a destructive wipe — stop the service before rotating credentials.
 
 ## Limitations
 
