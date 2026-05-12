@@ -1,0 +1,13 @@
+# TEST FIXTURE - Poetry-style manifest pinning guardrails-ai==0.10.1,
+# the second confirmed PyPI compromise from the May 2026 Mini Shai-Hulud
+# campaign. The lockfile below is the authoritative source of truth and
+# is what the detector actually keys off (exact versions only).
+[tool.poetry]
+name = "pypi-attack-poetry-test"
+version = "0.0.1"
+description = "Poetry test fixture for Mini Shai-Hulud PyPI coverage"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+guardrails-ai = "0.10.1"
+requests = "2.31.0"

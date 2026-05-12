@@ -1,4 +1,4 @@
-# Shai-Hulud NPM Supply Chain Attack Detector
+# Shai-Hulud Supply Chain Attack Detector (npm + PyPI)
 
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Shell](https://img.shields.io/badge/shell-Bash%205.0%2B-blue)](#requirements)
@@ -10,7 +10,16 @@
 
 <img src="shai_hulu_detector.jpg" alt="sshd" width="80%" />
 
-A Bash tool that helps you spot known traces of the September 2025 through May 2026 npm supply-chain attacks—including the Shai-Hulud self-replicating worm, the chalk/debug crypto-theft incident, the "Shai-Hulud: The Second Coming" fake Bun runtime attack, the February 2026 SANDWORM_MODE campaign, the March 2026 axios supply chain compromise, and the May 2026 Mini Shai-Hulud / TanStack TheBeautifulSandsOfTime campaign. It cross-checks 2,100+ confirmed bad package versions across multiple campaigns and checks for the most relevant red flags in your project.
+A Bash tool that helps you spot known traces of the September 2025 through May 2026 npm and PyPI supply-chain attacks—including the Shai-Hulud self-replicating worm, the chalk/debug crypto-theft incident, the "Shai-Hulud: The Second Coming" fake Bun runtime attack, the February 2026 SANDWORM_MODE campaign, the March 2026 axios supply chain compromise, and the May 2026 Mini Shai-Hulud / TanStack TheBeautifulSandsOfTime campaign (now confirmed crossing into PyPI). It cross-checks 2,100+ confirmed bad package versions across multiple campaigns and checks for the most relevant red flags in your project.
+
+## Supported Ecosystems
+
+The detector auto-detects which package ecosystems your project uses and runs the relevant checks for each. Ecosystem-specific checks (manifest parsing, lockfile analysis) only fire when the relevant marker files are present; content-pattern checks (file hashes, C2 domains, dead-man's-switch artifacts, wipe-threat strings, etc.) always run.
+
+- **npm**: detected via `package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`
+- **PyPI**: detected via `pyproject.toml`, `requirements.txt`, `requirements-*.txt`, `Pipfile`, `Pipfile.lock`, `poetry.lock`, `uv.lock`, `setup.py`, `setup.cfg`
+
+Marker discovery excludes `node_modules/`, `.venv/`, `venv/`, `.tox/`, and `site-packages/`. Override with `--ecosystem=npm`, `--ecosystem=pypi`, `--ecosystem=all`, or a comma-separated list. PyPI parsers are pure-bash awk (no Python required) and support exact version pins; range specifiers (`>=`, `^`, `~=`) are intentionally skipped in manifests since lockfiles always carry exact versions.
 
 ## Overview
 
@@ -118,6 +127,7 @@ echo "Exit code: $?"  # 0=clean, 1=high-risk, 2=medium-risk
 - **SANDWORM_MODE workflow IoCs**: Workflow files containing `ci-quality/code-quality-check@v1`, actor aliases (`official334`, `javaorg`), or related propagation module references
 - **Axios supply chain attack IoCs**: C2 domain `sfrclak.com` / IP `142.11.206.73`, XOR key `OrDeR_7077`, `plain-crypto-js` dependency (malicious RAT dropper), and filesystem persistence artifacts (March 2026)
 - **Mini Shai-Hulud / TanStack IoCs**: `router_init.js` / `tanstack_runner.js` payload files (May 2026); wipe-threat token-description string `IfYouRevokeThisTokenItWillWipeTheComputerOfTheOwner`; marker repos `siridar-ghola-567` / `tleilaxu-ornithopter-43`; C2 domains `api.masscan.cloud`, `git-tanstack.com`, `filev2.getsession.org`, `seed1.getsession.org`; threat-actor reference `voicproducoes`; malicious orphan-commit SHA `79ac49eedf774dd4b0cfa308722bc463cfe5885c`; campaign-specific PBKDF2 constants; structural `package.json` signals (orphan-commit `optionalDependencies`, `bun run tanstack_runner.js` prepare hook, fake `@tanstack/setup` reference)
+- **PyPI cross-ecosystem spread (TeamPCP threat actor, March-May 2026)**: 11 malicious version artifacts across 6 projects — `pypi:mistralai:2.4.6`, `pypi:guardrails-ai:0.10.1` (May 2026 Mini Shai-Hulud); `pypi:lightning:2.6.2`, `pypi:lightning:2.6.3` (April 2026 sub-wave); `pypi:xinference:2.6.0`/`:2.6.1`/`:2.6.2` (April 2026); `pypi:telnyx:4.87.1`/`:4.87.2` (March 2026); `pypi:litellm:1.82.7`/`:1.82.8` (March 2026)
 - **Mini Shai-Hulud dead-man's-switch artifacts** (opt-in via `--check-host`): `~/Library/LaunchAgents/com.user.gh-token-monitor.plist`, `~/.config/systemd/user/gh-token-monitor.service`, `~/.local/bin/gh-token-monitor.sh`, `~/.config/gh-token-monitor/token` — reported with a CRITICAL warning that revoking a monitored GitHub token before stopping the service is designed to trigger a destructive wipe
 
 ### Medium Risk Indicators
@@ -133,6 +143,7 @@ echo "Exit code: $?"  # 0=clean, 1=high-risk, 2=medium-risk
 The script loads a list of the compromised packages from an external file (`compromised-packages.txt`) which contains:
 - **2,100+ confirmed compromised package versions** with exact version numbers (September 2025 through May 2026 campaigns)
 - **30+ affected namespaces** for broader detection of packages from compromised maintainer accounts
+- **Multi-ecosystem entries**: bare lines (e.g. `axios:1.14.1`) are interpreted as npm for backward compatibility; PyPI entries use the `pypi:` prefix (e.g. `pypi:mistralai:2.4.6`); npm entries may use the explicit `npm:` prefix.
 
 ### Maintaining and Updating the Package List
 
@@ -324,7 +335,7 @@ This format is designed for:
 
 ## Testing
 
-The repository includes a comprehensive test suite with 39 test cases. Use the automated test runner to validate all cases:
+The repository includes a comprehensive test suite with 43 test cases. Use the automated test runner to validate all cases:
 
 ```bash
 # Run the full test suite (recommended)
@@ -415,6 +426,18 @@ You can also run individual test cases manually:
 # Test last-known-good @tanstack/* versions (should be clean — no false positives)
 ./shai-hulud-detector.sh test-cases/tanstack-clean
 
+# Test PyPI Mini Shai-Hulud cross-ecosystem spread (requirements.txt with mistralai==2.4.6)
+./shai-hulud-detector.sh test-cases/pypi-attack-requirements
+
+# Test PyPI compromise in Poetry project (pyproject.toml + poetry.lock with guardrails-ai==0.10.1)
+./shai-hulud-detector.sh test-cases/pypi-attack-poetry
+
+# Test polyglot project with both npm AND PyPI compromises (exercises auto-detection of both ecosystems)
+./shai-hulud-detector.sh test-cases/polyglot-attack
+
+# Test safe PyPI versions (should be clean — verifies no false positives)
+./shai-hulud-detector.sh test-cases/pypi-clean
+
 # Test GitHub Actions runner detection (should show CRITICAL risk for SHA1HULUD self-hosted runners)
 ./shai-hulud-detector.sh test-cases/github-actions-runners
 
@@ -459,6 +482,7 @@ The script performs these checks:
 18. **Network Exfiltration Detection** (paranoid mode): Detects suspicious domains and hardcoded IPs
 19. **Obfuscated Exfiltration Detection**: Identifies Golden Path variant staging files (`3nvir0nm3nt.json`, `cl0vd.json`, etc.)
 20. **Mini Shai-Hulud / TanStack TheBeautifulSandsOfTime Detection** (May 2026): Identifies `router_init.js` / `tanstack_runner.js` payloads, the wipe-threat token-description string, marker repos, C2 domains, threat-actor references, malicious orphan-commit `optionalDependencies`, fake `@tanstack/setup` references, and (opt-in via `--check-host`) the `gh-token-monitor` dead-man's-switch persistence artifacts on the host. CRITICAL: revoking a monitored GitHub token while the service is active is designed to trigger a destructive wipe — stop the service before rotating credentials.
+21. **PyPI Ecosystem Support** (May 2026): Auto-detects Python projects via marker files (`pyproject.toml`, `requirements*.txt`, `Pipfile*`, `poetry.lock`, `uv.lock`, `setup.py`, `setup.cfg`) and parses them with pure-bash awk parsers (no Python required). Exact version pins are checked against the `pypi:` entries in `compromised-packages.txt`. Range specifiers in manifests are intentionally not enforced; lockfiles carry exact versions and are authoritative. PEP 503 name normalization (lowercase + collapse `-`/`_`/`.`) is applied before lookup. Override auto-detection with `--ecosystem=npm|pypi|all|<list>`.
 
 ## Limitations
 

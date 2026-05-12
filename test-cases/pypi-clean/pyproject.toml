@@ -1,0 +1,9 @@
+[project]
+name = "pypi-clean-test"
+version = "0.0.1"
+description = "Clean PyPI project test fixture - safe versions of campaign-targeted packages"
+requires-python = ">=3.11"
+dependencies = [
+    "mistralai==2.4.5",
+    "guardrails-ai==0.10.0"
+]

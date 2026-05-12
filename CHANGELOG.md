@@ -5,6 +5,64 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0] - 2026-05-12
+
+### Added
+- **PyPI Ecosystem Support**: The detector now scans Python projects in addition to npm. PyPI manifests and lockfiles are parsed for compromised packages using the same set-intersection lookup the npm path uses. PyPI support is purely additive: npm-only projects scan exactly as before with no new findings, flags, or output changes that affect existing CI/CD pipelines.
+- **Pure-Bash Python Parsers** (no runtime dependencies; awk-based, cross-platform):
+  - `requirements.txt` and `requirements-*.txt` exact pins (`==X.Y.Z`)
+  - `pyproject.toml` PEP 621 `[project] dependencies = [...]` arrays
+  - `pyproject.toml` Poetry `[tool.poetry.dependencies]` and `[tool.poetry.group.*.dependencies]` tables
+  - `Pipfile` `[packages]` / `[dev-packages]` sections
+  - `Pipfile.lock` (JSON) `default` / `develop` sections
+  - `poetry.lock` `[[package]]` blocks
+  - `uv.lock` `[[package]]` blocks
+  - PEP 503 name normalization (lowercase, `-`/`_`/`.` collapsed to `-`) applied before lookup
+- **Ecosystem Auto-Detection**: New `detect_ecosystems` function scans the file inventory for ecosystem marker files (`package.json` / lockfiles for npm; `pyproject.toml`, `requirements*.txt`, `Pipfile`, `poetry.lock`, `uv.lock`, `setup.py`, `setup.cfg` for PyPI) and runs only the relevant ecosystem-specific checks. Marker discovery excludes `node_modules`, `.venv`, `venv`, `.tox`, and `site-packages` directories.
+- **Ecosystem Banner**: A new informational line at scan start prints which ecosystems were detected (for example: `Detected ecosystems: npm (12 marker file(s)), pypi (2 marker file(s))`). When neither ecosystem is detected, content-pattern checks still run.
+- **`--ecosystem` CLI Flag**: Optional override. Accepts `npm`, `pypi`, `all`, or a comma-separated list. Default is auto-detect; the flag is purely opt-in and existing invocations continue to work unchanged.
+- **PyPI Compromised Packages**: Added 11 confirmed malicious PyPI version artifacts across 6 distinct projects attributed to the TeamPCP threat actor:
+  - May 2026 Mini Shai-Hulud cross-ecosystem spread: `pypi:mistralai:2.4.6`, `pypi:guardrails-ai:0.10.1` (Socket-confirmed)
+  - April 2026 Mini Shai-Hulud PyPI sub-wave: `pypi:lightning:2.6.2`, `pypi:lightning:2.6.3` (Aikido / Socket / Semgrep / StepSecurity / Sonatype / Lightning AI official postmortem; note: only the `lightning` PyPI dist was affected — the legacy `pytorch-lightning` dist has no 2.6.2/2.6.3 release)
+  - April 2026 TeamPCP Xinference compromise: `pypi:xinference:2.6.0`, `pypi:xinference:2.6.1`, `pypi:xinference:2.6.2` (three consecutive releases April 22, 2026; GitGuardian / JFrog)
+  - March 2026 TeamPCP Telnyx compromise: `pypi:telnyx:4.87.1`, `pypi:telnyx:4.87.2` (Akamai / The Hacker News / official team-telnyx/telnyx-python issue #235)
+  - March 2026 TeamPCP LiteLLM compromise: `pypi:litellm:1.82.7`, `pypi:litellm:1.82.8` (Datadog Security Labs / Sonatype / Truesec / Snyk)
+- **Compromised Packages File Format**: The `compromised-packages.txt` format now accepts an optional `ecosystem:` prefix (`npm:` or `pypi:`). Bare entries continue to be interpreted as `npm` for full backward compatibility with external tools that consume this file.
+- **PyPI Test Cases**:
+  - Added `test-cases/pypi-attack-requirements/` to validate detection of `mistralai==2.4.6` in `requirements.txt`
+  - Added `test-cases/pypi-attack-poetry/` to validate detection of `guardrails-ai==0.10.1` in both `pyproject.toml` (Poetry) and `poetry.lock`
+  - Added `test-cases/polyglot-attack/` to validate auto-detection of both ecosystems and combined npm + PyPI compromise reporting in a single project
+  - Added `test-cases/pypi-clean/` to confirm safe versions of campaign-targeted PyPI packages are not flagged
+
+### Changed
+- **Package Count**: Expanded `compromised-packages.txt` from 2,111 to 2,122 confirmed package versions (added 11 PyPI entries spanning four TeamPCP-attributed PyPI campaigns from March through May 2026).
+- **Internal Map Keys**: `COMPROMISED_PACKAGES_MAP` keys are now ecosystem-prefixed internally (`npm:axios:1.14.1`, `pypi:mistralai:2.4.6`). The `is_compromised_package` helper accepts an optional second argument for ecosystem (default `npm`). External behavior is unchanged.
+- **Test Suite Size**: 39 test cases (up from 35 before the 3.0.9 entry counted them; net of 4 new PyPI fixtures).
+- **Documentation**: Updated `README.md` to describe ecosystem support, the `--ecosystem` flag, and the PyPI parsers.
+
+### Security
+- Added high-confidence detection for the May 2026 PyPI cross-ecosystem spread of the Mini Shai-Hulud / TanStack TheBeautifulSandsOfTime campaign and the earlier TeamPCP-attributed PyPI campaigns documented in:
+  - https://x.com/SocketSecurity/status/2054048025081737446
+  - https://socket.dev/blog/lightning-pypi-package-compromised
+  - https://www.aikido.dev/blog/pytorch-lightning-pypi-compromise-mini-shai-hulud
+  - https://www.stepsecurity.io/blog/lightning-obfuscated-javascript-credential-stealer-bundled-in-pypi-wheel
+  - https://lightning.ai/blog/pytorch-lightning-supply-chain-attack
+  - https://semgrep.dev/blog/2026/malicious-dependency-in-pytorch-lightning-used-for-ai-training/
+  - https://blog.gitguardian.com/three-supply-chain-campaigns-hit-npm-pypi-and-docker-hub-in-48-hours/
+  - https://research.jfrog.com/post/xinference-compromise/
+  - https://www.akamai.com/blog/security-research/telnyx-sdk-pypi-2026-teampcp-supply-chain-attacks
+  - https://thehackernews.com/2026/03/teampcp-pushes-malicious-telnyx.html
+  - https://github.com/team-telnyx/telnyx-python/issues/235
+  - https://securitylabs.datadoghq.com/articles/litellm-compromised-pypi-teampcp-supply-chain-campaign/
+
+### Compatibility
+- Exit-code contract preserved: `0=clean`, `1=high-risk`, `2=medium-risk`. No new exit codes introduced.
+- All existing CLI flags work identically. The new `--ecosystem` flag is optional with an auto-detect default; bare invocations (`./shai-hulud-detector.sh /path`) behave exactly as in 3.0.9.
+- npm detection paths run unconditionally regardless of ecosystem detection. PyPI checks are the only ones gated on detection, ensuring zero behavior change for npm-only projects.
+- `--save-log` output format unchanged (`# HIGH` / `# MEDIUM` / `# LOW` sections with file paths). PyPI findings are written into the same `# HIGH` section as npm compromised-package findings.
+- Compromised-packages.txt format is backward-compatible: bare entries are still parsed as npm. Only new entries are prefixed.
+- Pure Bash 5.x + POSIX shell tools; no new runtime dependencies. Tested on macOS Bash 5; same tool surface (awk, grep, find, sort, comm, cut, uniq, tr, xargs) as prior versions, ensuring continued support on Linux and Git Bash for Windows.
+
 ## [3.0.9] - 2026-05-12
 
 ### Added

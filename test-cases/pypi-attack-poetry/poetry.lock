@@ -1,0 +1,17 @@
+# TEST FIXTURE - synthetic poetry.lock entries. Real lockfiles include
+# many more fields per [[package]] block; this minimal form is enough
+# to exercise the parser's name/version extraction state machine.
+
+[[package]]
+name = "guardrails-ai"
+version = "0.10.1"
+description = "Compromised version from Mini Shai-Hulud PyPI spread"
+category = "main"
+optional = false
+
+[[package]]
+name = "requests"
+version = "2.31.0"
+description = "Safe transitive dependency"
+category = "main"
+optional = false

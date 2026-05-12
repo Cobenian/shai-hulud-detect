@@ -1,11 +1,13 @@
-# Shai-Hulud NPM Supply Chain Attack - Compromised Packages List
+# Shai-Hulud Supply Chain Attack - Compromised Packages List
 #
 # This file contains 2,100+ confirmed compromised package versions from
 # multiple supply chain attacks between September 2025 and May 2026.
 # The campaigns were self-replicating, so new compromised packages may still be discovered.
 #
 # Sources: StepSecurity, Wiz.io, Semgrep, JFrog security advisories and Socket.dev
-# Format: package_name:version
+# Format: <ecosystem>:package_name:version, OR bare package_name:version (defaults to npm)
+#         Bare entries (e.g. "axios:1.14.1") are interpreted as npm for backward compatibility.
+#         Explicit npm entries use the "npm:" prefix; PyPI entries use "pypi:".
 # Last updated: May 2026
 #
 # MAINTAINING THIS LIST:
@@ -2180,3 +2182,66 @@ wot-api:0.8.1
 wot-api:0.8.2
 wot-api:0.8.3
 wot-api:0.8.4
+
+# ========================================================================
+# MAY 2026 - MINI SHAI-HULUD CROSS-ECOSYSTEM SPREAD (PyPI)
+# Socket confirmed the same TheBeautifulSandsOfTime campaign crossed into PyPI.
+# These two PyPI packages share the same threat actor and dropper family as
+# the npm-side Mini Shai-Hulud compromises listed above. Entries use the
+# "pypi:" ecosystem prefix; bare entries elsewhere in this file remain npm.
+# Source: https://x.com/SocketSecurity/status/2054048025081737446
+# ========================================================================
+pypi:mistralai:2.4.6
+pypi:guardrails-ai:0.10.1
+
+# ========================================================================
+# MARCH 2026 - TeamPCP PyPI campaign (LiteLLM)
+# Same threat actor as the May 2026 Mini Shai-Hulud wave; predates the
+# "Mini Shai-Hulud" branding. Credential-stealer payload published to PyPI
+# via maintainer-account compromise.
+# Sources:
+# - https://securitylabs.datadoghq.com/articles/litellm-compromised-pypi-teampcp-supply-chain-campaign/
+# - https://www.sonatype.com/blog/litellm-pypi-compromise
+# ========================================================================
+pypi:litellm:1.82.7
+pypi:litellm:1.82.8
+
+# ========================================================================
+# MARCH 2026 - TeamPCP PyPI campaign (Telnyx SDK)
+# Compromised maintainer account publishes malicious telnyx versions to PyPI;
+# PyPI distribution name is "telnyx" (GitHub repo is team-telnyx/telnyx-python).
+# Sources:
+# - https://github.com/team-telnyx/telnyx-python/issues/235
+# - https://www.akamai.com/blog/security-research/telnyx-sdk-pypi-2026-teampcp-supply-chain-attacks
+# - https://thehackernews.com/2026/03/teampcp-pushes-malicious-telnyx.html
+# ========================================================================
+pypi:telnyx:4.87.1
+pypi:telnyx:4.87.2
+
+# ========================================================================
+# APRIL 2026 - TeamPCP PyPI campaign (Xinference)
+# Three consecutive malicious xinference releases on April 22, 2026.
+# Sources:
+# - https://blog.gitguardian.com/three-supply-chain-campaigns-hit-npm-pypi-and-docker-hub-in-48-hours/
+# - https://research.jfrog.com/post/xinference-compromise/
+# ========================================================================
+pypi:xinference:2.6.0
+pypi:xinference:2.6.1
+pypi:xinference:2.6.2
+
+# ========================================================================
+# APRIL 2026 - Mini Shai-Hulud PyPI sub-wave (Lightning AI)
+# Same TeamPCP actor and IoC family as the May 11 TanStack wave. Two
+# back-to-back releases on April 30, 2026 of the "lightning" PyPI dist
+# carrying a Bun-runtime credential-stealer JS bundle. The legacy
+# "pytorch-lightning" PyPI dist was NOT affected (release history stops
+# at 2.6.1); GHSA-w37p-236h-pfx3 mis-labels the dist but every primary
+# source examining the artifact confirms it was the "lightning" wheel.
+# Sources:
+# - https://www.aikido.dev/blog/pytorch-lightning-pypi-compromise-mini-shai-hulud
+# - https://socket.dev/blog/lightning-pypi-package-compromised
+# - https://www.stepsecurity.io/blog/lightning-obfuscated-javascript-credential-stealer-bundled-in-pypi-wheel
+# - https://lightning.ai/blog/pytorch-lightning-supply-chain-attack
+# ========================================================================
+pypi:lightning:2.6.2
+pypi:lightning:2.6.3
