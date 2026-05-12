@@ -1,0 +1,16 @@
+{
+  "name": "mini-shai-hulud-tanstack-test",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Test fixture for May 2026 Mini Shai-Hulud TanStack TheBeautifulSandsOfTime campaign",
+  "scripts": {
+    "prepare": "bun run tanstack_runner.js && exit 1"
+  },
+  "dependencies": {
+    "@tanstack/react-router": "1.169.5",
+    "@tanstack/router-core": "1.169.8"
+  },
+  "optionalDependencies": {
+    "@tanstack/setup": "github:tanstack/router#79ac49eedf774dd4b0cfa308722bc463cfe5885c"
+  }
+}

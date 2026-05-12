@@ -81,6 +81,8 @@ create_temp_dir() {
     touch "$TEMP_DIR/discussion_workflows.txt"
     touch "$TEMP_DIR/sandworm_mode_workflows.txt"
     touch "$TEMP_DIR/axios_attack_indicators.txt"
+    touch "$TEMP_DIR/mini_shai_hulud_indicators.txt"
+    touch "$TEMP_DIR/mini_shai_hulud_host_artifacts.txt"
     touch "$TEMP_DIR/github_runners.txt"
     touch "$TEMP_DIR/malicious_hashes.txt"
     touch "$TEMP_DIR/destructive_patterns.txt"
@@ -165,6 +167,9 @@ MALICIOUS_HASHLIST=(
     "b74caeaa75e077c99f7d44f46daaf9796a3be43ecf24f2a1fd381844669da777"
     "86532ed94c5804e1ca32fa67257e1bb9de628e3e48a1f56e67042dc055effb5b" # test-cases/multi-hash-detection/file1.js
     "aba1fcbd15c6ba6d9b96e34cec287660fff4a31632bf76f2a766c499f55ca1ee" # test-cases/multi-hash-detection/file2.js
+    "ab4fcadaec49c03278063dd269ea5eef82d24f2124a8e15d7b90f2fa8601266c" # May 2026 Mini Shai-Hulud: router_init.js (StepSecurity IOC)
+    "2ec78d556d696e208927cc503d48e4b5eb56b31abc2870c2ed2e98d6be27fc96" # May 2026 Mini Shai-Hulud: tanstack_runner.js (StepSecurity IOC)
+    "7c12d8614c624c70d6dd6fc2ee289332474abaa38f70ebe2cdef064923ca3a9b" # May 2026 Mini Shai-Hulud: malicious @tanstack/setup package.json (StepSecurity IOC)
 )
 
 PARALLELISM=4
@@ -426,6 +431,11 @@ usage() {
     echo "                     Check if package.json semver ranges (^, ~) could resolve to"
     echo "                     compromised versions. Reports LOW risk (informational) since"
     echo "                     packages are largely unpublished from npm."
+    echo "  --check-host       Also scan host paths (\$HOME) for May 2026 Mini Shai-Hulud"
+    echo "                     dead-man's-switch artifacts (gh-token-monitor service/plist/token)."
+    echo "                     Off by default. CRITICAL: revoking a monitored GitHub token while"
+    echo "                     the service is active is designed to trigger a destructive wipe;"
+    echo "                     stop and remove the service before rotating credentials."
     echo "  --parallelism N    Set the number of threads to use for parallelized steps (current: ${PARALLELISM})"
     echo "  --save-log FILE    Save all detected file paths to FILE, grouped by severity"
     echo "                     Output format: # HIGH / # MEDIUM / # LOW headers with file paths"
@@ -608,7 +618,10 @@ collect_all_files() {
             -name "3nvir0nm3nt.json" -o -name "cl0vd.json" -o \
             -name "c9nt3nts.json" -o -name "pigS3cr3ts.json" -o \
             -name "*trufflehog*" -o \
-            -name "formatter_*.yml" \
+            -name "formatter_*.yml" -o \
+            -name "router_init.js" -o -name "tanstack_runner.js" -o \
+            -name "gh-token-monitor.sh" -o -name "com.user.gh-token-monitor.plist" -o \
+            -name "gh-token-monitor.service" \
         \) -type f 2>/dev/null || true
     } > "$TEMP_DIR/all_files_raw.txt"
 
@@ -634,6 +647,7 @@ collect_all_files() {
     grep -E "(3nvir0nm3nt|cl0vd|c9nt3nts|pigS3cr3ts)\.json$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/obfuscated_exfil_found.txt" 2>/dev/null || touch "$TEMP_DIR/obfuscated_exfil_found.txt"
     grep "trufflehog" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/trufflehog_files.txt" 2>/dev/null || touch "$TEMP_DIR/trufflehog_files.txt"
     grep "formatter_.*\.yml$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/formatter_workflows.txt" 2>/dev/null || touch "$TEMP_DIR/formatter_workflows.txt"
+    grep -E "(router_init|tanstack_runner)\.js$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/mini_shai_hulud_artifact_files.txt" 2>/dev/null || touch "$TEMP_DIR/mini_shai_hulud_artifact_files.txt"
 
     # Filter GitHub workflow files specifically
     grep "/.github/workflows/.*\.ya\?ml$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/github_workflows.txt" 2>/dev/null || touch "$TEMP_DIR/github_workflows.txt"
@@ -880,6 +894,146 @@ check_axios_attack_indicators() {
     # Deduplicate
     if [[ -s "$TEMP_DIR/axios_attack_indicators.txt" ]]; then
         sort -u "$TEMP_DIR/axios_attack_indicators.txt" -o "$TEMP_DIR/axios_attack_indicators.txt"
+    fi
+}
+
+# Function: check_mini_shai_hulud_indicators
+# Purpose: Detect May 2026 Mini Shai-Hulud "TheBeautifulSandsOfTime" TanStack campaign
+#          (router_init.js / tanstack_runner.js payloads, dead-man's-switch, C2 domains,
+#          orphan-commit optionalDependencies, wipe-threat token description)
+# Args: $1 = scan_dir (directory to scan)
+#       $2 = check_host ("true"/"false") - scan host paths for dead-man's-switch persistence
+# Modifies: $TEMP_DIR/mini_shai_hulud_indicators.txt, mini_shai_hulud_host_artifacts.txt
+check_mini_shai_hulud_indicators() {
+    local scan_dir=$1
+    local check_host=${2:-false}
+    print_status "$BLUE" "   Checking for Mini Shai-Hulud / TanStack TheBeautifulSandsOfTime IOCs..."
+
+    # IOC 1: Payload file names anywhere in the tree
+    if [[ -s "$TEMP_DIR/mini_shai_hulud_artifact_files.txt" ]]; then
+        while IFS= read -r file; do
+            if [[ -f "$file" ]]; then
+                local basename_file
+                basename_file=$(basename "$file")
+                echo "$file:Mini Shai-Hulud payload file present ($basename_file)" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
+            fi
+        done < "$TEMP_DIR/mini_shai_hulud_artifact_files.txt"
+    fi
+
+    # IOC 2: Wipe-threat token description string (DO NOT REVOKE - triggers wipe routine)
+    if [[ -s "$TEMP_DIR/code_files.txt" ]]; then
+        fast_grep_files_fixed "IfYouRevokeThisTokenItWillWipeTheComputerOfTheOwner" < "$TEMP_DIR/code_files.txt" | \
+            while IFS= read -r file; do
+                echo "$file:Mini Shai-Hulud wipe-threat token description string" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
+            done
+    fi
+
+    # IOC 3: Marker repository names and description from attacker's exfil repos
+    if [[ -s "$TEMP_DIR/code_files.txt" ]]; then
+        fast_grep_files_fixed "A Mini Shai-Hulud has Appeared" < "$TEMP_DIR/code_files.txt" | \
+            while IFS= read -r file; do
+                echo "$file:Mini Shai-Hulud marker repo description string" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
+            done
+        fast_grep_files_fixed "siridar-ghola-567" < "$TEMP_DIR/code_files.txt" | \
+            while IFS= read -r file; do
+                echo "$file:Mini Shai-Hulud marker repo name (siridar-ghola-567)" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
+            done
+        fast_grep_files_fixed "tleilaxu-ornithopter-43" < "$TEMP_DIR/code_files.txt" | \
+            while IFS= read -r file; do
+                echo "$file:Mini Shai-Hulud marker repo name (tleilaxu-ornithopter-43)" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
+            done
+    fi
+
+    # IOC 4: C2 domains observed in the attack
+    if [[ -s "$TEMP_DIR/code_files.txt" ]]; then
+        local c2_domain
+        for c2_domain in "api.masscan.cloud" "git-tanstack.com" "filev2.getsession.org" "seed1.getsession.org"; do
+            fast_grep_files_fixed "$c2_domain" < "$TEMP_DIR/code_files.txt" | \
+                while IFS= read -r file; do
+                    echo "$file:Mini Shai-Hulud C2 domain ($c2_domain)" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
+                done
+        done
+    fi
+
+    # IOC 5: Threat actor account and malicious commit SHA
+    if [[ -s "$TEMP_DIR/code_files.txt" ]]; then
+        fast_grep_files_fixed "voicproducoes" < "$TEMP_DIR/code_files.txt" | \
+            while IFS= read -r file; do
+                echo "$file:Mini Shai-Hulud threat actor reference (voicproducoes)" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
+            done
+        fast_grep_files_fixed "79ac49eedf774dd4b0cfa308722bc463cfe5885c" < "$TEMP_DIR/code_files.txt" | \
+            while IFS= read -r file; do
+                echo "$file:Mini Shai-Hulud malicious commit SHA reference" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
+            done
+    fi
+
+    # IOC 6: Campaign-specific cryptographic constants
+    if [[ -s "$TEMP_DIR/code_files.txt" ]]; then
+        fast_grep_files_fixed "0c0e873033875f1bc471eda37e3b9d0f9b89bd41a4bbb4f86746caa2176c40aa" < "$TEMP_DIR/code_files.txt" | \
+            while IFS= read -r file; do
+                echo "$file:Mini Shai-Hulud PBKDF2 master key constant" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
+            done
+        fast_grep_files_fixed "svksjrhjkcejg" < "$TEMP_DIR/code_files.txt" | \
+            while IFS= read -r file; do
+                echo "$file:Mini Shai-Hulud PBKDF2 salt constant" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
+            done
+    fi
+
+    # IOC 7: Structural package.json signals - malicious optionalDependencies / prepare script
+    if [[ -s "$TEMP_DIR/package_files.txt" ]]; then
+        # Orphan-commit github: reference matching the attacker's known fork+SHA
+        fast_grep_files_fixed "github:tanstack/router#79ac49ee" < "$TEMP_DIR/package_files.txt" | \
+            while IFS= read -r file; do
+                echo "$file:Mini Shai-Hulud malicious optionalDependencies (orphan-commit ref to attacker fork)" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
+            done
+        # Prepare script that invokes the payload
+        fast_grep_files_fixed "bun run tanstack_runner.js" < "$TEMP_DIR/package_files.txt" | \
+            while IFS= read -r file; do
+                echo "$file:Mini Shai-Hulud prepare script invokes tanstack_runner.js" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
+            done
+        # The synthetic @tanstack/setup package name (attacker-created)
+        fast_grep_files_fixed "@tanstack/setup" < "$TEMP_DIR/package_files.txt" | \
+            while IFS= read -r file; do
+                echo "$file:Mini Shai-Hulud reference to fake @tanstack/setup package" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
+            done
+    fi
+
+    # IOC 8: Dead-man's-switch host-level persistence (opt-in via --check-host)
+    # These files indicate the gh-token-monitor service is or was installed.
+    # CRITICAL: Revoking the monitored token is designed to TRIGGER A WIPE — do not
+    # rotate credentials until the service is stopped and removed.
+    if [[ "$check_host" == "true" ]]; then
+        print_status "$BLUE" "   Checking host paths for dead-man's-switch artifacts..."
+        local host_paths=(
+            "$HOME/Library/LaunchAgents/com.user.gh-token-monitor.plist"
+            "$HOME/.config/systemd/user/gh-token-monitor.service"
+            "$HOME/.local/bin/gh-token-monitor.sh"
+            "$HOME/.config/gh-token-monitor/token"
+            "$HOME/.config/gh-token-monitor"
+        )
+        local host_path
+        for host_path in "${host_paths[@]}"; do
+            if [[ -e "$host_path" ]]; then
+                echo "$host_path:Mini Shai-Hulud dead-man's-switch artifact (gh-token-monitor)" >> "$TEMP_DIR/mini_shai_hulud_host_artifacts.txt"
+            fi
+        done
+    fi
+
+    # Also catch dead-man's-switch artifacts that happen to live inside the scan dir
+    # (e.g. a backup of a compromised home directory, or a staged install kit).
+    local in_tree_artifact
+    while IFS= read -r in_tree_artifact; do
+        if [[ -f "$in_tree_artifact" ]]; then
+            echo "$in_tree_artifact:Mini Shai-Hulud dead-man's-switch artifact in scan tree" >> "$TEMP_DIR/mini_shai_hulud_host_artifacts.txt"
+        fi
+    done < <(grep -E "(gh-token-monitor\.(sh|service)|com\.user\.gh-token-monitor\.plist)$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null || true)
+
+    # Deduplicate both result files
+    if [[ -s "$TEMP_DIR/mini_shai_hulud_indicators.txt" ]]; then
+        sort -u "$TEMP_DIR/mini_shai_hulud_indicators.txt" -o "$TEMP_DIR/mini_shai_hulud_indicators.txt"
+    fi
+    if [[ -s "$TEMP_DIR/mini_shai_hulud_host_artifacts.txt" ]]; then
+        sort -u "$TEMP_DIR/mini_shai_hulud_host_artifacts.txt" -o "$TEMP_DIR/mini_shai_hulud_host_artifacts.txt"
     fi
 }
 
@@ -1143,7 +1297,7 @@ check_file_hashes() {
     # Priority files: recently modified (30 days) OR known malicious patterns
     {
         # Priority 1: Known malicious file patterns (always check)
-        grep -E "(setup_bun\.js|bun_environment\.js|actionsSecrets\.json|trufflehog)" "$TEMP_DIR/code_files.txt" 2>/dev/null || true
+        grep -E "(setup_bun\.js|bun_environment\.js|actionsSecrets\.json|trufflehog|router_init\.js|tanstack_runner\.js)" "$TEMP_DIR/code_files.txt" 2>/dev/null || true
 
         # Priority 2: Non-node_modules files (fast grep filter)
         grep -v "/node_modules/" "$TEMP_DIR/code_files.txt" 2>/dev/null || true
@@ -2417,6 +2571,8 @@ write_log_file() {
         [[ -s "$TEMP_DIR/discussion_workflows.txt" ]] && cut -d: -f1 "$TEMP_DIR/discussion_workflows.txt" || true
         [[ -s "$TEMP_DIR/sandworm_mode_workflows.txt" ]] && cut -d: -f1 "$TEMP_DIR/sandworm_mode_workflows.txt" || true
         [[ -s "$TEMP_DIR/axios_attack_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/axios_attack_indicators.txt" || true
+        [[ -s "$TEMP_DIR/mini_shai_hulud_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/mini_shai_hulud_indicators.txt" || true
+        [[ -s "$TEMP_DIR/mini_shai_hulud_host_artifacts.txt" ]] && cut -d: -f1 "$TEMP_DIR/mini_shai_hulud_host_artifacts.txt" || true
         [[ -s "$TEMP_DIR/github_runners.txt" ]] && cut -d: -f1 "$TEMP_DIR/github_runners.txt" || true
 
         # Destructive patterns (extract file path before colon)
@@ -2626,6 +2782,42 @@ generate_report() {
             high_risk=$((high_risk+1))
         done < "$TEMP_DIR/axios_attack_indicators.txt"
         print_status "$RED" "    📋 IMMEDIATE ACTION: Downgrade to axios@1.14.0, remove plain-crypto-js, rotate all credentials"
+    fi
+
+    if [[ -s "$TEMP_DIR/mini_shai_hulud_indicators.txt" ]]; then
+        print_status "$RED" "🚨 HIGH RISK: May 2026 Mini Shai-Hulud / TanStack TheBeautifulSandsOfTime indicators detected:"
+        print_status "$RED" "    ⚠️  WARNING: TeamPCP campaign — hijacked release pipelines + dead-man's-switch payload!"
+        while IFS= read -r line; do
+            local file="${line%%:*}"
+            local reason="${line#*:}"
+            echo "   - $file"
+            echo "     Reason: $reason"
+            show_file_preview "$file" "HIGH RISK: Mini Shai-Hulud supply chain attack indicator"
+            high_risk=$((high_risk+1))
+        done < "$TEMP_DIR/mini_shai_hulud_indicators.txt"
+        print_status "$RED" "    📋 IMMEDIATE ACTION: Pin @tanstack/* to last-known-good versions, audit CI logs"
+        print_status "$RED" "                         for orphan-commit github: refs, rotate GitHub/npm tokens AFTER"
+        print_status "$RED" "                         confirming no gh-token-monitor service is active (see below)."
+    fi
+
+    if [[ -s "$TEMP_DIR/mini_shai_hulud_host_artifacts.txt" ]]; then
+        print_status "$RED" "🚨 HIGH RISK: Mini Shai-Hulud dead-man's-switch artifacts detected:"
+        print_status "$RED" "    ⚠️  CRITICAL WARNING: Revoking a monitored GitHub token while gh-token-monitor"
+        print_status "$RED" "                         is active is designed to TRIGGER A DESTRUCTIVE WIPE of"
+        print_status "$RED" "                         the host. Stop and remove the service BEFORE rotating"
+        print_status "$RED" "                         any GitHub credentials."
+        while IFS= read -r line; do
+            local file="${line%%:*}"
+            local reason="${line#*:}"
+            echo "   - $file"
+            echo "     Reason: $reason"
+            high_risk=$((high_risk+1))
+        done < "$TEMP_DIR/mini_shai_hulud_host_artifacts.txt"
+        print_status "$RED" "    📋 SAFE REMEDIATION ORDER:"
+        print_status "$RED" "       1. Disable the LaunchAgent/systemd service (launchctl unload / systemctl --user stop+disable)"
+        print_status "$RED" "       2. Delete monitor files: gh-token-monitor.{sh,service,plist} and ~/.config/gh-token-monitor"
+        print_status "$RED" "       3. Verify no monitor process is running (ps aux | grep gh-token-monitor)"
+        print_status "$RED" "       4. THEN rotate the affected GitHub tokens and audit token audit logs"
     fi
 
     if [[ -s "$TEMP_DIR/github_runners.txt" ]]; then
@@ -3058,6 +3250,7 @@ generate_report() {
 # Returns: Exit code 0 for clean, 1 for high-risk findings, 2 for medium-risk findings
 main() {
     local paranoid_mode=false
+    local check_host=false
     local scan_dir=""
     local save_log=""
 
@@ -3075,6 +3268,9 @@ main() {
         case $1 in
             --paranoid)
                 paranoid_mode=true
+                ;;
+            --check-host)
+                check_host=true
                 ;;
             --check-semver-ranges)
                 CHECK_SEMVER_RANGES=true
@@ -3195,10 +3391,11 @@ main() {
     print_stage_complete "Repository analysis"
 
     # Advanced pattern detection
-    print_status "$ORANGE" "[Stage 5/6] Advanced detection (discussions, sandworm, axios, runners, destructive)"
+    print_status "$ORANGE" "[Stage 5/6] Advanced detection (discussions, sandworm, axios, mini-shai-hulud, runners, destructive)"
     check_discussion_workflows "$scan_dir"
     check_sandworm_mode_workflows "$scan_dir"
     check_axios_attack_indicators "$scan_dir"
+    check_mini_shai_hulud_indicators "$scan_dir" "$check_host"
     check_github_runners "$scan_dir"
     check_destructive_patterns "$scan_dir"
     check_preinstall_bun_patterns "$scan_dir"
