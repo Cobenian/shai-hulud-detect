@@ -227,6 +227,23 @@ declare -a SUPPORTED_ECOSYSTEMS=("npm" "pypi")
 declare -a ACTIVE_ECOSYSTEMS=()
 ECOSYSTEM_OVERRIDE=""  # set by --ecosystem flag; empty = auto-detect
 
+# Dispatch table: ecosystem -> space-separated list of check function names.
+# This is the extension point for adding new ecosystems (hex, go, cargo, gem...).
+# To add a new ecosystem:
+#   1. Add a marker pattern to ECOSYSTEM_MARKERS
+#   2. Add an exclude-paths pattern to ECOSYSTEM_EXCLUDE_PATHS
+#   3. Add the ecosystem name to SUPPORTED_ECOSYSTEMS
+#   4. Write a parser + check_<eco>_packages function
+#   5. Add a row here mapping the ecosystem to its check function(s)
+#   6. Teach load_compromised_packages to recognize the new "<eco>:" prefix
+#   7. Extend collect_all_files with the relevant manifest filenames
+# Nothing in main() needs to change - the dispatcher walks ACTIVE_ECOSYSTEMS
+# and invokes whatever functions this table lists for each active ecosystem.
+declare -A ECOSYSTEM_CHECK_FUNCTIONS=(
+    ["npm"]="check_packages check_semver_ranges"
+    ["pypi"]="check_pypi_packages"
+)
+
 # Function: ecosystem_active
 # Purpose: O(1) check whether an ecosystem is in the active set
 # Args: $1 = ecosystem name (e.g. "npm" or "pypi")
@@ -3962,22 +3979,26 @@ main() {
     ecosystem_banner
 
     # Run core Shai-Hulud detection checks (sequential for reliability).
-    # Ecosystem-specific checks are gated on detect_ecosystems(). Auto-detect mode
-    # always activates "npm" when any package.json / npm lockfile exists in the tree,
-    # which preserves the prior CI/CD contract for bare invocations. Explicit
-    # --ecosystem=<list> respects the user's choice. Content-pattern checks below
-    # (workflows, hashes, postinstall hooks, mini-shai-hulud, axios, sandworm, etc.)
-    # always run regardless of ecosystem - they target attack artifacts, not packages.
+    # Ecosystem-specific checks are dispatched via the ECOSYSTEM_CHECK_FUNCTIONS
+    # table so adding a new ecosystem requires zero changes in main(). Auto-detect
+    # mode always activates "npm" when any package.json / npm lockfile exists in
+    # the tree, preserving the prior CI/CD contract for bare invocations.
+    # Explicit --ecosystem=<list> respects the user's choice. Content-pattern
+    # checks below (workflows, hashes, postinstall hooks, mini-shai-hulud, axios,
+    # sandworm, etc.) always run regardless of ecosystem - they target attack
+    # artifacts, not packages.
     print_status "$ORANGE" "[Stage 2/6] Core detection (workflows, hashes, packages, hooks)"
     check_workflow_files "$scan_dir"
     check_file_hashes "$scan_dir"
-    if ecosystem_active "npm"; then
-        check_packages "$scan_dir"
-        check_semver_ranges "$scan_dir"
-    fi
-    if ecosystem_active "pypi"; then
-        check_pypi_packages "$scan_dir"
-    fi
+    local _eco _fn
+    for _eco in "${ACTIVE_ECOSYSTEMS[@]}"; do
+        # ${!arr[@]} -> keys; -v test on the assoc array
+        if [[ -v ECOSYSTEM_CHECK_FUNCTIONS[$_eco] ]]; then
+            for _fn in ${ECOSYSTEM_CHECK_FUNCTIONS[$_eco]}; do
+                "$_fn" "$scan_dir"
+            done
+        fi
+    done
     check_postinstall_hooks "$scan_dir"
     print_stage_complete "Core detection"
 
