@@ -11,6 +11,17 @@ else
     BASH_CMD="bash"
 fi
 
+# `timeout` is GNU coreutils; on macOS it may be `gtimeout` or absent. Degrade gracefully
+# so the suite still runs (just without a per-test time limit) where it isn't installed.
+if command -v timeout >/dev/null 2>&1; then
+    TIMEOUT="timeout 120"
+elif command -v gtimeout >/dev/null 2>&1; then
+    TIMEOUT="gtimeout 120"
+else
+    TIMEOUT=""
+    echo "Note: 'timeout' not found; running test cases without a per-test time limit." >&2
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DETECTOR="$SCRIPT_DIR/shai-hulud-detector.sh"
 
@@ -91,7 +102,7 @@ for test_dir in "$SCRIPT_DIR"/test-cases/*/; do
     ((total++))
 
     # Run detector
-    result=$(timeout 120 "$BASH_CMD" "$DETECTOR" "$test_dir" 2>&1)
+    result=$($TIMEOUT "$BASH_CMD" "$DETECTOR" "$test_dir" 2>&1)
     actual_exit=$?
 
     # Handle timeout
@@ -204,6 +215,151 @@ fi
 
 # Cleanup
 rm -f "$LOG_FILE"
+
+# ============================================================
+#  Testing --bulk mode (project discovery + aggregate report)
+# ============================================================
+echo ""
+echo "========================================"
+echo "  Testing --bulk mode"
+echo "========================================"
+
+BULK_TMP="$(mktemp -d 2>/dev/null || echo "/tmp/shai-hulud-bulk-test-$$")"
+mkdir -p "$BULK_TMP"
+
+# Build a small synthetic tree of "projects" inside bucket folders:
+#   <tmp>/dev/apps/{proj-a,proj-b}      -> a sub-bucket: two separate projects
+#   <tmp>/dev/monorepo/...              -> has a root package.json -> scanned whole, not split
+#   <tmp>/dev/notes/{2024,2025}         -> plain content folder -> scanned whole, not split
+#   <tmp>/dev/node_modules/leftpad/...  -> a noise dir -> never descended into
+#   <tmp>/work/loud-project/...         -> a project carrying a HIGH-risk indicator
+#   <tmp>/work/quiet-project/...        -> a clean project
+TREE="$BULK_TMP/roots"
+mkdir -p \
+    "$TREE/dev/apps/proj-a/src" "$TREE/dev/apps/proj-b" \
+    "$TREE/dev/monorepo/packages/sub" \
+    "$TREE/dev/notes/2024" "$TREE/dev/notes/2025" \
+    "$TREE/dev/node_modules/leftpad" \
+    "$TREE/work/loud-project/.github/workflows" \
+    "$TREE/work/quiet-project"
+echo '{"name":"proj-a"}'                                > "$TREE/dev/apps/proj-a/package.json"
+echo 'export const x = 1;'                              > "$TREE/dev/apps/proj-a/src/index.js"
+echo '{"name":"proj-b"}'                                > "$TREE/dev/apps/proj-b/package.json"
+echo '{"name":"monorepo","workspaces":["packages/*"]}' > "$TREE/dev/monorepo/package.json"
+echo '{"name":"sub"}'                                   > "$TREE/dev/monorepo/packages/sub/package.json"
+echo '# notes 2024'                                     > "$TREE/dev/notes/2024/jan.md"
+echo '# notes 2025'                                     > "$TREE/dev/notes/2025/feb.md"
+echo '{"name":"leftpad"}'                               > "$TREE/dev/node_modules/leftpad/package.json"
+echo '{"name":"loud-project"}'                          > "$TREE/work/loud-project/package.json"
+printf 'name: shai-hulud\non: push\njobs:\n  x:\n    runs-on: ubuntu-latest\n' \
+                                                        > "$TREE/work/loud-project/.github/workflows/shai-hulud-workflow.yml"
+echo '{"name":"quiet-project"}'                         > "$TREE/work/quiet-project/package.json"
+
+# Test: --bulk --bulk-list discovers projects through bucket folders (default depth)
+discovered="$("$BASH_CMD" "$DETECTOR" --bulk --bulk-list "$TREE/dev" "$TREE/work" 2>/dev/null | grep '^/' || true)"
+disc_count="$(printf '%s\n' "$discovered" | grep -c '^/' || true)"; disc_count="${disc_count:-0}"
+((total++))
+if [[ "$disc_count" -eq 6 ]] \
+   && grep -q "/dev/apps/proj-a$"     <<<"$discovered" \
+   && grep -q "/dev/apps/proj-b$"     <<<"$discovered" \
+   && grep -q "/dev/monorepo$"        <<<"$discovered" \
+   && grep -q "/dev/notes$"           <<<"$discovered" \
+   && grep -q "/work/loud-project$"   <<<"$discovered" \
+   && grep -q "/work/quiet-project$"  <<<"$discovered"; then
+    echo -e "${GREEN}PASS${NC}: --bulk-list discovers projects through bucket folders ($disc_count found)"
+    ((passed++))
+else
+    echo -e "${RED}FAIL${NC}: --bulk-list discovery wrong (count=$disc_count):"
+    echo "$discovered" | sed 's/^/         /'
+    ((failed++))
+fi
+
+# Test: --bulk-list keeps monorepos whole and never descends into node_modules / nested non-projects
+((total++))
+if ! grep -q "/monorepo/packages/sub" <<<"$discovered" \
+   && ! grep -q "/node_modules/"       <<<"$discovered" \
+   && ! grep -q "/notes/2024"          <<<"$discovered" \
+   && ! grep -q "/notes/2025"          <<<"$discovered"; then
+    echo -e "${GREEN}PASS${NC}: --bulk-list keeps monorepos whole; skips node_modules and nested non-projects"
+    ((passed++))
+else
+    echo -e "${RED}FAIL${NC}: --bulk-list split a monorepo or descended into node_modules:"
+    echo "$discovered" | sed 's/^/         /'
+    ((failed++))
+fi
+
+# Test: --bulk-depth 1 = flat (one entry per immediate, non-noise subdirectory)
+flat="$("$BASH_CMD" "$DETECTOR" --bulk --bulk-list --bulk-depth 1 "$TREE/dev" "$TREE/work" 2>/dev/null | grep '^/' || true)"
+flat_count="$(printf '%s\n' "$flat" | grep -c '^/' || true)"; flat_count="${flat_count:-0}"
+((total++))
+if [[ "$flat_count" -eq 5 ]] \
+   && grep -q "/dev/apps$"            <<<"$flat" \
+   && grep -q "/dev/monorepo$"        <<<"$flat" \
+   && grep -q "/dev/notes$"           <<<"$flat" \
+   && grep -q "/work/loud-project$"   <<<"$flat" \
+   && grep -q "/work/quiet-project$"  <<<"$flat" \
+   && ! grep -q "/dev/apps/proj-a"    <<<"$flat"; then
+    echo -e "${GREEN}PASS${NC}: --bulk-depth 1 is flat (one entry per immediate subdirectory, $flat_count found)"
+    ((passed++))
+else
+    echo -e "${RED}FAIL${NC}: --bulk-depth 1 not flat (count=$flat_count):"
+    echo "$flat" | sed 's/^/         /'
+    ((failed++))
+fi
+
+# Test: --bulk runs each discovered project, writes an aggregate report, aggregates exit codes
+BULK_OUT="$BULK_TMP/report"
+"$BASH_CMD" "$DETECTOR" --bulk --bulk-output "$BULK_OUT" "$TREE/dev" "$TREE/work" >/dev/null 2>&1
+bulk_rc=$?
+((total++))
+if [[ "$bulk_rc" -eq 1 ]]; then
+    echo -e "${GREEN}PASS${NC}: --bulk exit code is 1 (a project flagged HIGH RISK)"
+    ((passed++))
+else
+    echo -e "${RED}FAIL${NC}: --bulk exit code is $bulk_rc, expected 1"
+    ((failed++))
+fi
+
+((total++))
+if [[ -f "$BULK_OUT/aggregate-report.md" ]] \
+   && grep -q "Shai-Hulud Bulk Scan"   "$BULK_OUT/aggregate-report.md" \
+   && grep -q "## Per-project results" "$BULK_OUT/aggregate-report.md" \
+   && grep -q "quiet-project"          "$BULK_OUT/aggregate-report.md"; then
+    echo -e "${GREEN}PASS${NC}: --bulk writes a structured aggregate-report.md covering all projects"
+    ((passed++))
+else
+    echo -e "${RED}FAIL${NC}: --bulk aggregate report missing, malformed, or incomplete"
+    ((failed++))
+fi
+
+((total++))
+if [[ -f "$BULK_OUT/per-repo/loud-project.findings.log" ]] \
+   && [[ -f "$BULK_OUT/per-repo/loud-project.console.txt" ]] \
+   && grep -q "loud-project" "$BULK_OUT/aggregate-report.md" \
+   && grep -q "shai-hulud-workflow.yml" "$BULK_OUT/per-repo/loud-project.findings.log"; then
+    echo -e "${GREEN}PASS${NC}: --bulk writes per-project logs and records the HIGH finding"
+    ((passed++))
+else
+    echo -e "${RED}FAIL${NC}: --bulk per-project logs missing or HIGH finding not recorded"
+    ((failed++))
+fi
+
+# Test: --bulk on a nonexistent root exits 0 and leaves no stray output directory in CWD
+NOSTRAY="$BULK_TMP/nostray"
+mkdir -p "$NOSTRAY"
+( cd "$NOSTRAY" && "$BASH_CMD" "$DETECTOR" --bulk "/no-such-dir-$$-$RANDOM" >/dev/null 2>&1 )
+nostray_rc=$?
+((total++))
+if [[ "$nostray_rc" -eq 0 ]] && [[ -z "$(ls -A "$NOSTRAY" 2>/dev/null)" ]]; then
+    echo -e "${GREEN}PASS${NC}: --bulk on a missing root exits 0 and creates no stray output directory"
+    ((passed++))
+else
+    echo -e "${RED}FAIL${NC}: --bulk on a missing root: rc=$nostray_rc, CWD contents: '$(ls -A "$NOSTRAY" 2>/dev/null)'"
+    ((failed++))
+fi
+
+# Cleanup
+rm -rf "$BULK_TMP"
 
 echo ""
 echo "========================================"

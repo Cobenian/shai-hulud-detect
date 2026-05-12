@@ -118,6 +118,10 @@ chmod +x shai-hulud-detector.sh
 # Save findings to a log file for review or CI/CD artifacts
 ./shai-hulud-detector.sh --save-log report.log /path/to/your/project
 
+# Scan every project under one or more parent directories and get a single report
+# (descends through "bucket" folders like ~/dev/apps/<project>; monorepos stay whole)
+./shai-hulud-detector.sh --bulk ~/dev ~/work
+
 # Check exit code for CI/CD integration
 ./shai-hulud-detector.sh /path/to/your/project
 echo "Exit code: $?"  # 0=clean, 1=high-risk, 2=medium-risk
@@ -346,6 +350,71 @@ This format is designed for:
 - **CI/CD artifacts**: Store scan results as build artifacts for review
 - **Programmatic parsing**: Easy to parse with simple scripts
 - **Full coverage**: Includes ALL findings without display truncation
+
+## Bulk Scanning Multiple Projects
+
+Use `--bulk` to scan every project under one or more parent directories in a single run and get one aggregate report instead of scanning each project by hand:
+
+```bash
+# Scan every project found under ~/dev and ~/work
+./shai-hulud-detector.sh --bulk ~/dev ~/work
+
+# Same, but with --paranoid (passed through to every per-project scan)
+# and a custom output directory
+./shai-hulud-detector.sh --bulk --paranoid --bulk-output ./audit-2026-05 ~/dev ~/work
+
+# Preview what would be scanned, without actually scanning (one absolute path per line)
+./shai-hulud-detector.sh --bulk --bulk-list ~/dev ~/work
+```
+
+### How projects are discovered
+
+The positional arguments to `--bulk` are treated as **parent directories**, not projects. Under each one, the detector finds the actual projects to scan:
+
+- A directory is taken as **one scan unit** when it looks like a project — it contains a `.git` directory (or worktree file), or a recognised manifest/lockfile: `package.json`, `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `pyproject.toml`, `setup.py`, `setup.cfg`, `Pipfile`, `poetry.lock`, `uv.lock`, `requirements*.txt`, `Cargo.toml`, `go.mod`, `composer.json`, `Gemfile`, `pom.xml`, `build.gradle`, or `Package.swift`.
+- **Monorepos are scanned whole** — discovery stops at the first project marker, so a workspaces-style repo is one entry, not one per workspace package.
+- **"Bucket" folders are descended into** — a directory with no marker of its own but with projects underneath (e.g. `~/dev/apps/<project>`, or `~/work/clients/<client>/<project>`) is expanded into its projects. This is recursive, so nested buckets are handled too.
+- A folder with **no projects anywhere beneath it** (a plain content folder — notes, assets, etc.) is scanned as-is, so content-pattern checks still run on it.
+- `node_modules`, `vendor`, `dist`, `build`, `target`, `coverage`, `.venv`, `__pycache__`, `site-packages`, hidden directories, etc. are never descended into during discovery.
+- `--bulk-depth N` (default `3`) caps how many levels below each parent the bucket-descent goes. A directory that already looks like a project is taken whole *regardless of depth*, so the cap only limits descent through nested bucket folders. Use `--bulk-depth 1` for flat behaviour (one entry per immediate subdirectory). The detector's own repository is always skipped (its `test-cases/` directory contains intentional malicious fixtures).
+
+### Output
+
+`--bulk` writes everything under the output directory (default `./shai-hulud-bulk-report-<timestamp>/`, or `--bulk-output DIR`):
+
+```
+shai-hulud-bulk-report-<timestamp>/
+├── aggregate-report.md          # Markdown: summary tables, per-project results, findings detail
+└── per-repo/
+    ├── <project>.findings.log   # flagged file paths, grouped by severity (same format as --save-log)
+    └── <project>.console.txt    # the full per-project scan output (plain text)
+```
+
+`--paranoid`, `--check-semver-ranges`, `--ecosystem`, `--parallelism`, and the grep-tool flags are passed through to every per-project scan.
+
+### Exit codes
+
+`--bulk` aggregates the per-project results into one exit code, mirroring the single-scan convention:
+
+- **0** — every project clean
+- **1** — at least one project flagged **high-risk**
+- **2** — at least one project flagged **medium-risk** (and none high-risk)
+- **3** — at least one per-project scan failed to complete (inspect that project's `per-repo/<project>.console.txt`)
+
+### CI/CD example
+
+```yaml
+- name: Bulk Shai-Hulud scan of all repos
+  run: |
+    chmod +x ./shai-hulud-detector.sh
+    ./shai-hulud-detector.sh --bulk --bulk-output bulk-report .
+  # Pipeline fails on exit codes 1, 2, or 3
+- uses: actions/upload-artifact@v4
+  if: always()
+  with:
+    name: shai-hulud-bulk-report
+    path: bulk-report/
+```
 
 ## Testing
 
