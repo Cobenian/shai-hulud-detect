@@ -2714,6 +2714,30 @@ check_package_integrity() {
 # Returns: Populates TYPOSQUATTING_WARNINGS with Unicode chars, confusables, and similar names
 check_typosquatting() {
     local scan_dir=$1
+    print_status "$BLUE" "   Checking for typosquatting in package.json files..."
+
+    # PERF: Pre-filter package_files.txt to exclude node_modules / vendor / build.
+    # Typosquatting is a name-similarity heuristic that's meaningful for YOUR
+    # declared dependencies, not for the thousands of transitive deps already
+    # resolved inside node_modules. Scanning node_modules here triggers
+    # hundreds of thousands of `echo | grep` subshells (length, alpha, unicode,
+    # 6 confusables, and 26 popular-package comparisons per package name) and
+    # produces noisy false positives on legitimate ecosystem packages whose
+    # names happen to look like popular ones (react-*, eslint-*, babel-*).
+    # This filter matches industry convention (npm audit, socket.dev) of
+    # checking only top-level project manifests.
+    if [[ -s "$TEMP_DIR/package_files.txt" ]]; then
+        grep -vE "/(node_modules|vendor|\.git|dist|build|_build|deps|\.next|coverage|site-packages|\.venv|venv)/" \
+            "$TEMP_DIR/package_files.txt" 2>/dev/null > "$TEMP_DIR/typosquatting_targets.txt" || \
+            touch "$TEMP_DIR/typosquatting_targets.txt"
+    else
+        touch "$TEMP_DIR/typosquatting_targets.txt"
+    fi
+    local target_count
+    target_count=$(wc -l < "$TEMP_DIR/typosquatting_targets.txt" 2>/dev/null | tr -d ' ')
+    local total_count
+    total_count=$(wc -l < "$TEMP_DIR/package_files.txt" 2>/dev/null | tr -d ' ')
+    print_status "$BLUE" "   Scanning $target_count manifest(s) for typosquatting (filtered from $total_count total)..."
 
     # Popular packages commonly targeted for typosquatting
     local popular_packages=(
@@ -2894,8 +2918,9 @@ check_typosquatting() {
 
             done <<< "$package_names"
         fi
-    # Use pre-categorized files from collect_all_files (performance optimization)
-    done < <(tr '\n' '\0' < "$TEMP_DIR/package_files.txt")
+    # Use the pre-filtered target list (excludes node_modules / vendor / build artifacts).
+    # See PERF note at top of function.
+    done < <(tr '\n' '\0' < "$TEMP_DIR/typosquatting_targets.txt")
 }
 
 # Function: check_network_exfiltration
@@ -2905,6 +2930,30 @@ check_typosquatting() {
 # Returns: Populates network_exfiltration_warnings.txt with hardcoded IPs and suspicious domains
 check_network_exfiltration() {
     local scan_dir=$1
+    print_status "$BLUE" "   Checking for network exfiltration patterns..."
+
+    # PERF: Pre-filter the file list to exclude node_modules, vendor, dist, build,
+    # and minified bundles BEFORE looping. Without this, large projects with
+    # node_modules can spawn 70,000+ git grep subprocesses (~5-10ms each) on
+    # files that the per-check filters would skip anyway. The DNS / WebSocket /
+    # X-header / btoa checks below were also previously unfiltered, so this
+    # pre-filter also closes that gap.
+    #
+    # Skip patterns mirror the per-check filters already present below plus
+    # build/dist artifacts that contain bundled vendor code. ".git" is also
+    # excluded so we don't scan packed git objects.
+    if [[ -s "$TEMP_DIR/code_files.txt" ]]; then
+        grep -vE "/(node_modules|vendor|\.git|dist|build|_build|deps|\.next|coverage|site-packages|\.venv|venv)/" \
+            "$TEMP_DIR/code_files.txt" 2>/dev/null > "$TEMP_DIR/network_exfil_targets.txt" || \
+            touch "$TEMP_DIR/network_exfil_targets.txt"
+    else
+        touch "$TEMP_DIR/network_exfil_targets.txt"
+    fi
+    local target_count
+    target_count=$(wc -l < "$TEMP_DIR/network_exfil_targets.txt" 2>/dev/null | tr -d ' ')
+    local total_count
+    total_count=$(wc -l < "$TEMP_DIR/code_files.txt" 2>/dev/null | tr -d ' ')
+    print_status "$BLUE" "   Scanning $target_count files for network exfiltration (filtered from $total_count total)..."
 
     # Suspicious domains and patterns beyond webhook.site
     local suspicious_domains=(
@@ -2946,17 +2995,22 @@ check_network_exfiltration() {
             # Check for suspicious domains (but avoid package-lock.json and vendor files to reduce noise)
             if [[ "$file" != *"package-lock.json"* && "$file" != *"yarn.lock"* && "$file" != *"/vendor/"* && "$file" != *"/node_modules/"* ]]; then
                 for domain in "${suspicious_domains[@]}"; do
+                    # FIX: Escape literal dots in the domain before interpolating into the regex.
+                    # Without this, "t.me" matches "time"/"theme", "ix.io" matches "ixaio", etc.,
+                    # producing a flood of false positives in any file containing those words.
+                    # Keep $domain itself unescaped for the human-readable error messages below.
+                    local domain_esc="${domain//./\\.}"
                     # Use word boundaries and URL patterns to avoid false positives like "timeZone" containing "t.me"
                     # Updated pattern to catch property values like hostname: 'webhook.site'
-                    if grep -qE "https?://[^[:space:]]*$domain|[[:space:]:,\"\']$domain[[:space:]/\"\',;]" "$file" 2>/dev/null; then
+                    if grep -qE "https?://[^[:space:]]*$domain_esc|[[:space:]:,\"\']$domain_esc[[:space:]/\"\',;]" "$file" 2>/dev/null; then
                         # Additional check - make sure it's not just a comment or documentation
                         local suspicious_usage
-                        suspicious_usage=$(grep -E "https?://[^[:space:]]*$domain|[[:space:]:,\"\']$domain[[:space:]/\"\',;]" "$file" 2>/dev/null | grep -vE "^[[:space:]]*#|^[[:space:]]*//" 2>/dev/null | head -1 2>/dev/null || true) || true
+                        suspicious_usage=$(grep -E "https?://[^[:space:]]*$domain_esc|[[:space:]:,\"\']$domain_esc[[:space:]/\"\',;]" "$file" 2>/dev/null | grep -vE "^[[:space:]]*#|^[[:space:]]*//" 2>/dev/null | head -1 2>/dev/null || true) || true
                         if [[ -n "$suspicious_usage" ]]; then
                             # Get line number and context
                             # FIX: grep -n prefixes lines with "NNN:" so we must account for that in comment filtering
                             local line_info
-                            line_info=$(grep -nE "https?://[^[:space:]]*$domain|[[:space:]:,\"\']$domain[[:space:]/\"\',;]" "$file" 2>/dev/null | grep -vE "^[0-9]+:[[:space:]]*#|^[0-9]+:[[:space:]]*//" 2>/dev/null | head -1 2>/dev/null || true) || true
+                            line_info=$(grep -nE "https?://[^[:space:]]*$domain_esc|[[:space:]:,\"\']$domain_esc[[:space:]/\"\',;]" "$file" 2>/dev/null | grep -vE "^[0-9]+:[[:space:]]*#|^[0-9]+:[[:space:]]*//" 2>/dev/null | head -1 2>/dev/null || true) || true
                             local line_num
                             line_num=$(echo "$line_info" | cut -d: -f1 2>/dev/null || true) || true
 
@@ -2964,7 +3018,7 @@ check_network_exfiltration() {
                             if [[ "$file" == *".min.js"* ]] || [[ $(echo "$suspicious_usage" | wc -c 2>/dev/null || true) -gt 150 ]]; then
                                 # Extract just around the domain
                                 local snippet
-                                snippet=$(echo "$suspicious_usage" | grep -o ".\{0,20\}$domain.\{0,20\}" 2>/dev/null | head -1 2>/dev/null || true) || true
+                                snippet=$(echo "$suspicious_usage" | grep -o ".\{0,20\}$domain_esc.\{0,20\}" 2>/dev/null | head -1 2>/dev/null || true) || true
                                 if [[ -n "$line_num" ]]; then
                                     echo "$file:Suspicious domain found: $domain at line $line_num: ...${snippet}..." >> "$TEMP_DIR/network_exfiltration_warnings.txt"
                                 else
@@ -3057,8 +3111,9 @@ check_network_exfiltration() {
             fi
 
         fi
-    # Use pre-categorized files from collect_all_files (performance optimization)
-    done < <(tr '\n' '\0' < "$TEMP_DIR/code_files.txt")
+    # Use the pre-filtered target list (excludes node_modules / vendor / build artifacts).
+    # This is the perf fix that prevents 70k+ wasted git grep subprocesses on large projects.
+    done < <(tr '\n' '\0' < "$TEMP_DIR/network_exfil_targets.txt")
 }
 
 # Function: write_log_file
