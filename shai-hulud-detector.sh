@@ -30,6 +30,26 @@ TEMP_DIR=""
 high_risk=0
 medium_risk=0
 
+# Bulk-scan mode state (see --bulk). BULK_MODE is set during argument parsing;
+# BULK_ROOTS holds the parent directories under which projects are discovered and
+# each scanned on its own; BULK_OUTPUT is the directory the aggregate report goes to.
+BULK_MODE=false
+BULK_ROOTS=()
+BULK_OUTPUT=""
+# --bulk-list: just print the projects --bulk would scan (one absolute path per line) and exit.
+BULK_LIST=false
+# How many directory levels below each bulk root to descend looking for projects.
+# 1 = treat each immediate subdirectory as a project (flat). Higher values let the
+# scanner see through "bucket" folders (e.g. ~/dev/apps/<project>, ~/work/clients/<client>/<project>)
+# to the real projects underneath. A directory that already looks like a project is
+# always taken whole regardless of depth, so monorepos are never split; the cap only
+# limits how far we keep descending through nested bucket folders.
+BULK_DEPTH=3
+# Non-hidden directory basenames that --bulk project discovery never descends into
+# (hidden dirs like .git/.venv/.cache are skipped separately). Leading/trailing spaces
+# matter: membership is tested with the pattern *" $name "*.
+_BULK_NOISE_DIRS=" node_modules vendor bower_components jspm_packages dist build _build out target coverage venv env virtualenv __pycache__ site-packages Pods Carthage deps obj bin "
+
 # Function: create_temp_dir
 # Purpose: Create cross-platform temporary directory for findings storage
 # Args: None
@@ -602,6 +622,27 @@ usage() {
     echo "  --save-log FILE    Save all detected file paths to FILE, grouped by severity"
     echo "                     Output format: # HIGH / # MEDIUM / # LOW headers with file paths"
     echo ""
+    echo "BULK MODE (scan many projects in one run):"
+    echo "  --bulk             Treat the positional argument(s) as PARENT directories and scan"
+    echo "                     every project found underneath as its own unit, writing per-project"
+    echo "                     logs plus an aggregate Markdown report. Project discovery descends"
+    echo "                     through 'bucket' folders (e.g. ~/dev/apps/<project>, clients/<c>/<p>)"
+    echo "                     down to directories that look like a project (a .git dir or a"
+    echo "                     package.json / pyproject.toml / requirements*.txt / Cargo.toml /"
+    echo "                     go.mod / Gemfile / composer.json ...). A monorepo is scanned as one"
+    echo "                     unit (discovery stops at the first project marker). Folders with no"
+    echo "                     projects under them are scanned as-is. node_modules/.git/dist/build/"
+    echo "                     .venv/... and hidden directories are not descended into. Multiple"
+    echo "                     parent directories may be given; the detector's own repo is skipped."
+    echo "                     --paranoid / --check-semver-ranges / --ecosystem / --parallelism"
+    echo "                     are passed through to every per-project scan."
+    echo "  --bulk-depth N     How many levels below each --bulk parent to descend looking for"
+    echo "                     projects (default: ${BULK_DEPTH}). Use 1 for the old flat behaviour"
+    echo "                     (each immediate subdirectory is one project)."
+    echo "  --bulk-list        With --bulk: print the projects that would be scanned (one absolute"
+    echo "                     path per line) and exit, without scanning or writing a report."
+    echo "  --bulk-output DIR  Directory for the bulk report (default: ./shai-hulud-bulk-report-<timestamp>)."
+    echo ""
     echo "GREP TOOL SELECTION (auto-selects fastest available by default: git-grep > ripgrep > grep):"
     echo "  --use-git-grep     Force use of git grep (fastest, DFA-based, no backtracking)"
     echo "  --use-ripgrep      Force use of ripgrep (rg)"
@@ -612,6 +653,9 @@ usage() {
     echo "  $0 --paranoid /path/to/your/project         # Core + advanced security checks"
     echo "  $0 --save-log report.log /path/to/project   # Save findings to file"
     echo "  $0 --use-ripgrep /path/to/your/project      # Force ripgrep for testing"
+    echo "  $0 --bulk ~/dev ~/Desktop/Projects          # Scan every project found under both dirs"
+    echo "  $0 --bulk --paranoid --bulk-output audit ~/dev   # Bulk + paranoid, custom out dir"
+    echo "  $0 --bulk --bulk-depth 1 ~/projects         # Flat: one scan per immediate subdir"
     exit 1
 }
 
@@ -3836,6 +3880,499 @@ generate_report() {
     print_status "$BLUE" "=============================================="
 }
 
+# =============================================================================
+# Bulk scan mode (--bulk): scan many projects in one run, write an aggregate report
+# =============================================================================
+# Implementation note: each project is scanned by re-invoking this script as a
+# subprocess (one fresh process per project). That keeps every per-project scan
+# isolated from the others' global state / temp dirs and lets us reuse the
+# existing --save-log contract and exit codes verbatim instead of refactoring
+# the whole scanner to be re-entrant.
+
+# Function: _bulk_count_section
+# Purpose: Count the non-empty entries in one section of a --save-log file.
+# Args: $1 = path to a --save-log file, $2 = section name ("HIGH"|"MEDIUM"|"LOW")
+# Output: number of flagged paths in that section (0 if file missing/empty)
+_bulk_count_section() {
+    [[ -f "$1" ]] || { echo 0; return 0; }
+    awk -v want="$2" '
+        $0 == "# HIGH"   { sec = "HIGH";   next }
+        $0 == "# MEDIUM" { sec = "MEDIUM"; next }
+        $0 == "# LOW"    { sec = "LOW";    next }
+        sec == want && length($0) > 0 { c++ }
+        END { print c + 0 }
+    ' "$1"
+}
+
+# Function: _bulk_section_lines
+# Purpose: Print the non-empty entries of one section of a --save-log file, one per line.
+# Args: $1 = path to a --save-log file, $2 = section name ("HIGH"|"MEDIUM"|"LOW")
+_bulk_section_lines() {
+    [[ -f "$1" ]] || return 0
+    awk -v want="$2" '
+        $0 == "# HIGH"   { sec = "HIGH";   next }
+        $0 == "# MEDIUM" { sec = "MEDIUM"; next }
+        $0 == "# LOW"    { sec = "LOW";    next }
+        sec == want && length($0) > 0 { print }
+    ' "$1"
+}
+
+# Function: _bulk_dir_is_project
+# Purpose: Heuristic — does this directory look like the root of a single project?
+#          (a git checkout, or a directory holding a recognised package manifest/lockfile)
+# Args: $1 = directory path
+# Returns: 0 if it looks like a project root, 1 otherwise
+_bulk_dir_is_project() {
+    local d="$1" f
+    [[ -e "$d/.git" ]] && return 0          # .git dir (normal checkout) or file (git worktree)
+    for f in "$d"/package.json "$d"/package-lock.json "$d"/pnpm-lock.yaml "$d"/yarn.lock "$d"/npm-shrinkwrap.json \
+             "$d"/pyproject.toml "$d"/setup.py "$d"/setup.cfg "$d"/Pipfile* "$d"/poetry.lock "$d"/uv.lock "$d"/requirements*.txt \
+             "$d"/Cargo.toml "$d"/go.mod "$d"/composer.json "$d"/Gemfile "$d"/build.gradle* "$d"/pom.xml "$d"/Package.swift; do
+        [[ -e "$f" ]] && return 0
+    done
+    return 1
+}
+
+# Function: _bulk_discover
+# Purpose: Print, one absolute path per line, the scan targets found under $1.
+#          A directory is taken as a single target if it looks like a project root
+#          (so a monorepo is scanned whole), if it has no project anywhere beneath it
+#          (a plain content folder, scanned as-is), or if the depth cap is reached.
+#          Otherwise it is treated as a "bucket" and its children are descended into.
+#          node_modules / vendor / build dirs / hidden dirs are never descended into.
+# Args: $1 = directory, $2 = current depth (0 = a bulk root), $3 = max depth
+# Returns: 0 if this subtree surfaced at least one project root; 1 if it was emitted as
+#          a leaf (no project found). The caller uses this to decide if $1 is a bucket.
+_bulk_discover() {
+    local dir="$1" depth="$2" maxdepth="$3"
+
+    if _bulk_dir_is_project "$dir"; then
+        printf '%s\n' "$dir"
+        return 0
+    fi
+    if [[ "$depth" -ge "$maxdepth" ]]; then
+        printf '%s\n' "$dir"          # depth cap: take as-is, but don't call it a project
+        return 1
+    fi
+
+    # Child directories worth descending into (skip hidden + well-known noise dirs).
+    local -a kids=()
+    local k bn
+    while IFS= read -r k; do
+        [[ -d "$k" ]] || continue
+        bn="$(basename "$k")"
+        [[ "$bn" == .* ]] && continue                       # hidden dirs (.git, .cache, .venv, ...)
+        [[ "$_BULK_NOISE_DIRS" == *" $bn "* ]] && continue  # node_modules / vendor / build / ...
+        k="$(cd "$k" 2>/dev/null && pwd || true)"
+        [[ -n "$k" && -d "$k" ]] && kids+=("$k")
+    done < <(find "$dir" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) 2>/dev/null | LC_ALL=C sort)
+
+    if [[ ${#kids[@]} -eq 0 ]]; then
+        printf '%s\n' "$dir"          # nothing underneath — scan $dir as-is
+        return 1
+    fi
+
+    # Descend; buffer what the children surface. If any of them surfaced a project, $dir
+    # is a "bucket" → emit the children's targets. If none did, $dir is one content unit.
+    local found_project=1 out_k buf=""             # found_project: 1 = no (shell truth), 0 = yes
+    for k in "${kids[@]}"; do
+        # `if` so `set -e` tolerates the non-zero "leaf" return while we capture both
+        # the printed targets ($out_k) and the rc.
+        if out_k="$(_bulk_discover "$k" "$((depth + 1))" "$maxdepth")"; then
+            found_project=0
+        fi
+        buf+="$out_k"$'\n'
+    done
+
+    if [[ "$found_project" -eq 0 ]]; then
+        printf '%s' "$buf"
+        return 0
+    fi
+    printf '%s\n' "$dir"
+    return 1
+}
+
+# Function: _bulk_write_report
+# Purpose: Render the aggregate Markdown report from the per-project result rows.
+# Args: $1  = report path
+#       $2  = rows file (TSV: sev_key emoji label name path H M L rc findings_rel console_rel)
+#       $3  = skipped file (TSV: name path)
+#       $4  = comma-joined resolved scan roots
+#       $5  = paranoid_mode ("true"/"false")
+#       $6  = absolute path to this script
+#       $7..$13 = n_total n_high n_error n_medium n_low n_clean n_skipped
+#       $14..   = per-project child flags (e.g. --paranoid --parallelism 8)
+# Modifies: writes $1
+_bulk_write_report() {
+    local report="$1" rows_file="$2" skipped_file="$3" resolved_roots="$4"
+    local paranoid_mode="$5" self_script="$6"
+    local n_total="$7" n_high="$8" n_error="$9" n_medium="${10}" n_low="${11}" n_clean="${12}" n_skipped="${13}"
+    shift 13
+    local child_flags_str="$*"
+    local per_repo_dir; per_repo_dir="$(dirname "$report")/per-repo"
+    local now; now="$(date '+%Y-%m-%d %H:%M:%S %Z' 2>/dev/null || date '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date)"
+    local mode_desc="standard checks"
+    [[ "$paranoid_mode" == "true" ]] && mode_desc="paranoid (adds typosquatting + network-exfiltration checks)"
+
+    {
+        echo "# Shai-Hulud Bulk Scan — Aggregate Report"
+        echo
+        echo "| Field | Value |"
+        echo "|---|---|"
+        echo "| Generated | $now |"
+        echo "| Detector | \`$self_script\` |"
+        echo "| Mode | $mode_desc |"
+        echo "| Per-project flags | \`$child_flags_str\` |"
+        echo "| Scan roots | $resolved_roots |"
+        echo "| Project discovery | descended up to ${BULK_DEPTH} level(s) below each root (monorepos scanned as one unit) |"
+        echo "| Projects scanned | $n_total |"
+        echo "| Projects skipped | $n_skipped |"
+        echo
+        echo "## Result summary"
+        echo
+        echo "| Outcome | Count |"
+        echo "|---|---:|"
+        echo "| 🔴 HIGH RISK | $n_high |"
+        echo "| ⚠️ Scan errors | $n_error |"
+        echo "| 🟡 MEDIUM RISK | $n_medium |"
+        echo "| ℹ️ Clean (low-risk notes) | $n_low |"
+        echo "| ✅ Clean | $n_clean |"
+        echo "| ⏭️ Skipped | $n_skipped |"
+        echo
+        echo "Each project below was scanned with \`shai-hulud-detector.sh\`; the **Outcome** is"
+        echo "that scan's exit status (\`1\` = high-risk indicators, \`2\` = medium-risk, \`0\` = clean)."
+        echo "**High / Med / Low** count the distinct file paths the detector flagged at each"
+        echo "severity (from its \`--save-log\` output). A *scan error* means the per-project scan"
+        echo "did not run to completion — inspect that project's console log under \`per-repo/\`."
+        if [[ "$n_high" -gt 0 ]]; then
+            echo
+            echo "> ⚠️ **$n_high project(s) flagged HIGH RISK.** Until you have ruled out compromise,"
+            echo "> treat them accordingly: review the flagged files, rotate any credentials those"
+            echo "> projects could reach, inspect \`git status\` / \`git log\` / installed lockfiles for"
+            echo "> the indicators described in the detector README, and avoid running \`npm install\`"
+            echo "> / \`bun install\` in them again until cleared."
+        fi
+        echo
+        echo "## Per-project results"
+        echo
+        echo "| Outcome | Project | Path | High | Med | Low | Logs |"
+        echo "|---|---|---|---:|---:|---:|---|"
+        if [[ -s "$rows_file" ]]; then
+            while IFS=$'\t' read -r sev emoji label name path h m l rc flog clog; do
+                printf '| %s %s | `%s` | `%s` | %s | %s | %s | [findings](%s) · [console](%s) |\n' \
+                    "$emoji" "$label" "$name" "$path" "$h" "$m" "$l" "$flog" "$clog"
+            done < <(LC_ALL=C sort -t$'\t' -k1,1n -k4,4 "$rows_file")
+        fi
+        echo
+        echo "## Findings detail"
+        echo
+        if [[ $((n_high + n_medium + n_error)) -eq 0 ]]; then
+            echo "_No high-, medium- or error-level results — see “Clean projects” below._"
+            echo
+        fi
+        if [[ -s "$rows_file" ]]; then
+            while IFS=$'\t' read -r sev emoji label name path h m l rc flog clog; do
+                [[ "$sev" -ge 4 ]] && continue   # clean projects: summarised in their own section
+                echo "### $emoji \`$name\` — $label"
+                echo
+                echo "- **Path:** \`$path\`"
+                echo "- **Detector exit code:** \`$rc\`"
+                echo "- **Flagged paths:** $h high · $m medium · $l low"
+                echo "- **Logs:** [\`$flog\`]($flog) · [\`$clog\`]($clog)"
+                echo
+                local _section _count _abs_flog _abs_clog
+                _abs_flog="$per_repo_dir/$(basename "$flog")"
+                _abs_clog="$per_repo_dir/$(basename "$clog")"
+                for _section in HIGH MEDIUM LOW; do
+                    _count=$(_bulk_count_section "$_abs_flog" "$_section")
+                    [[ "$_count" -gt 0 ]] || continue
+                    echo "**$_section — $_count flagged path(s):**"
+                    echo
+                    echo '```'
+                    _bulk_section_lines "$_abs_flog" "$_section"
+                    echo '```'
+                    echo
+                done
+                if [[ -f "$_abs_clog" ]]; then
+                    echo "<details><summary>Detector console output for <code>$name</code></summary>"
+                    echo
+                    echo '```text'
+                    if [[ "$sev" -eq 1 ]]; then
+                        # scan error / unusual exit: the tail is where the failure shows up
+                        tail -n 80 "$_abs_clog"
+                    else
+                        # the report section (banner -> end of output), capped
+                        awk '
+                            /SHAI-HULUD.*REPORT/ { found = 1 }
+                            found {
+                                print; n++
+                                if (n >= 400) { print "... (truncated — see per-repo console log) ..."; exit }
+                            }
+                        ' "$_abs_clog"
+                    fi
+                    echo '```'
+                    echo
+                    echo "</details>"
+                    echo
+                fi
+            done < <(LC_ALL=C sort -t$'\t' -k1,1n -k4,4 "$rows_file")
+        fi
+        echo "## Clean projects"
+        echo
+        echo "No high- or medium-risk indicators. Any low-risk informational matches are noted"
+        echo "in parentheses and detailed in that project's \`per-repo/\` log (low-risk matches are"
+        echo "typically legitimate framework patterns, not compromise)."
+        echo
+        local _printed_clean=0
+        if [[ -s "$rows_file" ]]; then
+            while IFS=$'\t' read -r sev emoji label name path h m l rc flog clog; do
+                [[ "$sev" -eq 3 || "$sev" -eq 4 ]] || continue
+                _printed_clean=1
+                if [[ "$l" -gt 0 ]]; then
+                    echo "- ✅ \`$name\` — clean ($l low-risk note(s); see [\`$clog\`]($clog))"
+                else
+                    echo "- ✅ \`$name\`"
+                fi
+            done < <(LC_ALL=C sort -t$'\t' -k4,4 "$rows_file")
+        fi
+        [[ "$_printed_clean" -eq 1 ]] || echo "_(none)_"
+        if [[ -s "$skipped_file" ]]; then
+            echo
+            echo "## Skipped"
+            echo
+            while IFS=$'\t' read -r sname spath; do
+                echo "- \`$sname\` — \`$spath\`"
+                echo "  Skipped automatically: this is the Shai-Hulud detector's own repository — its"
+                echo "  \`test-cases/\` directory and \`compromised-packages.txt\` contain intentional"
+                echo "  malicious fixtures that would otherwise dominate the report. To scan it anyway,"
+                echo "  run \`./shai-hulud-detector.sh .\` from inside it."
+            done < "$skipped_file"
+        fi
+        echo
+        echo "## Re-running this scan"
+        echo
+        echo '```sh'
+        echo "$self_script --bulk --bulk-depth $BULK_DEPTH $child_flags_str <parent-dir> [more-parent-dirs ...]"
+        echo '```'
+        echo
+        echo "Bulk exit codes: \`1\` = at least one project HIGH RISK · \`2\` = at least one MEDIUM RISK ·"
+        echo "\`3\` = at least one scan errored · \`0\` = all clean."
+        echo
+        echo "_Generated by \`shai-hulud-detector.sh --bulk\`._"
+    } > "$report"
+}
+
+# Function: run_bulk_scan
+# Purpose: --bulk implementation. For each parent directory, scan every immediate
+#          (non-hidden) subdirectory by re-invoking this script, then write per-project
+#          logs plus a single aggregate Markdown report.
+# Args: $1 = paranoid_mode ("true"/"false")
+#       $2 = output directory ("" => ./shai-hulud-bulk-report-<timestamp>)
+#       $3.. = parent directories whose immediate subdirectories each get scanned
+# Returns: 1 if any project HIGH RISK; else 2 if any MEDIUM; else 3 if any scan errored;
+#          else 0. (Mirrors the single-scan convention, with 3 added for scan errors.)
+run_bulk_scan() {
+    local paranoid_mode="$1"; shift
+    local out_dir="$1"; shift
+    local roots=("$@")
+
+    if [[ ${#roots[@]} -eq 0 ]]; then
+        print_status "$RED" "Error: --bulk requires at least one parent directory to scan."
+        usage
+    fi
+
+    # Absolute path to this script — re-invocation must work regardless of CWD.
+    local self_script="$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")"
+    [[ -f "$self_script" ]] || self_script="${BASH_SOURCE[0]}"
+    # Re-invoke through the *same* bash that is running us (we already passed the Bash 5
+    # check), not via the #! line, so per-project scans don't fall back to an old /bin/bash.
+    local self_bash="${BASH:-bash}"
+    local self_repo=""
+    [[ -d "$SCRIPT_DIR" ]] && self_repo="$(cd "$SCRIPT_DIR" 2>/dev/null && pwd || true)"
+
+    # Flags propagated to every per-project scan.
+    local child_flags=()
+    [[ "$paranoid_mode" == "true" ]] && child_flags+=("--paranoid")
+    [[ "$CHECK_SEMVER_RANGES" == "true" ]] && child_flags+=("--check-semver-ranges")
+    [[ -n "$ECOSYSTEM_OVERRIDE" ]] && child_flags+=("--ecosystem" "$ECOSYSTEM_OVERRIDE")
+    child_flags+=("--parallelism" "$PARALLELISM")
+    case "$GREP_TOOL" in
+        git-grep) child_flags+=("--use-git-grep") ;;
+        ripgrep)  child_flags+=("--use-ripgrep")  ;;
+        grep)     child_flags+=("--use-grep")     ;;
+    esac
+
+    # Discover scan targets under each --bulk parent. The parent itself is always treated
+    # as a bucket: we look at its immediate children and let _bulk_discover() decide, per
+    # child, whether to take it whole (a project / a monorepo / a plain folder) or descend
+    # further (a sub-bucket like ~/dev/apps/). BULK_DEPTH caps how deep that descent goes.
+    [[ "$BULK_LIST" == "true" ]] || print_status "$ORANGE" "Discovering projects under ${#roots[@]} root(s) (max depth ${BULK_DEPTH})..."
+    local targets=()
+    declare -A _seen=()
+    local root child child_bn discovered tgt
+    for root in "${roots[@]}"; do
+        if [[ ! -d "$root" ]]; then
+            print_status "$YELLOW" "⚠️  Skipping parent '$root' — not a directory."
+            continue
+        fi
+        root="$(cd "$root" && pwd)"
+        while IFS= read -r child; do
+            [[ -d "$child" ]] || continue                       # follows symlinks; drops broken links
+            child_bn="$(basename "$child")"
+            [[ "$child_bn" == .* ]] && continue                 # hidden dirs
+            [[ "$_BULK_NOISE_DIRS" == *" $child_bn "* ]] && continue
+            child="$(cd "$child" 2>/dev/null && pwd || true)"   # canonicalise; skip if unreadable
+            [[ -n "$child" && -d "$child" ]] || continue
+            discovered="$(_bulk_discover "$child" 1 "$BULK_DEPTH" || true)"   # one abs path per line; rc informational
+            while IFS= read -r tgt; do
+                [[ -n "$tgt" ]] || continue
+                [[ -n "${_seen[$tgt]:-}" ]] && continue
+                _seen["$tgt"]=1
+                targets+=("$tgt")
+            done <<< "$discovered"
+        done < <(find "$root" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) 2>/dev/null | LC_ALL=C sort)
+    done
+
+    if [[ ${#targets[@]} -eq 0 ]]; then
+        print_status "$YELLOW" "No projects found under: ${roots[*]} — nothing to do."
+        exit 0
+    fi
+
+    # Stable, predictable ordering for the run and the report (independent of root order).
+    local _sorted; _sorted="$(printf '%s\n' "${targets[@]}" | LC_ALL=C sort)"
+    targets=()
+    while IFS= read -r tgt; do [[ -n "$tgt" ]] && targets+=("$tgt"); done <<< "$_sorted"
+
+    # --bulk-list: just report what would be scanned (after the same self-repo skip) and stop.
+    if [[ "$BULK_LIST" == "true" ]]; then
+        for tgt in "${targets[@]}"; do
+            [[ -n "$self_repo" && "$tgt" == "$self_repo" ]] && continue
+            printf '%s\n' "$tgt"
+        done
+        exit 0
+    fi
+
+    # Now that we know there is work to do, create the output directory.
+    [[ -n "$out_dir" ]] || out_dir="shai-hulud-bulk-report-$(date +%Y%m%d-%H%M%S)"
+    # Resolve to an absolute path for error messages (the default is CWD-relative).
+    local _out_abs="$out_dir"
+    [[ "$_out_abs" == /* ]] || _out_abs="$PWD/$_out_abs"
+    if ! mkdir -p "$out_dir" 2>/dev/null; then
+        print_status "$RED" "Error: cannot create bulk output directory: $_out_abs"
+        exit 1
+    fi
+    out_dir="$(cd "$out_dir" 2>/dev/null && pwd)" || {
+        print_status "$RED" "Error: bulk output directory is not accessible: $_out_abs"
+        exit 1
+    }
+    local per_repo_dir="$out_dir/per-repo"
+    mkdir -p "$per_repo_dir"
+    local report="$out_dir/aggregate-report.md"
+
+    # Pretty-printed roots for the report header.
+    local resolved_roots="" r
+    for r in "${roots[@]}"; do
+        [[ -d "$r" ]] || continue
+        resolved_roots+="${resolved_roots:+, }$(cd "$r" && pwd)"
+    done
+
+    print_status "$GREEN" "Bulk scan: ${#targets[@]} project director$([[ ${#targets[@]} -eq 1 ]] && echo "y" || echo "ies") to process."
+    print_status "$BLUE"  "Roots:             $resolved_roots"
+    print_status "$BLUE"  "Per-project flags: ${child_flags[*]}"
+    print_status "$BLUE"  "Output directory:  $out_dir"
+    echo
+
+    local rows_file="$TEMP_DIR/bulk_rows.tsv"
+    local skipped_file="$TEMP_DIR/bulk_skipped.tsv"
+    local raw_tmp="$TEMP_DIR/bulk_console_raw.txt"
+    : > "$rows_file"
+    : > "$skipped_file"
+
+    local n_total=0 n_high=0 n_error=0 n_medium=0 n_low=0 n_clean=0 n_skipped=0
+    local idx=0 t name repo_log console_log rc h m l sev emoji label color
+
+    for t in "${targets[@]}"; do
+        idx=$((idx + 1))
+        name="$(basename "$t")"
+
+        # The detector's own repo is full of intentional malicious fixtures — skip it.
+        if [[ -n "$self_repo" && "$t" == "$self_repo" ]]; then
+            printf '%b[%2d/%d]%b %bSKIP%b  %s — detector self-repo (intentional test fixtures)\n' \
+                "$BLUE" "$idx" "${#targets[@]}" "$NC" "$YELLOW" "$NC" "$name"
+            n_skipped=$((n_skipped + 1))
+            printf '%s\t%s\n' "$name" "$t" >> "$skipped_file"
+            continue
+        fi
+
+        repo_log="$per_repo_dir/$name.findings.log"
+        console_log="$per_repo_dir/$name.console.txt"
+        if [[ -e "$repo_log" || -e "$console_log" ]]; then
+            repo_log="$per_repo_dir/${idx}-$name.findings.log"
+            console_log="$per_repo_dir/${idx}-$name.console.txt"
+        fi
+
+        printf '%b[%2d/%d]%b SCAN  %s ... ' "$BLUE" "$idx" "${#targets[@]}" "$NC" "$name"
+
+        rc=0
+        "$self_bash" "$self_script" "${child_flags[@]}" --save-log "$repo_log" "$t" > "$raw_tmp" 2>&1 || rc=$?
+        # Strip ANSI colour codes so the saved console log is plain text.
+        sed $'s/\x1b[^m]*m//g' "$raw_tmp" > "$console_log" 2>/dev/null || cp "$raw_tmp" "$console_log" 2>/dev/null || true
+
+        h=$(_bulk_count_section "$repo_log" "HIGH")
+        m=$(_bulk_count_section "$repo_log" "MEDIUM")
+        l=$(_bulk_count_section "$repo_log" "LOW")
+        n_total=$((n_total + 1))
+
+        if [[ -f "$repo_log" ]] && grep -q "SHAI-HULUD.*REPORT" "$console_log" 2>/dev/null; then
+            case "$rc" in
+                1) sev=0; emoji="🔴"; label="HIGH RISK";   color="$RED";    n_high=$((n_high + 1)) ;;
+                2) sev=2; emoji="🟡"; label="MEDIUM RISK"; color="$YELLOW"; n_medium=$((n_medium + 1)) ;;
+                0) if [[ "$l" -gt 0 ]]; then
+                       sev=3; emoji="ℹ️"; label="clean (low-risk notes)"; color="$BLUE"; n_low=$((n_low + 1))
+                   else
+                       sev=4; emoji="✅"; label="clean"; color="$GREEN"; n_clean=$((n_clean + 1))
+                   fi ;;
+                *) sev=1; emoji="⚠️"; label="completed, exit $rc"; color="$YELLOW"; n_error=$((n_error + 1)) ;;
+            esac
+        else
+            sev=1; emoji="⚠️"; label="SCAN ERROR (exit $rc)"; color="$RED"; n_error=$((n_error + 1))
+        fi
+
+        printf '%b%s %s%b  (H:%s M:%s L:%s)\n' "$color" "$emoji" "$label" "$NC" "$h" "$m" "$l"
+
+        printf '%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+            "$sev" "$emoji" "$label" "$name" "$t" "$h" "$m" "$l" "$rc" \
+            "per-repo/$(basename "$repo_log")" "per-repo/$(basename "$console_log")" >> "$rows_file"
+    done
+
+    echo
+    print_status "$GREEN" "All scans complete — writing aggregate report..."
+    _bulk_write_report "$report" "$rows_file" "$skipped_file" "$resolved_roots" "$paranoid_mode" "$self_script" \
+        "$n_total" "$n_high" "$n_error" "$n_medium" "$n_low" "$n_clean" "$n_skipped" "${child_flags[@]}"
+
+    echo
+    print_status "$BLUE"  "============================================================"
+    print_status "$BLUE"  "  BULK SCAN SUMMARY"
+    print_status "$BLUE"  "============================================================"
+    print_status "$BLUE"  "  Scanned: $n_total      Skipped: $n_skipped"
+    if [[ "$n_high"   -gt 0 ]]; then print_status "$RED"    "  🔴 HIGH RISK ............. $n_high";   else print_status "$GREEN" "  🔴 HIGH RISK ............. 0"; fi
+    if [[ "$n_error"  -gt 0 ]]; then print_status "$YELLOW" "  ⚠️  Scan errors .......... $n_error"; else print_status "$GREEN" "  ⚠️  Scan errors .......... 0"; fi
+    if [[ "$n_medium" -gt 0 ]]; then print_status "$YELLOW" "  🟡 MEDIUM RISK ........... $n_medium"; else print_status "$GREEN" "  🟡 MEDIUM RISK ........... 0"; fi
+    print_status "$BLUE"  "  ℹ️  Clean (low-risk notes) $n_low"
+    print_status "$GREEN" "  ✅ Clean ................. $n_clean"
+    print_status "$BLUE"  "============================================================"
+    print_status "$GREEN" "  📄 Aggregate report: $report"
+    print_status "$BLUE"  "  📁 Per-project logs: $per_repo_dir/"
+    print_status "$BLUE"  "============================================================"
+    echo
+
+    if   [[ "$n_high"   -gt 0 ]]; then return 1
+    elif [[ "$n_medium" -gt 0 ]]; then return 2
+    elif [[ "$n_error"  -gt 0 ]]; then return 3
+    else return 0
+    fi
+}
+
 # Function: main
 # Purpose: Main entry point - parse arguments, load data, run all checks, generate report
 # Args: Command line arguments (--paranoid, --help, --parallelism N, directory_path)
@@ -3903,6 +4440,43 @@ main() {
                 save_log="$2"
                 shift
                 ;;
+            --bulk)
+                BULK_MODE=true
+                ;;
+            --bulk-depth)
+                re='^[1-9][0-9]*$'
+                if ! [[ $2 =~ $re ]]; then
+                    echo "${RED}error: --bulk-depth requires a positive integer${NC}" >&2
+                    usage
+                fi
+                BULK_DEPTH=$2
+                shift
+                ;;
+            --bulk-depth=*)
+                BULK_DEPTH="${1#--bulk-depth=}"
+                if ! [[ $BULK_DEPTH =~ ^[1-9][0-9]*$ ]]; then
+                    echo "${RED}error: --bulk-depth= requires a positive integer${NC}" >&2
+                    usage
+                fi
+                ;;
+            --bulk-list)
+                BULK_LIST=true
+                ;;
+            --bulk-output)
+                if [[ -z "$2" || "$2" == -* ]]; then
+                    echo "${RED}error: --bulk-output requires a directory path${NC}" >&2;
+                    usage
+                fi
+                BULK_OUTPUT="$2"
+                shift
+                ;;
+            --bulk-output=*)
+                BULK_OUTPUT="${1#--bulk-output=}"
+                if [[ -z "$BULK_OUTPUT" ]]; then
+                    echo "${RED}error: --bulk-output= requires a directory path${NC}" >&2
+                    usage
+                fi
+                ;;
             --use-git-grep)
                 if [[ "$HAS_GIT_GREP" != "true" ]]; then
                     echo "${RED}Error: --use-git-grep specified but git is not installed${NC}" >&2
@@ -3927,6 +4501,10 @@ main() {
             *)
                 if [[ -z "$scan_dir" ]]; then
                     scan_dir="$1"
+                    BULK_ROOTS+=("$1")
+                elif [[ "$BULK_MODE" == "true" ]]; then
+                    # In --bulk mode every positional argument is another parent directory.
+                    BULK_ROOTS+=("$1")
                 else
                     echo "Too many arguments"
                     usage
@@ -3938,6 +4516,14 @@ main() {
 
     if [[ -z "$scan_dir" ]]; then
         usage
+    fi
+
+    # --bulk: enumerate each parent directory's immediate subdirectories, scan each as
+    # its own project, and write an aggregate report. run_bulk_scan re-invokes this
+    # script once per subdirectory so every per-repo scan gets a clean state.
+    if [[ "$BULK_MODE" == "true" ]]; then
+        run_bulk_scan "$paranoid_mode" "$BULK_OUTPUT" "${BULK_ROOTS[@]}"
+        exit $?
     fi
 
     if [[ ! -d "$scan_dir" ]]; then
