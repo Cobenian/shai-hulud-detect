@@ -358,6 +358,82 @@ else
     ((failed++))
 fi
 
+# Test: hardening (a) — chmod-000 subdir during discovery is reported as unreadable,
+# not silently dropped. We build a tree with one readable and one unreadable project,
+# and verify (i) --bulk-list still surfaces the readable one, (ii) the unreadable
+# project's path appears in --bulk-list's permission-denied warning on stderr, AND
+# (iii) the aggregate report's "Unreadable directories" section lists it.
+HARDA_TMP="$BULK_TMP/hardening-a"
+mkdir -p "$HARDA_TMP/visible-proj" "$HARDA_TMP/locked-proj"
+echo '{"name":"visible"}' > "$HARDA_TMP/visible-proj/package.json"
+echo '{"name":"locked"}'  > "$HARDA_TMP/locked-proj/package.json"
+chmod 000 "$HARDA_TMP/locked-proj"
+
+# (i) and (ii) via --bulk-list. Output mixes stdout (project list) and stderr
+# (permission-denied warning); we want both to appear.
+harda_list_out="$("$BASH_CMD" "$DETECTOR" --bulk --bulk-list "$HARDA_TMP" 2>&1 || true)"
+((total++))
+if grep -q "/visible-proj" <<< "$harda_list_out" \
+   && grep -qi "permission denied" <<< "$harda_list_out" \
+   && grep -q "/locked-proj" <<< "$harda_list_out"; then
+    echo -e "${GREEN}PASS${NC}: --bulk-list lists readable projects and warns about unreadable ones"
+    ((passed++))
+else
+    echo -e "${RED}FAIL${NC}: --bulk-list failed to surface readable+unreadable correctly"
+    echo "  output was:"
+    echo "$harda_list_out" | sed 's/^/    /' | head -20
+    ((failed++))
+fi
+
+# (iii) via full --bulk run
+HARDA_OUT="$BULK_TMP/hardening-a-report"
+harda_run_out="$("$BASH_CMD" "$DETECTOR" --bulk --bulk-output "$HARDA_OUT" "$HARDA_TMP" 2>&1 || true)"
+((total++))
+if grep -q "Unreadable (permission denied): 1" <<< "$harda_run_out" \
+   && [[ -f "$HARDA_OUT/aggregate-report.md" ]] \
+   && grep -q "Unreadable directories" "$HARDA_OUT/aggregate-report.md" \
+   && grep -q "locked-proj" "$HARDA_OUT/aggregate-report.md"; then
+    echo -e "${GREEN}PASS${NC}: --bulk surfaces unreadable dirs in summary + aggregate report"
+    ((passed++))
+else
+    echo -e "${RED}FAIL${NC}: --bulk did not surface unreadable directory"
+    echo "  summary tail:"
+    echo "$harda_run_out" | tail -15 | sed 's/^/    /'
+    echo "  report 'Unreadable' section:"
+    grep -A2 "Unreadable" "$HARDA_OUT/aggregate-report.md" 2>/dev/null | sed 's/^/    /'
+    ((failed++))
+fi
+
+# Restore perms so the cleanup at end of script can remove the tree.
+chmod -R 755 "$HARDA_TMP" 2>/dev/null
+
+# Test: hardening (b) — when --bulk-output points at a directory INSIDE the scan
+# root, the output dir itself must NOT be treated as a scan target. Otherwise a
+# repeat run would scan the previous run's report files.
+HARDB_TMP="$BULK_TMP/hardening-b"
+mkdir -p "$HARDB_TMP/projects/proj-a" "$HARDB_TMP/projects/proj-b" "$HARDB_TMP/report/per-repo"
+echo '{"name":"a"}' > "$HARDB_TMP/projects/proj-a/package.json"
+echo '{"name":"b"}' > "$HARDB_TMP/projects/proj-b/package.json"
+# Simulate a leftover prior report so the output dir LOOKS like a scan candidate.
+echo "leftover" > "$HARDB_TMP/report/aggregate-report.md"
+echo "leftover" > "$HARDB_TMP/report/per-repo/old-project.console.txt"
+
+hardb_run_out="$("$BASH_CMD" "$DETECTOR" --bulk --bulk-output "$HARDB_TMP/report" "$HARDB_TMP" 2>&1 || true)"
+((total++))
+# Expect: Scanned: 2 (proj-a + proj-b only) and NO per-repo log named "report.*"
+hardb_scan_count=$(grep -oE "Scanned: [0-9]+" <<< "$hardb_run_out" | head -1 | grep -oE "[0-9]+")
+hardb_has_report_log=0
+ls "$HARDB_TMP/report/per-repo/" 2>/dev/null | grep -qE "^report\." && hardb_has_report_log=1
+if [[ "$hardb_scan_count" == "2" ]] && [[ "$hardb_has_report_log" -eq 0 ]]; then
+    echo -e "${GREEN}PASS${NC}: --bulk-output inside scan root is excluded from discovery"
+    ((passed++))
+else
+    echo -e "${RED}FAIL${NC}: --bulk scanned the output dir (count=$hardb_scan_count, self-log=$hardb_has_report_log)"
+    echo "  per-repo dir contents:"
+    ls -la "$HARDB_TMP/report/per-repo/" 2>/dev/null | sed 's/^/    /'
+    ((failed++))
+fi
+
 # Cleanup
 rm -rf "$BULK_TMP"
 
