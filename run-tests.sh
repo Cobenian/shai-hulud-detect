@@ -162,6 +162,62 @@ echo "========================================"
 echo "  Results: $passed/$total passed, $failed failed"
 echo "========================================"
 
+# ============================================================
+#  May 19 atool/AntV wave content-IoC assertions
+# ============================================================
+# Lock in that every new content-pattern IoC added for the May 19 Mini Shai-Hulud
+# atool/AntV wave actually fires on its fixture, not just that the fixture exits HIGH.
+# Each entry below pairs a human-readable label with a fixed-string fragment from
+# the detector's output line; if any expected IoC stops firing, this section fails.
+echo ""
+echo "========================================"
+echo "  Testing May 19 atool/AntV IoC coverage"
+echo "========================================"
+
+ATOOL_OUT=$("$BASH_CMD" "$DETECTOR" "$SCRIPT_DIR/test-cases/atool-attack" 2>&1)
+for atool_check in \
+    "C2 domain t.m-kosche.com|Mini Shai-Hulud C2 domain (t.m-kosche.com)" \
+    "exfil-repo beacon string|beacon string from exfil repos (May 19 wave)" \
+    "forged-author email|huiyu.zjt@ant.com, May 19 wave" \
+    "firedalazer dead-drop keyword|firedalazer, May 19 wave" \
+    "orphan commit 1916faa365|1916faa365f2788b6e193514872d51a242876569" \
+    "orphan commit 7cb42f5756|7cb42f57561c321ecb09b4552802ae0ac55b3a7a" \
+    "orphan commit dc3d62a218|dc3d62a2181beb9f326952a2d212900c94f2e13d" \
+    "atool publisher metadata|atool, May 19 wave" \
+    "malicious antvis/G2 optionalDependencies|antvis/G2 orphan commit 1916faa365" \
+    "preinstall bun run index.js|preinstall script invokes bun run index.js"
+do
+    label="${atool_check%|*}"
+    pattern="${atool_check#*|}"
+    ((total++))
+    if grep -qF "$pattern" <<< "$ATOOL_OUT"; then
+        echo -e "${GREEN}PASS${NC}: atool-attack fires May 19 IoC: $label"
+        ((passed++))
+    else
+        echo -e "${RED}FAIL${NC}: atool-attack did NOT fire IoC: $label (looked for: '$pattern')"
+        ((failed++))
+    fi
+done
+
+# kitty-monitor variant of the dead-man's-switch (the May 19 wave's renamed daemon).
+KITTY_OUT=$("$BASH_CMD" "$DETECTOR" "$SCRIPT_DIR/test-cases/mini-shai-hulud-dead-mans-switch" 2>&1)
+for kitty_check in \
+    "kitty-monitor.sh script|/kitty-monitor.sh" \
+    "kitty-monitor LaunchAgent plist|com.user.kitty-monitor.plist" \
+    "kitty/cat.py dead-drop fetcher|kitty/cat.py"
+do
+    label="${kitty_check%|*}"
+    pattern="${kitty_check#*|}"
+    ((total++))
+    if grep -qF "$pattern" <<< "$KITTY_OUT"; then
+        echo -e "${GREEN}PASS${NC}: dead-mans-switch fixture surfaces May 19 artifact: $label"
+        ((passed++))
+    else
+        echo -e "${RED}FAIL${NC}: dead-mans-switch did NOT surface: $label (looked for: '$pattern')"
+        ((failed++))
+    fi
+done
+
 # Test --save-log feature
 echo ""
 echo "========================================"

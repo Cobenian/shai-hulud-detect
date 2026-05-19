@@ -2,7 +2,7 @@
   "name": "mini-shai-hulud-atool-test",
   "version": "1.0.0",
   "private": true,
-  "description": "Test fixture for May 2026 Mini Shai-Hulud AntV/atool wave (2026-05-19): 637 versions across 317 packages published by the compromised `atool` npm account, payload via preinstall: bun run index.js (SHA256 a68dd1e6a6e35ec3771e1f94fe796f55dfe65a2b94560516ff4ac189390dfa1c).",
+  "description": "Test fixture for May 2026 Mini Shai-Hulud AntV/atool wave (2026-05-19): 637 versions across 317 packages published by the compromised `atool` npm account, payload via preinstall: bun run index.js (SHA256 a68dd1e6a6e35ec3771e1f94fe796f55dfe65a2b94560516ff4ac189390dfa1c). The companion index.js file in this directory holds the inert content-pattern IoCs (C2 domain, beacon string, orphan-commit SHAs, etc.) so the detector's check_mini_shai_hulud_indicators function exercises every May 19 string-based check end-to-end.",
   "scripts": {
     "preinstall": "bun run index.js"
   },
@@ -12,5 +12,8 @@
     "@antv/scale": "0.6.2",
     "timeago.js": "4.1.2",
     "@antv/g2": "5.5.8"
+  },
+  "optionalDependencies": {
+    "@antv/setup": "github:antvis/G2#1916faa365f2788b6e193514872d51a242876569"
   }
 }
