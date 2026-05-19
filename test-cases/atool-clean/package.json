@@ -1,0 +1,12 @@
+{
+  "name": "mini-shai-hulud-atool-clean-test",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Clean fixture: last-known-good versions of packages targeted by the May 2026 Mini Shai-Hulud AntV/atool wave. The detector must NOT flag these versions.",
+  "dependencies": {
+    "size-sensor": "1.0.3",
+    "echarts-for-react": "3.0.6",
+    "@antv/scale": "0.5.2",
+    "timeago.js": "4.0.2"
+  }
+}

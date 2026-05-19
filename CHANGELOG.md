@@ -5,6 +5,21 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.0] - 2026-05-19
+
+### Added
+- **Mini Shai-Hulud AntV/atool wave coverage**: Added 643 malicious version artifacts across 323 distinct npm packages published by the compromised `atool` npm account on 2026-05-19. This is a new supply chain attack campaign distinct from prior waves and warrants a minor version bump. Vendors describe the timing slightly differently — SafeDep observed two automated waves at 01:39-01:56 UTC and 02:05-02:06 UTC; Socket and StepSecurity describe a single 22-minute burst beginning ~01:56 UTC and continuing through ~02:56 UTC. The campaign hit the `@antv/*` ecosystem hardest (~177 scoped packages), also pulled in `@openclaw-cn`, `@starmind`, and `@lint-md` namespaces, and the high-traffic standalone libraries `size-sensor` (4.2M downloads/month), `echarts-for-react` (3.8M downloads/month), `@antv/scale` (2.2M downloads/month), `timeago.js` (1.15M downloads/month), and `canvas-nest.js`. Aggregate impact ~16M weekly downloads. The payload is a 498KB single-line obfuscated Bun bundle delivered via a `preinstall: bun run index.js` hook (one observed SHA256: `a68dd1e6a6e35ec3771e1f94fe796f55dfe65a2b94560516ff4ac189390dfa1c`) that steals 20+ credential types — GitHub/CI tokens, AWS keys, GCP, Azure, Kubernetes service accounts, Vault tokens, SSH keys, Docker creds, DB connection strings — and attempts Docker container escape via the host socket. Primary exfiltration is HTTPS POST to `t.m-kosche.com:443/api/public/otel/v1/traces` with AES-256-GCM payload encryption and RSA-OAEP key wrapping; the GitHub-repo-creation channel (`{dune-word}-{dune-word}-{0-999}`) is a fallback that writes stolen data to `results/results-<timestamp>-<counter>.json`. Every exfil repo is tagged with the beacon string `niagA oG eW ereH :duluH-iahS` (character-reversed "Shai-Hulud: Here We Go Again"). Persistence via `.claude/settings.json` `SessionStart` hooks, `.vscode/tasks.json` `folderOpen` tasks, and a `kitty-monitor` systemd/LaunchAgent unit running `~/.local/share/kitty/cat.py`. Imposter commits planted in `antvis/G2` were forged to appear as `huiyu.zjt <huiyu.zjt@ant.com>` (a real maintainer). Some vendors attribute to TeamPCP (the actor behind the May 12 TanStack wave); Socket and StepSecurity have not asserted attribution.
+  - Sources:
+    - https://socket.dev/blog/antv-packages-compromised
+    - https://www.stepsecurity.io/blog/shai-hulud-here-we-go-again-mass-npm-supply-chain-attack-hits-the-antv-ecosystem
+    - https://safedep.io/mini-shai-hulud-strikes-again-314-npm-packages-compromised/
+    - https://snyk.io/blog/mini-shai-hulud-antv-npm-supply-chain-attack/
+    - https://www.aikido.dev/blog/mini-shai-hulud-antv-npm-supply-chain-attack
+    - https://www.ox.security/blog/the-antv-ecosystem-was-compromised-with-shai-hulud-malware-300-packages-affected
+    - https://thehackernews.com/2026/05/mini-shai-hulud-pushes-malicious-antv.html
+- **Test fixtures** (`test-cases/atool-attack/`, `test-cases/atool-clean/`): An attack fixture containing 5 compromised versions from the wave (`size-sensor@1.0.4`, `echarts-for-react@3.0.7`, `@antv/scale@0.6.2`, `timeago.js@4.1.2`, `@antv/g2@5.5.8`) plus the malicious `preinstall: bun run index.js` script, and a paired clean fixture using the last-known-good versions of the same packages (`size-sensor@1.0.3`, `echarts-for-react@3.0.6`, `@antv/scale@0.5.2`, `timeago.js@4.0.2`) to lock in that the detector flags the attack as HIGH and leaves legitimate consumers untouched.
+- **`run-tests.sh` expected results**: Registered `atool-attack` (HIGH) and `atool-clean` (clean) in the `EXPECTED` table so regressions to either side of the new coverage will fail CI.
+
 ## [3.2.1] - 2026-05-12
 
 ### Added
