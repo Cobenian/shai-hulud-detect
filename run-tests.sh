@@ -73,6 +73,8 @@ declare -A EXPECTED=(
     ["pypi-attack-poetry"]="1|yes|no|no"       # HIGH: PyPI guardrails-ai==0.10.1 in pyproject.toml + poetry.lock
     ["polyglot-attack"]="1|yes|no|no"          # HIGH: both npm (@tanstack/react-router) AND PyPI (mistralai) compromises in one repo
     ["pypi-clean"]="0|no|no|no"                # Clean: safe versions of campaign-targeted PyPI packages
+    ["atool-attack"]="1|yes|no|no"             # HIGH: May 2026 Mini Shai-Hulud AntV/atool wave (size-sensor@1.0.4, echarts-for-react@3.0.7, @antv/scale@0.6.2, timeago.js@4.1.2, @antv/g2@5.5.8)
+    ["atool-clean"]="0|no|no|no"               # Clean: last-known-good versions of atool-wave-targeted packages
     ["semver-matching"]="0|no|no|yes"          # LOW: semver edge cases
     ["semver-wildcards"]="0|no|no|no"          # Clean
     ["spaces-in-filenames"]="0|no|no|no"       # Clean: handles spaces in filenames (issue #92)

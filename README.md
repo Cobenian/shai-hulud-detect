@@ -10,7 +10,7 @@
 
 <img src="shai_hulu_detector.jpg" alt="sshd" width="80%" />
 
-A Bash tool that helps you spot known traces of the September 2025 through May 2026 npm and PyPI supply-chain attacks—including the Shai-Hulud self-replicating worm, the chalk/debug crypto-theft incident, the "Shai-Hulud: The Second Coming" fake Bun runtime attack, the February 2026 SANDWORM_MODE campaign, the March 2026 axios supply chain compromise, and the May 2026 Mini Shai-Hulud / TanStack TheBeautifulSandsOfTime campaign (now confirmed crossing into PyPI). It cross-checks 2,100+ confirmed bad package versions across multiple campaigns and checks for the most relevant red flags in your project.
+A Bash tool that helps you spot known traces of the September 2025 through May 2026 npm and PyPI supply-chain attacks—including the Shai-Hulud self-replicating worm, the chalk/debug crypto-theft incident, the "Shai-Hulud: The Second Coming" fake Bun runtime attack, the February 2026 SANDWORM_MODE campaign, the March 2026 axios supply chain compromise, the May 2026 Mini Shai-Hulud / TanStack TheBeautifulSandsOfTime campaign (now confirmed crossing into PyPI), and the May 2026 Mini Shai-Hulud AntV/atool wave. It cross-checks 2,700+ confirmed bad package versions across multiple campaigns and checks for the most relevant red flags in your project.
 
 ## Supported Ecosystems
 
@@ -27,7 +27,7 @@ Override auto-detection with `--ecosystem=npm`, `--ecosystem=pypi`, `--ecosystem
 
 The exclusion has **no effect on malware scanning**. Content inside `node_modules/` and equivalent directories is still fully scanned for:
 
-- **Compromised package versions** — `check_packages` reads every `package.json` in the tree (including `node_modules/<pkg>/package.json` for all transitive deps) and compares against the 2,100+ confirmed bad version list
+- **Compromised package versions** — `check_packages` reads every `package.json` in the tree (including `node_modules/<pkg>/package.json` for all transitive deps) and compares against the 2,700+ confirmed bad version list
 - **Lockfile integrity** — `package-lock.json`, `yarn.lock`, and `pnpm-lock.yaml` are parsed; every transitively-resolved package is checked
 - **Malicious file hashes** — SHA-256 hashes of priority files (`bundle.js`, `setup_bun.js`, `router_init.js`, etc.) are computed even inside `node_modules/`
 - **Payload filenames** — `router_init.js`, `tanstack_runner.js`, `setup_bun.js`, etc. are flagged anywhere in the tree
@@ -136,7 +136,7 @@ echo "Exit code: $?"  # 0=clean, 1=high-risk, 2=medium-risk
 - **Known malicious file hashes**: Files matching any of 10 SHA-256 hashes spanning the Shai-Hulud worm variants (V1-V7), the Mini Shai-Hulud `router_init.js` / `tanstack_runner.js` payloads, and the malicious `@tanstack/setup` package.json — sourced from [Socket.dev's comprehensive attack analysis](https://socket.dev/blog/ongoing-supply-chain-attack-targets-crowdstrike-npm-packages) and [StepSecurity's Mini Shai-Hulud disclosure](https://www.stepsecurity.io/blog/mini-shai-hulud-is-back-a-self-spreading-supply-chain-attack-hits-the-npm-ecosystem)
 - **November 2025 Bun attack files**: `setup_bun.js`/`bun_installer.js` (fake Bun runtime installer) and `bun_environment.js`/`environment_source.js` (10MB+ obfuscated credential harvesting payload)
 - **Obfuscated exfiltration files**: `3nvir0nm3nt.json`, `cl0vd.json`, `c9nt3nts.json`, `pigS3cr3ts.json` (Golden Path variant - stolen credentials staged for exfiltration)
-- **Compromised package versions**: Specific versions of 2,100+ packages from multiple attacks (September 2025 through May 2026)
+- **Compromised package versions**: Specific versions of 2,700+ packages from multiple attacks (September 2025 through May 2026)
 - **Suspicious postinstall hooks**: Package.json files with postinstall scripts containing curl, wget, eval commands, or fake Bun installation (`"preinstall": "node setup_bun.js"`)
 - **Trufflehog activity**: Files containing trufflehog references, credential scanning patterns, or November 2025 enhanced patterns (automated TruffleHog download and execution)
 - **Shai-Hulud repositories**: Git repositories named "Shai-Hulud" (used for data exfiltration) or with "Sha1-Hulud: The Second Coming" or "Goldox-T3chs: Only Happy Girl" descriptions
@@ -159,7 +159,7 @@ echo "Exit code: $?"  # 0=clean, 1=high-risk, 2=medium-risk
 ### Package Detection Method
 
 The script loads a list of the compromised packages from an external file (`compromised-packages.txt`) which contains:
-- **2,100+ confirmed compromised package versions** with exact version numbers (September 2025 through May 2026 campaigns)
+- **2,700+ confirmed compromised package versions** with exact version numbers (September 2025 through May 2026 campaigns)
 - **30+ affected namespaces** for broader detection of packages from compromised maintainer accounts
 - **Multi-ecosystem entries**: bare lines (e.g. `axios:1.14.1`) are interpreted as npm for backward compatibility; PyPI entries use the `pypi:` prefix (e.g. `pypi:mistralai:2.4.6`); npm entries may use the explicit `npm:` prefix.
 
@@ -196,7 +196,7 @@ Check these security advisories regularly for newly discovered compromised packa
 3. Test the script to ensure detection works
 4. Consider contributing updates back to this repository
 
-**Coverage Note**: Multiple campaigns from September 2025 through May 2026 affected 2,100+ packages total. Our detection aims to provide **comprehensive coverage** across the Shai-Hulud worm (517+ packages), Chalk/Debug crypto theft (26+ packages), "Shai-Hulud: The Second Coming" fake Bun runtime attack (1,100+ packages), the Golden Path variant, the February 2026 SANDWORM_MODE campaign, the March 2026 axios supply chain compromise, and the May 2026 Mini Shai-Hulud / TanStack TheBeautifulSandsOfTime campaign (400+ packages).
+**Coverage Note**: Multiple campaigns from September 2025 through May 2026 affected 2,700+ packages total. Our detection aims to provide **comprehensive coverage** across the Shai-Hulud worm (517+ packages), Chalk/Debug crypto theft (26+ packages), "Shai-Hulud: The Second Coming" fake Bun runtime attack (1,100+ packages), the Golden Path variant, the February 2026 SANDWORM_MODE campaign, the March 2026 axios supply chain compromise, the May 2026 Mini Shai-Hulud / TanStack TheBeautifulSandsOfTime campaign (400+ packages), and the May 2026 Mini Shai-Hulud AntV/atool wave (323 packages).
 
 ### Core vs Paranoid Mode
 
@@ -545,7 +545,7 @@ The `--paranoid` flag enables additional security checks beyond Shai-Hulud-speci
 
 The script performs these checks:
 
-1. **Package Database Loading**: Loads 2,100+ compromised packages from `compromised-packages.txt` into O(1) lookup maps
+1. **Package Database Loading**: Loads 2,700+ compromised packages from `compromised-packages.txt` into O(1) lookup maps
 2. **Workflow Detection**: Searches for `shai-hulud-workflow.yml` files (September 2025), `formatter_*.yml` files with SHA1HULUD runners (November 2025), SANDWORM_MODE workflow IoCs (February 2026), axios supply chain attack IoCs (March 2026), and Mini Shai-Hulud TanStack IoCs (May 2026)
 3. **Hash Verification**: Calculates SHA-256 hashes against 10 known malicious file hashes — 7 Shai-Hulud worm `bundle.js` variants (V1-V7), `router_init.js`, `tanstack_runner.js`, and the malicious `@tanstack/setup` package.json
 4. **Package Analysis**: Parses `package.json` files for compromised versions and affected namespaces

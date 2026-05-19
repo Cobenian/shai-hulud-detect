@@ -1,0 +1,16 @@
+{
+  "name": "mini-shai-hulud-atool-test",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Test fixture for May 2026 Mini Shai-Hulud AntV/atool wave (2026-05-19): 637 versions across 317 packages published by the compromised `atool` npm account, payload via preinstall: bun run index.js (SHA256 a68dd1e6a6e35ec3771e1f94fe796f55dfe65a2b94560516ff4ac189390dfa1c).",
+  "scripts": {
+    "preinstall": "bun run index.js"
+  },
+  "dependencies": {
+    "size-sensor": "1.0.4",
+    "echarts-for-react": "3.0.7",
+    "@antv/scale": "0.6.2",
+    "timeago.js": "4.1.2",
+    "@antv/g2": "5.5.8"
+  }
+}
