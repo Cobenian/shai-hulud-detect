@@ -1,661 +1,233 @@
-# Shai-Hulud Supply Chain Attack Detector (npm + PyPI)
+# Shai-Hulud Supply Chain Attack Detector
 
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Shell](https://img.shields.io/badge/shell-Bash%205.0%2B-blue)](#requirements)
 [![Status](https://img.shields.io/badge/status-Active-success)](../../)
-[![Contributions](https://img.shields.io/badge/contributions-Welcome-orange)](CONTRIBUTING.md)
+[![Tests](https://img.shields.io/badge/tests-71%20passing-brightgreen)](#testing)
+[![Packages](https://img.shields.io/badge/compromised%20packages-2%2C700%2B-red)](compromised-packages.txt)
+[![Type](https://img.shields.io/badge/type-Security%20Tool-red)](#what-it-catches)
+[![Contributions](https://img.shields.io/badge/contributions-Welcome-orange)](#contributing)
 [![Last Commit](https://img.shields.io/github/last-commit/Cobenian/shai-hulud-detect)](https://github.com/Cobenian/shai-hulud-detect/commits/main)
-[![Security Tool](https://img.shields.io/badge/type-Security%20Tool-red)](#overview)
-
 
 <img src="shai_hulu_detector.jpg" alt="sshd" width="80%" />
 
-A Bash tool that helps you spot known traces of the September 2025 through May 2026 npm and PyPI supply-chain attacks—including the Shai-Hulud self-replicating worm, the chalk/debug crypto-theft incident, the "Shai-Hulud: The Second Coming" fake Bun runtime attack, the February 2026 SANDWORM_MODE campaign, the March 2026 axios supply chain compromise, the May 2026 Mini Shai-Hulud / TanStack TheBeautifulSandsOfTime campaign (now confirmed crossing into PyPI), and the May 2026 Mini Shai-Hulud AntV/atool wave. It cross-checks 2,700+ confirmed bad package versions across multiple campaigns and checks for the most relevant red flags in your project.
-
-## Supported Ecosystems
-
-The detector auto-detects which package ecosystems your project uses and runs the relevant checks for each. Ecosystem-specific checks (manifest parsing, lockfile analysis) only fire when the relevant marker files are present; content-pattern checks (file hashes, C2 domains, dead-man's-switch artifacts, wipe-threat strings, etc.) always run.
-
-- **npm**: detected via `package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`
-- **PyPI**: detected via `pyproject.toml`, `requirements.txt`, `requirements-*.txt`, `Pipfile`, `Pipfile.lock`, `poetry.lock`, `uv.lock`, `setup.py`, `setup.cfg`
-
-Override auto-detection with `--ecosystem=npm`, `--ecosystem=pypi`, `--ecosystem=all`, or a comma-separated list. PyPI parsers are pure-bash awk (no Python required) and support exact version pins; range specifiers (`>=`, `^`, `~=`) are intentionally skipped in manifests since lockfiles always carry exact versions.
-
-### What gets scanned vs. what we use for auto-detection
-
-**Important distinction:** when the detector auto-detects which ecosystems your project uses, it deliberately ignores marker files found under `node_modules/`, `vendor/`, `.venv/`, `venv/`, `.tox/`, `site-packages/`, `dist/`, `build/`, and similar dependency/build trees. That is **only** to avoid mis-classifying your project (e.g. flagging a pure-JS project as "Python" just because a bundled npm package happens to include a `requirements.txt` for its docs tooling).
-
-The exclusion has **no effect on malware scanning**. Content inside `node_modules/` and equivalent directories is still fully scanned for:
-
-- **Compromised package versions** — `check_packages` reads every `package.json` in the tree (including `node_modules/<pkg>/package.json` for all transitive deps) and compares against the 2,700+ confirmed bad version list
-- **Lockfile integrity** — `package-lock.json`, `yarn.lock`, and `pnpm-lock.yaml` are parsed; every transitively-resolved package is checked
-- **Malicious file hashes** — SHA-256 hashes of priority files (`bundle.js`, `setup_bun.js`, `router_init.js`, etc.) are computed even inside `node_modules/`
-- **Payload filenames** — `router_init.js`, `tanstack_runner.js`, `setup_bun.js`, etc. are flagged anywhere in the tree
-- **Content patterns** — wipe-threat strings, C2 domains, malicious commit SHAs, and threat-actor references are grepped across all collected code files
-
-The two specific places where `node_modules` *is* skipped at the content level are the **paranoid-mode-only** typosquatting and network-exfiltration heuristics. Those are name-similarity / domain-substring heuristics meaningful for your declared code and dependencies, not for thousands of legit transitive deps. Compromised-version detection (the core of this tool) is unaffected and runs against every package, transitive or not.
-
-## Overview
-
-Covers multiple npm supply chain attacks from September 2025 through May 2026:
-
-### **Chalk/Debug Crypto Theft Attack** (September 8, 2025)
-- **Scope**: 18+ packages with 2+ billion weekly downloads
-- **Attack**: Cryptocurrency wallet address replacement in browsers
-- **Duration**: ~2 hours before detection
-- **Packages**: chalk, debug, ansi-styles, color-*, supports-*, and others
-- **Method**: XMLHttpRequest hijacking to steal crypto transactions
-
-### **Shai-Hulud Self-Replicating Worm** (September 14-16, 2025)
-- **Scope**: 517+ packages across multiple namespaces
-- **Attack**: Credential harvesting and self-propagation
-- **Method**: Uses Trufflehog to scan for secrets, publishes stolen data to GitHub
-- **Propagation**: Self-replicates using stolen npm tokens
-- **Packages**: @ctrl/*, @crowdstrike/*, @operato/*, and many others
-
-### **Shai-Hulud: The Second Coming** (November 24, 2025)
-- **Scope**: 300+ packages with millions of weekly downloads
-- **Attack**: Fake Bun runtime installation with credential harvesting
-- **Method**: Uses fake `setup_bun.js` preinstall hook to download and execute TruffleHog
-- **Exfiltration**: Creates GitHub Actions runners named "SHA1HULUD" and repositories with "Sha1-Hulud: The Second Coming" descriptions
-- **Packages**: @zapier/*, @posthog/*, @asyncapi/*, @postman/*, @ensdomains/*, and many others
-- **Files**: `setup_bun.js`, `bun_environment.js` (10MB+ obfuscated payload), `actionsSecrets.json` (double Base64 encoded)
-- **Workflow**: `.github/workflows/formatter_*.yml` files using SHA1HULUD runners
-
-### **Shai-Hulud: Golden Path Variant** (December 28, 2025)
-- **Scope**: Continuation of Second Coming attack with renamed files
-- **Attack**: Same fake Bun runtime technique with obfuscated file names
-- **Method**: Uses `bun_installer.js` and `environment_source.js` (renamed from `setup_bun.js` and `bun_environment.js`)
-- **Exfiltration**: Obfuscated JSON files for staging stolen credentials: `3nvir0nm3nt.json`, `cl0vd.json`, `c9nt3nts.json`, `pigS3cr3ts.json`
-- **Packages**: @vietmoney/react-big-calendar (versions 0.26.0-0.26.2)
-- **Repo Description**: "Goldox-T3chs: Only Happy Girl"
-
-### **SANDWORM_MODE AI Toolchain Poisoning** (February 17, 2026)
-- **Scope**: 19 confirmed malicious npm packages + workflow propagation IoCs
-- **Attack**: Typosquatted AI toolchain packages and poisoned CI workflow distribution
-- **Method**: Malicious GitHub Action `ci-quality/code-quality-check@v1` injects `.github/workflows/quality.yml`
-- **Threat actor aliases**: `official334`, `javaorg`
-- **Packages**: `claud-code`, `cloude-code`, `cloude`, `opencraw`, `veim`, `yarsg`, and others
-- **Source**: [Socket.dev analysis](https://socket.dev/blog/sandworm-mode-npm-worm-ai-toolchain-poisoning)
-
-### **Axios Supply Chain Attack** (March 31, 2026)
-- **Scope**: Compromised axios maintainer account publishes malicious versions with RAT dropper
-- **Attack**: Injected `plain-crypto-js` dependency delivers cross-platform Remote Access Trojan
-- **Method**: Postinstall hook runs obfuscated `setup.js` that drops platform-specific RAT; beacons every 60s
-- **C2**: `sfrclak.com` (142.11.206.73:8000)
-- **Packages**: `axios@1.14.1`, `axios@0.30.4`, `plain-crypto-js@4.2.1`
-- **Attacker accounts**: `nrwise` (`nrwise@proton.me`), hijacked `jasonsaayman` (`ifstap@proton.me`)
-- **Anti-forensics**: Dropper overwrites its own package.json version from 4.2.1 to 4.2.0
-- **Source**: [StepSecurity analysis](https://www.stepsecurity.io/blog/axios-compromised-on-npm-malicious-versions-drop-remote-access-trojan)
-
-### **Mini Shai-Hulud / TanStack TheBeautifulSandsOfTime** (May 11, 2026)
-- **Scope**: 400+ compromised package versions across @tanstack (84 versions / 42 packages), @mistralai, @opensearch-project, @uipath, @squawk, @draftlab, @draftauth, @tallyui, @beproduct, and many others
-- **Attack**: Self-spreading worm with a dead-man's-switch — hijacks legitimate release pipelines via `pull_request_target` "Pwn Request" + GitHub Actions cache poisoning + runtime OIDC token extraction; first known case of a malicious npm package shipped with valid SLSA provenance
-- **Method**: A `2.3MB` obfuscated `router_init.js` / `tanstack_runner.js` is smuggled into each tarball and triggered through an `optionalDependencies` entry pointing at an orphan commit in an attacker-owned fork; the payload installs a `gh-token-monitor` service (LaunchAgent on macOS, systemd `--user` on Linux) that polls `api.github.com/user` every 60 s and is designed to **wipe the host if the monitored GitHub token is revoked**
-- **C2**: `api.masscan.cloud`, `git-tanstack.com`, `filev2.getsession.org`, `seed1.getsession.org`
-- **Threat actor**: TeamPCP (npm/GitHub account `voicproducoes`)
-- **Wipe-threat marker**: npm token description literally reads `IfYouRevokeThisTokenItWillWipeTheComputerOfTheOwner`
-- **Marker repos**: `siridar-ghola-567`, `tleilaxu-ornithopter-43` (description: "A Mini Shai-Hulud has Appeared")
-- **Remediation caveat**: **Stop and remove the `gh-token-monitor` service BEFORE rotating tokens.** Run with `--check-host` to detect persistence artifacts.
-- **Sources**: [StepSecurity](https://www.stepsecurity.io/blog/mini-shai-hulud-is-back-a-self-spreading-supply-chain-attack-hits-the-npm-ecosystem) · [Socket](https://socket.dev/blog/tanstack-npm-packages-compromised-mini-shai-hulud-supply-chain-attack) · [Semgrep](https://semgrep.dev/blog/2026/tanstack-router-packages-hit-by-coordinated-supply-chain-attack/) · [Wiz](https://www.wiz.io/blog/mini-shai-hulud-strikes-again-tanstack-more-npm-packages-compromised) · [Snyk](https://snyk.io/blog/tanstack-npm-packages-compromised/) · [Aikido](https://www.aikido.dev/blog/mini-shai-hulud-is-back-tanstack-compromised) · [TanStack postmortem](https://tanstack.com/blog/npm-supply-chain-compromise-postmortem)
+A Bash script that scans a project — or many projects at once — for known traces of the September 2025 → May 2026 npm and PyPI supply-chain attacks. Cross-checks 2,700+ confirmed bad package versions and a library of content-pattern IoCs (file hashes, C2 domains, dead-man's-switch artifacts, wipe-threat strings, etc.).
 
 ## Quick Start
 
 ```bash
-# Clone the repository
 git clone https://github.com/Cobenian/shai-hulud-detect
 cd shai-hulud-detect
-
-# Make the script executable
 chmod +x shai-hulud-detector.sh
 
-# Scan your project for Shai-Hulud indicators
+# Scan one project
 ./shai-hulud-detector.sh /path/to/your/project
 
-# For comprehensive security scanning
-./shai-hulud-detector.sh --paranoid /path/to/your/project
-
-# Save findings to a log file for review or CI/CD artifacts
-./shai-hulud-detector.sh --save-log report.log /path/to/your/project
-
-# Scan every project under one or more parent directories and get a single report
-# (descends through "bucket" folders like ~/dev/apps/<project>; monorepos stay whole)
+# Scan every project under one or more parent dirs and get one aggregate report
 ./shai-hulud-detector.sh --bulk ~/dev ~/work
 
-# Check exit code for CI/CD integration
-./shai-hulud-detector.sh /path/to/your/project
-echo "Exit code: $?"  # 0=clean, 1=high-risk, 2=medium-risk
+# Save findings to a file (same format as CI-friendly logs)
+./shai-hulud-detector.sh --save-log report.log /path/to/project
 ```
 
-**CI/CD Integration**: The script returns appropriate exit codes (0=clean, 1=high-risk, 2=medium-risk) for seamless integration into automated security pipelines.
+**Exit codes** (drop straight into CI): `0` clean · `1` high-risk · `2` medium-risk · `3` per-project scan errored (bulk mode only).
 
-## What it Detects
+## What it catches
 
-### High Risk Indicators
-- **Malicious workflow files**: `shai-hulud-workflow.yml` files in `.github/workflows/` (September 2025), `formatter_*.yml` files using SHA1HULUD runners (November 2025), and SANDWORM_MODE workflow IoCs including `ci-quality/code-quality-check@v1` and poisoned `quality.yml` workflow references (February 2026)
-- **Known malicious file hashes**: Files matching any of 11 SHA-256 hashes spanning the Shai-Hulud worm variants (V1-V7), the Mini Shai-Hulud `router_init.js` / `tanstack_runner.js` payloads, the malicious `@tanstack/setup` package.json, and the May 19 AntV/atool wave's 498KB obfuscated Bun bundle — sourced from [Socket.dev's comprehensive attack analysis](https://socket.dev/blog/ongoing-supply-chain-attack-targets-crowdstrike-npm-packages), [StepSecurity's Mini Shai-Hulud disclosure](https://www.stepsecurity.io/blog/mini-shai-hulud-is-back-a-self-spreading-supply-chain-attack-hits-the-npm-ecosystem), and [SafeDep's May 19 AntV-wave disclosure](https://safedep.io/mini-shai-hulud-strikes-again-314-npm-packages-compromised/)
-- **November 2025 Bun attack files**: `setup_bun.js`/`bun_installer.js` (fake Bun runtime installer) and `bun_environment.js`/`environment_source.js` (10MB+ obfuscated credential harvesting payload)
-- **Obfuscated exfiltration files**: `3nvir0nm3nt.json`, `cl0vd.json`, `c9nt3nts.json`, `pigS3cr3ts.json` (Golden Path variant - stolen credentials staged for exfiltration)
-- **Compromised package versions**: Specific versions of 2,700+ packages from multiple attacks (September 2025 through May 2026)
-- **Suspicious postinstall hooks**: Package.json files with postinstall scripts containing curl, wget, eval commands, or fake Bun installation (`"preinstall": "node setup_bun.js"`)
-- **Trufflehog activity**: Files containing trufflehog references, credential scanning patterns, or November 2025 enhanced patterns (automated TruffleHog download and execution)
-- **Shai-Hulud repositories**: Git repositories named "Shai-Hulud" (used for data exfiltration) or with "Sha1-Hulud: The Second Coming" or "Goldox-T3chs: Only Happy Girl" descriptions
-- **Secrets exfiltration files**: `actionsSecrets.json` files with double Base64 encoded credentials (November 2025)
-- **SHA1HULUD GitHub Actions runners**: GitHub Actions workflows using malicious runners for credential theft
-- **SANDWORM_MODE workflow IoCs**: Workflow files containing `ci-quality/code-quality-check@v1`, actor aliases (`official334`, `javaorg`), or related propagation module references
-- **Axios supply chain attack IoCs**: C2 domain `sfrclak.com` / IP `142.11.206.73`, XOR key `OrDeR_7077`, `plain-crypto-js` dependency (malicious RAT dropper), and filesystem persistence artifacts (March 2026)
-- **Mini Shai-Hulud / TanStack IoCs** (May 11 wave): `router_init.js` / `tanstack_runner.js` payload files; wipe-threat token-description string `IfYouRevokeThisTokenItWillWipeTheComputerOfTheOwner`; marker repos `siridar-ghola-567` / `tleilaxu-ornithopter-43`; C2 domains `api.masscan.cloud`, `git-tanstack.com`, `filev2.getsession.org`, `seed1.getsession.org`; threat-actor reference `voicproducoes`; malicious orphan-commit SHA `79ac49eedf774dd4b0cfa308722bc463cfe5885c`; campaign-specific PBKDF2 constants; structural `package.json` signals (orphan-commit `optionalDependencies`, `bun run tanstack_runner.js` prepare hook, fake `@tanstack/setup` reference)
-- **Mini Shai-Hulud / AntV/atool IoCs** (May 19 wave): payload SHA-256 `a68dd1e6a6e35ec3771e1f94fe796f55dfe65a2b94560516ff4ac189390dfa1c`; C2 domain `t.m-kosche.com` (disguised as OpenTelemetry trace collector); exfil-repo beacon string `niagA oG eW ereH :duluH-iahS`; threat-actor publisher fingerprint `"_npmUser":{"name":"atool"`; forged commit-author email `huiyu.zjt@ant.com`; C2 dead-drop trigger keyword `firedalazer`; three malicious orphan-commit SHAs in `antvis/G2` (`1916faa365…`, `7cb42f5756…`, `dc3d62a218…`); structural `package.json` signals (`"preinstall": "bun run index.js"`, `github:antvis/G2#<sha>` orphan-commit `optionalDependencies`)
-- **PyPI cross-ecosystem spread (TeamPCP threat actor, March-May 2026)**: 11 malicious version artifacts across 6 projects — `pypi:mistralai:2.4.6`, `pypi:guardrails-ai:0.10.1` (May 2026 Mini Shai-Hulud); `pypi:lightning:2.6.2`, `pypi:lightning:2.6.3` (April 2026 sub-wave); `pypi:xinference:2.6.0`/`:2.6.1`/`:2.6.2` (April 2026); `pypi:telnyx:4.87.1`/`:4.87.2` (March 2026); `pypi:litellm:1.82.7`/`:1.82.8` (March 2026)
-- **Mini Shai-Hulud dead-man's-switch artifacts** (opt-in via `--check-host`): both the May 11 wave's `gh-token-monitor` variant (`~/Library/LaunchAgents/com.user.gh-token-monitor.plist`, `~/.config/systemd/user/gh-token-monitor.service`, `~/.local/bin/gh-token-monitor.sh`, `~/.config/gh-token-monitor/token`) and the May 19 wave's `kitty-monitor` variant (`~/Library/LaunchAgents/com.user.kitty-monitor.plist`, `~/.config/systemd/user/kitty-monitor.service`, `~/.local/bin/kitty-monitor.sh`, `~/.config/kitty-monitor/token`, `~/.local/share/kitty/cat.py`, `/var/tmp/.gh_update_state`) — both reported with a CRITICAL warning that revoking a monitored GitHub token before stopping the service is designed to trigger a destructive wipe
+The detector looks for two kinds of evidence on disk:
 
-### Medium Risk Indicators
-- **Suspicious content patterns**: References to `webhook.site` and the malicious endpoint `bb8ca5f6-4175-45d2-b042-fc9ebb8170b7`
-- **Suspicious git branches**: Branches named "shai-hulud"
-- **Semver pattern matching**: Packages that could become compromised during `npm update` due to caret (^) or tilde (~) version patterns
+1. **Compromised package versions** — every `package.json`, lockfile, `pyproject.toml`, `requirements.txt`, `Pipfile`, `poetry.lock`, `uv.lock`, etc. is parsed and the resolved versions are checked against the 2,700+-entry list in [`compromised-packages.txt`](compromised-packages.txt). Transitive deps inside `node_modules/` are checked too, not skipped.
+2. **Content-pattern IoCs** — known-malicious file hashes, payload filenames, C2 domains, dead-man's-switch artifacts, marker repo names, malicious workflow files, forged orphan-commit references, suspicious lifecycle hooks, and threat-actor publisher fingerprints. These don't depend on the package list and fire even if the bad package has been uninstalled but the dropper traces remain.
 
-### Low Risk Indicators
-- **Namespace warnings**: Packages from namespaces known to be affected (@ctrl, @crowdstrike, @art-ws, @ngx, @nativescript-community) but at safe versions
+| Wave | Date | Scope | More |
+|---|---|---|---|
+| Chalk/Debug crypto theft | 2025-09-08 | 18+ packages, ~2B weekly downloads | [CHANGELOG](CHANGELOG.md) |
+| Shai-Hulud worm | 2025-09-14 | 517+ packages (@ctrl, @crowdstrike, …) | [CHANGELOG](CHANGELOG.md) |
+| Shai-Hulud "Second Coming" (fake Bun) | 2025-11-24 | 1,100+ packages | [CHANGELOG](CHANGELOG.md) |
+| Golden Path variant | 2025-12-28 | renamed Bun-attack files | [CHANGELOG](CHANGELOG.md) |
+| SANDWORM_MODE workflow poisoning | 2026-02-17 | 19 packages + GitHub Action | [CHANGELOG](CHANGELOG.md) |
+| Axios RAT compromise | 2026-03-31 | `axios@1.14.1`/`0.30.4` + `plain-crypto-js` | [CHANGELOG](CHANGELOG.md) |
+| Mini Shai-Hulud / TanStack | 2026-05-11 | 400+ versions, dead-man's-switch | [CHANGELOG](CHANGELOG.md) |
+| Mini Shai-Hulud / AntV (atool) | 2026-05-19 | 643 versions, 323 packages | [CHANGELOG](CHANGELOG.md) |
+| PyPI cross-spread (TeamPCP) | 2026-03 → 05 | `litellm`, `telnyx`, `xinference`, `lightning`, `mistralai`, `guardrails-ai` | [CHANGELOG](CHANGELOG.md) |
 
-### Package Detection Method
+For per-wave IoC inventories, payload hashes, source advisories, and version-by-version lists, see [`CHANGELOG.md`](CHANGELOG.md).
 
-The script loads a list of the compromised packages from an external file (`compromised-packages.txt`) which contains:
-- **2,700+ confirmed compromised package versions** with exact version numbers (September 2025 through May 2026 campaigns)
-- **30+ affected namespaces** for broader detection of packages from compromised maintainer accounts
-- **Multi-ecosystem entries**: bare lines (e.g. `axios:1.14.1`) are interpreted as npm for backward compatibility; PyPI entries use the `pypi:` prefix (e.g. `pypi:mistralai:2.4.6`); npm entries may use the explicit `npm:` prefix.
+> ### ⚠️ Dead-man's-switch warning
+> Two waves (May 11 and May 19, 2026) install a persistence daemon (`gh-token-monitor` / `kitty-monitor`) that **wipes the host if its monitored GitHub token is revoked**. Run with `--check-host` to detect the persistence artifacts. If they're present, **stop and remove the service BEFORE rotating any tokens**. The console summary and aggregate report both print a safe remediation order.
 
-### Maintaining and Updating the Package List
+## Ecosystems
 
-**Important**: The Shai-Hulud attack was self-replicating, meaning new compromised packages may still be discovered. The compromised packages list is stored in `compromised-packages.txt` for easy maintenance:
+| Ecosystem | Auto-detected via | Status |
+|---|---|---|
+| **npm** | `package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml` | Full support |
+| **PyPI** | `pyproject.toml`, `requirements*.txt`, `Pipfile`, `Pipfile.lock`, `poetry.lock`, `uv.lock`, `setup.py`, `setup.cfg` | Full support (pure-bash awk parsers, no Python required) |
 
-- **Format**: `package_name:version` (one per line)
-- **Comments**: Lines starting with `#` are ignored
-- **Updates**: The file can be updated as new compromised packages are discovered
-- **Fallback**: If the file is missing, the script uses a core embedded list
+Auto-detection looks for marker files in your tree, skipping `node_modules/`, `vendor/`, `.venv/`, `venv/`, `.tox/`, `site-packages/`, `dist/`, `build/`, and similar trees. **That exclusion only decides which checks to run** — content inside `node_modules/` is still fully scanned for compromised versions and malware indicators. Override auto-detection with `--ecosystem=npm`, `--ecosystem=pypi`, `--ecosystem=all`, or a comma-separated list.
 
-### Staying Updated on New Compromised Packages
+## CI/CD
 
-Check these security advisories regularly for newly discovered compromised packages:
-
-- **[StepSecurity Blog](https://www.stepsecurity.io/blog/ctrl-tinycolor-and-40-npm-packages-compromised)** - Original comprehensive analysis
-- **[Semgrep Security Advisory](https://semgrep.dev/blog/2025/security-advisory-npm-packages-using-secret-scanning-tools-to-steal-credentials/)** - Detailed technical analysis
-- **[JFrog Security Research](https://jfrog.com/blog/shai-hulud-npm-supply-chain-attack-new-compromised-packages-detected/)** - Ongoing detection of new packages
-- **[Wiz Security Blog](https://www.wiz.io/blog/shai-hulud-npm-supply-chain-attack)** - Attack analysis with package appendix
-- **[Socket.dev Blog](https://socket.dev/blog/ongoing-supply-chain-attack-targets-crowdstrike-npm-packages)** - CrowdStrike package analysis
-- **[Socket.dev Blog](https://socket.dev/blog/sandworm-mode-npm-worm-ai-toolchain-poisoning)** - SANDWORM_MODE AI toolchain poisoning campaign
-- **[HelixGuard](https://helixguard.ai/blog/malicious-sha1hulud-2025-11-24)** - Second Coming analysis
-- **[StepSecurity Blog](https://www.stepsecurity.io/blog/axios-compromised-on-npm-malicious-versions-drop-remote-access-trojan)** - March 2026 axios supply chain compromise
-- **[StepSecurity Blog](https://www.stepsecurity.io/blog/mini-shai-hulud-is-back-a-self-spreading-supply-chain-attack-hits-the-npm-ecosystem)** - May 2026 Mini Shai-Hulud / TanStack TheBeautifulSandsOfTime campaign
-- **[Socket.dev Blog](https://socket.dev/blog/tanstack-npm-packages-compromised-mini-shai-hulud-supply-chain-attack)** - Mini Shai-Hulud TanStack package inventory
-- **[Semgrep Blog](https://semgrep.dev/blog/2026/tanstack-router-packages-hit-by-coordinated-supply-chain-attack/)** - Mini Shai-Hulud full IoC list
-- **[TanStack Postmortem](https://tanstack.com/blog/npm-supply-chain-compromise-postmortem)** - Authoritative incident postmortem
-
-### How to Add Newly Discovered Packages
-
-1. Check the security advisories above for new compromised packages
-2. Add them to `compromised-packages.txt` in the format `package_name:version`
-3. Test the script to ensure detection works
-4. Consider contributing updates back to this repository
-
-**Coverage Note**: Multiple campaigns from September 2025 through May 2026 affected 2,700+ packages total. Our detection aims to provide **comprehensive coverage** across the Shai-Hulud worm (517+ packages), Chalk/Debug crypto theft (26+ packages), "Shai-Hulud: The Second Coming" fake Bun runtime attack (1,100+ packages), the Golden Path variant, the February 2026 SANDWORM_MODE campaign, the March 2026 axios supply chain compromise, the May 2026 Mini Shai-Hulud / TanStack TheBeautifulSandsOfTime campaign (400+ packages), and the May 2026 Mini Shai-Hulud AntV/atool wave (323 packages).
-
-### Core vs Paranoid Mode
-
-**Core Mode (Default)**
-- Focuses specifically on Shai-Hulud attack indicators
-- Recommended for most users checking for this specific threat
-- Clean, focused output with minimal false positives
-
-**Paranoid Mode (`--paranoid`)**
-- Includes all core Shai-Hulud detection PLUS additional security checks
-- Adds typosquatting detection and network exfiltration pattern analysis
-- **Important**: Paranoid features are general security tools, not specific to Shai-Hulud
-- May produce more false positives from legitimate code
-- Useful for comprehensive security auditing
-
-**Semver Range Checking (`--check-semver-ranges`)**
-- Checks if package.json semver ranges (^, ~) could resolve to compromised versions
-- Reports LOW risk in both cases (informational warning about latent risk)
-- Useful for identifying latent risk in private npm caches that may still have malicious versions
-
-## Requirements
-
-- macOS or Unix-like system
-- **Bash 5.0 or newer** (required for associative arrays and performance features)
-  - macOS: `brew install bash` then run with `/opt/homebrew/bin/bash ./shai-hulud-detector.sh`
-  - Linux: Most modern distributions include Bash 5.x by default
-  - Check your version: `bash --version`
-- Standard Unix tools: `find`, `grep`, `shasum`
-
-### Grep Tool Selection
-
-The script automatically selects the fastest available grep tool in this priority order:
-1. **git grep** (default) - Uses a DFA-based regex engine with no backtracking, fastest for our patterns (~40% faster than ripgrep)
-2. **ripgrep** (fallback) - Also DFA-based, excellent performance
-3. **grep** (last resort) - May experience catastrophic backtracking on complex patterns
-
-You can override the auto-selection with flags:
-- `--use-git-grep` - Force git grep
-- `--use-ripgrep` - Force ripgrep
-- `--use-grep` - Force standard grep
-
-**Why git grep is default**: Our testing shows git grep is ~40% faster than ripgrep on large codebases. Both use DFA-based regex engines that avoid the catastrophic backtracking that causes standard grep to hang on complex patterns.
-
-## Output Interpretation
-
-### Clean System
-```
-✅ No indicators of Shai-Hulud compromise detected.
-Your system appears clean from this specific attack.
-```
-
-### Compromised System
-The script will show:
-- **🚨 HIGH RISK**: Definitive indicators of compromise
-- **⚠️ MEDIUM RISK**: Suspicious patterns requiring manual review
-- **Summary**: Count of issues found
-
-### What to Do if Issues are Found
-
-#### High Risk Issues
-- **Immediate action required**
-- Update or remove compromised packages
-- Review and remove malicious workflow files
-- Scan for credential theft
-- Consider full system audit
-
-#### Medium Risk Issues
-- **Manual investigation needed**
-- Review flagged files for legitimacy
-- Check if webhook.site usage is intentional
-- Verify git branch purposes
-
-## Exit Codes for CI/CD Integration
-
-The script returns specific exit codes to enable proper CI/CD pipeline integration:
-
-- **Exit Code 0**: Clean system - no significant security findings
-- **Exit Code 1**: High-risk findings detected - immediate action required
-- **Exit Code 2**: Medium-risk findings detected - manual investigation needed
-
-### CI/CD Pipeline Examples
-
-#### GitHub Actions
 ```yaml
-- name: Security Scan with Shai-Hulud Detector
+- name: Shai-Hulud scan
   run: |
     chmod +x ./shai-hulud-detector.sh
-    ./shai-hulud-detector.sh .
-  # Pipeline will automatically fail on exit codes 1 or 2
+    ./shai-hulud-detector.sh --save-log shai-hulud-report.log .
+  # Job fails on exit 1 (high-risk) or 2 (medium-risk)
+- uses: actions/upload-artifact@v4
+  if: always()
+  with:
+    name: shai-hulud-report
+    path: shai-hulud-report.log
 ```
 
-#### GitLab CI
-```yaml
-security_scan:
-  script:
-    - chmod +x ./shai-hulud-detector.sh
-    - ./shai-hulud-detector.sh .
-  # Job fails automatically on non-zero exit codes
-```
+For GitLab CI, Jenkins, and a custom exit-code handler in shell, see [`docs/ci-examples.md`](docs/ci-examples.md) — or just call the script and switch on `$?`, the exit-code contract is the same everywhere.
 
-#### Jenkins
-```groovy
-stage('Security Scan') {
-  steps {
-    sh '''
-      chmod +x ./shai-hulud-detector.sh
-      ./shai-hulud-detector.sh .
-    '''
-  }
-  // Build fails automatically on non-zero exit codes
-}
-```
+## Common scenarios
 
-#### Custom Handling by Exit Code
-```bash
-#!/bin/bash
-./shai-hulud-detector.sh .
-exit_code=$?
-
-case $exit_code in
-    0) echo "✅ Security scan passed - no issues found" ;;
-    1) echo "🚨 CRITICAL: High-risk security issues found - blocking deployment"
-       exit 1 ;;
-    2) echo "⚠️ WARNING: Medium-risk issues found - review required"
-       # Could choose to continue with warnings
-       ;;
-esac
-```
-
-### Saving Findings to a Log File
-
-Use `--save-log FILE` to save all detected file paths to a structured log file:
+### Scan many projects at once (`--bulk`)
 
 ```bash
-./shai-hulud-detector.sh --save-log findings.log /path/to/project
+./shai-hulud-detector.sh --bulk ~/dev ~/work                 # auto-discover all projects
+./shai-hulud-detector.sh --bulk --paranoid --bulk-output ./audit ~/dev
+./shai-hulud-detector.sh --bulk --bulk-list ~/dev            # dry-run: print what would be scanned
 ```
 
-The log file contains file paths grouped by severity level:
+Project discovery is content-aware: a directory with `.git`, a `package.json`, a `pyproject.toml`, `Cargo.toml`, `go.mod`, etc. is one scan unit (monorepos stay whole). "Bucket" folders like `~/dev/clients/<client>/<project>` are descended into. `node_modules`, `vendor`, `dist`, build dirs, and hidden dirs are never entered. The detector's own repo is skipped automatically. Unreadable directories are reported instead of silently skipped.
+
+Output goes to `./shai-hulud-bulk-report-<timestamp>/` (or `--bulk-output DIR`):
+
+```
+shai-hulud-bulk-report-<timestamp>/
+├── aggregate-report.md      # summary tables + per-project results + remediation
+└── per-repo/
+    ├── <project>.findings.log    # severity-grouped file paths
+    └── <project>.console.txt     # full scan output, ANSI-stripped
+```
+
+### Paranoid mode (`--paranoid`)
+
+Adds typosquatting detection and network-exfiltration heuristics on top of the core checks. These are general-purpose security signals, not Shai-Hulud-specific, and produce more false positives — useful for audits, not recommended for CI gating.
+
+### Host-level persistence scan (`--check-host`)
+
+Walks `$HOME` for the May 2026 dead-man's-switch artifacts (`gh-token-monitor`, `kitty-monitor`). Off by default. See the warning above before remediating any findings.
+
+### Save findings to a log file (`--save-log FILE`)
+
+Writes flagged file paths grouped by severity, in a format friendly to grep and CI artifact uploads:
 
 ```
 # HIGH
-/path/to/malicious-workflow.yml
-/path/to/compromised-package.json
+/path/to/router_init.js
+/path/to/package.json
 # MEDIUM
 /path/to/suspicious-content.js
 # LOW
 /path/to/namespace-warning.json
 ```
 
-This format is designed for:
-- **CI/CD artifacts**: Store scan results as build artifacts for review
-- **Programmatic parsing**: Easy to parse with simple scripts
-- **Full coverage**: Includes ALL findings without display truncation
+### Other flags
 
-## Bulk Scanning Multiple Projects
+| Flag | Effect |
+|---|---|
+| `--check-semver-ranges` | Flag `^`/`~` ranges that could resolve to compromised versions (informational, LOW risk). |
+| `--ecosystem LIST` | Restrict checks to `npm`, `pypi`, `all`, or a comma-separated list. Default: auto-detect. |
+| `--parallelism N` | Threads for parallelisable steps. Defaults to your CPU count. |
+| `--use-git-grep` / `--use-ripgrep` / `--use-grep` | Force a specific grep tool. Default: auto-select fastest available. |
+| `--bulk-depth N` | Depth cap for bulk discovery (default 3). `--bulk-depth 1` = flat. |
+| `--bulk-list` | With `--bulk`: print what would be scanned and exit. |
+| `--bulk-output DIR` | Where to write the bulk report (default `./shai-hulud-bulk-report-<timestamp>/`). |
 
-Use `--bulk` to scan every project under one or more parent directories in a single run and get one aggregate report instead of scanning each project by hand:
+## How it works
 
-```bash
-# Scan every project found under ~/dev and ~/work
-./shai-hulud-detector.sh --bulk ~/dev ~/work
+1. **Collect** the file inventory (one `find` pass, categorized by extension).
+2. **Detect** ecosystems from marker files, decide which package-level checks to run.
+3. **Match** every resolved package version against `compromised-packages.txt` via a sorted set-intersection (`comm -12`).
+4. **Hash** priority files (`bundle.js`, `setup_bun.js`, `router_init.js`, `tanstack_runner.js`, `cat.py`, etc.) and compare against 11 known-malicious SHA-256s.
+5. **Grep** for content-pattern IoCs: C2 domains, threat-actor accounts, dead-man's-switch service names, wipe-threat strings, malicious commit SHAs, beacon strings, payload filenames, orphan-commit `optionalDependencies` patterns.
+6. **(Opt-in)** scan `$HOME` for persistence artifacts (`--check-host`); run typosquatting + network-exfil heuristics (`--paranoid`); flag latent semver-range risk (`--check-semver-ranges`).
+7. **Report** in three severity tiers (HIGH/MEDIUM/LOW), with remediation order for the safety-critical findings.
 
-# Same, but with --paranoid (passed through to every per-project scan)
-# and a custom output directory
-./shai-hulud-detector.sh --bulk --paranoid --bulk-output ./audit-2026-05 ~/dev ~/work
+Detection is read-only. The script never modifies, deletes, or quarantines anything — manual review and remediation are on you.
 
-# Preview what would be scanned, without actually scanning (one absolute path per line)
-./shai-hulud-detector.sh --bulk --bulk-list ~/dev ~/work
-```
-
-### How projects are discovered
-
-The positional arguments to `--bulk` are treated as **parent directories**, not projects. Under each one, the detector finds the actual projects to scan:
-
-- A directory is taken as **one scan unit** when it looks like a project — it contains a `.git` directory (or worktree file), or a recognised manifest/lockfile: `package.json`, `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `pyproject.toml`, `setup.py`, `setup.cfg`, `Pipfile`, `poetry.lock`, `uv.lock`, `requirements*.txt`, `Cargo.toml`, `go.mod`, `composer.json`, `Gemfile`, `pom.xml`, `build.gradle`, or `Package.swift`.
-- **Monorepos are scanned whole** — discovery stops at the first project marker, so a workspaces-style repo is one entry, not one per workspace package.
-- **"Bucket" folders are descended into** — a directory with no marker of its own but with projects underneath (e.g. `~/dev/apps/<project>`, or `~/work/clients/<client>/<project>`) is expanded into its projects. This is recursive, so nested buckets are handled too.
-- A folder with **no projects anywhere beneath it** (a plain content folder — notes, assets, etc.) is scanned as-is, so content-pattern checks still run on it.
-- `node_modules`, `vendor`, `dist`, `build`, `target`, `coverage`, `.venv`, `__pycache__`, `site-packages`, hidden directories, etc. are never descended into during discovery.
-- `--bulk-depth N` (default `3`) caps how many levels below each parent the bucket-descent goes. A directory that already looks like a project is taken whole *regardless of depth*, so the cap only limits descent through nested bucket folders. Use `--bulk-depth 1` for flat behaviour (one entry per immediate subdirectory). The detector's own repository is always skipped (its `test-cases/` directory contains intentional malicious fixtures).
-
-### Output
-
-`--bulk` writes everything under the output directory (default `./shai-hulud-bulk-report-<timestamp>/`, or `--bulk-output DIR`):
+## Output
 
 ```
-shai-hulud-bulk-report-<timestamp>/
-├── aggregate-report.md          # Markdown: summary tables, per-project results, findings detail
-└── per-repo/
-    ├── <project>.findings.log   # flagged file paths, grouped by severity (same format as --save-log)
-    └── <project>.console.txt    # the full per-project scan output (plain text)
+✅ No indicators of Shai-Hulud compromise detected.   ← clean, exit 0
+🚨 HIGH RISK: ...                                     ← exit 1, immediate action
+⚠️  MEDIUM RISK: ...                                  ← exit 2, manual review
 ```
 
-`--paranoid`, `--check-semver-ranges`, `--ecosystem`, `--parallelism`, and the grep-tool flags are passed through to every per-project scan.
+**HIGH**: definitive indicators — compromised package version, known-malicious file hash, malicious workflow, dead-man's-switch artifact. Stop and remediate.
 
-### Exit codes
+**MEDIUM**: suspicious patterns that warrant a look — semver range that could match a compromised version, references to webhook redirector domains, suspicious git branches.
 
-`--bulk` aggregates the per-project results into one exit code, mirroring the single-scan convention:
+**LOW**: informational notes — namespace warnings (packages from affected namespaces at safe versions), legitimate-looking patterns that share shape with attack techniques.
 
-- **0** — every project clean
-- **1** — at least one project flagged **high-risk**
-- **2** — at least one project flagged **medium-risk** (and none high-risk)
-- **3** — at least one per-project scan failed to complete (inspect that project's `per-repo/<project>.console.txt`)
+## Requirements
 
-### CI/CD example
+- **Bash 5.0+** (associative arrays, `mapfile`). macOS ships 3.x; install with `brew install bash` and invoke via `/opt/homebrew/bin/bash`.
+- Standard Unix tools: `find`, `grep`, `awk`, `sed`, `sort`, `comm`, `shasum` (or `sha256sum`), `xargs`. All POSIX-portable.
+- Tested on macOS (Bash 5), Linux, and Git Bash for Windows.
 
-```yaml
-- name: Bulk Shai-Hulud scan of all repos
-  run: |
-    chmod +x ./shai-hulud-detector.sh
-    ./shai-hulud-detector.sh --bulk --bulk-output bulk-report .
-  # Pipeline fails on exit codes 1, 2, or 3
-- uses: actions/upload-artifact@v4
-  if: always()
-  with:
-    name: shai-hulud-bulk-report
-    path: bulk-report/
-```
-
-## Testing
-
-The repository includes a comprehensive test suite with 43 test cases. Use the automated test runner to validate all cases:
-
-```bash
-# Run the full test suite (recommended)
-./run-tests.sh
-
-# The test suite validates expected exit codes and risk levels for all test cases
-# Exit codes: 0=clean, 1=high-risk, 2=medium-risk
-```
-
-You can also run individual test cases manually:
-
-```bash
-# Test on clean project (should show no issues)
-./shai-hulud-detector.sh test-cases/clean-project
-
-# Test on infected project (should show multiple issues)
-./shai-hulud-detector.sh test-cases/infected-project
-
-# Test November 2025 "Shai-Hulud: The Second Coming" attack (should show HIGH risk for all new patterns)
-./shai-hulud-detector.sh test-cases/november-2025-attack
-
-# Test on mixed project (should show medium risk issues)
-./shai-hulud-detector.sh test-cases/mixed-project
-
-# Test namespace warnings (should show LOW risk namespace warnings only)
-./shai-hulud-detector.sh test-cases/namespace-warning
-
-# Test semver matching (should show MEDIUM risk for packages that could match compromised versions)
-./shai-hulud-detector.sh test-cases/semver-matching
-
-# Test legitimate crypto libraries (should show MEDIUM risk only)
-./shai-hulud-detector.sh test-cases/legitimate-crypto
-
-# Test chalk/debug attack patterns (should show HIGH risk compromised packages + MEDIUM risk crypto patterns)
-./shai-hulud-detector.sh test-cases/chalk-debug-attack
-
-# Test common crypto libraries (should not trigger HIGH risk false positives)
-./shai-hulud-detector.sh test-cases/common-crypto-libs
-
-# Test legitimate XMLHttpRequest modifications (should show LOW risk only)
-./shai-hulud-detector.sh test-cases/xmlhttp-legitimate
-
-# Test malicious XMLHttpRequest with crypto patterns (should show HIGH risk crypto theft + MEDIUM risk XMLHttpRequest patterns)
-./shai-hulud-detector.sh test-cases/xmlhttp-malicious
-
-# Test lockfile false positive (should show no issues despite other package having compromised version)
-./shai-hulud-detector.sh test-cases/lockfile-false-positive
-
-# Test actual compromised package in lockfile (should show HIGH risk)
-./shai-hulud-detector.sh test-cases/lockfile-compromised
-
-# Test packages with safe lockfile versions (should show LOW risk with lockfile protection message)
-./shai-hulud-detector.sh test-cases/lockfile-safe-versions
-
-# Test mixed lockfile scenario (should show HIGH risk for compromised + LOW risk for safe)
-./shai-hulud-detector.sh test-cases/lockfile-comprehensive-test
-
-# Test packages without lockfile (should show MEDIUM risk for potential update risks)
-./shai-hulud-detector.sh test-cases/no-lockfile-test
-
-# Test typosquatting detection with paranoid mode (should show MEDIUM risk typosquatting warnings)
-./shai-hulud-detector.sh --paranoid test-cases/typosquatting-project
-
-# Test network exfiltration detection with paranoid mode (should show HIGH risk credential harvesting + MEDIUM risk network patterns)
-./shai-hulud-detector.sh --paranoid test-cases/network-exfiltration-project
-
-# Test clean project with paranoid mode (should show no issues - verifies no false positives)
-./shai-hulud-detector.sh --paranoid test-cases/clean-project
-
-# Test semver wildcard parsing (should correctly handle 4.x, 1.2.x patterns without errors)
-./shai-hulud-detector.sh test-cases/semver-wildcards
-
-# Test discussion workflow detection (should show CRITICAL risk for malicious discussion-triggered workflows)
-./shai-hulud-detector.sh test-cases/discussion-workflows
-
-# Test SANDWORM_MODE workflow IOC detection (should show HIGH risk for poisoned ci-quality action usage)
-./shai-hulud-detector.sh test-cases/sandworm-mode-workflow
-
-# Test axios supply chain attack IOC detection (should show HIGH risk for C2, XOR key, plain-crypto-js)
-./shai-hulud-detector.sh test-cases/axios-attack
-
-# Test Mini Shai-Hulud / TanStack TheBeautifulSandsOfTime IOC detection (May 2026; should show HIGH risk)
-./shai-hulud-detector.sh test-cases/tanstack-attack
-
-# Test Mini Shai-Hulud dead-man's-switch artifact detection (should show HIGH risk + wipe warning)
-./shai-hulud-detector.sh test-cases/mini-shai-hulud-dead-mans-switch
-
-# Test last-known-good @tanstack/* versions (should be clean — no false positives)
-./shai-hulud-detector.sh test-cases/tanstack-clean
-
-# Test PyPI Mini Shai-Hulud cross-ecosystem spread (requirements.txt with mistralai==2.4.6)
-./shai-hulud-detector.sh test-cases/pypi-attack-requirements
-
-# Test PyPI compromise in Poetry project (pyproject.toml + poetry.lock with guardrails-ai==0.10.1)
-./shai-hulud-detector.sh test-cases/pypi-attack-poetry
-
-# Test polyglot project with both npm AND PyPI compromises (exercises auto-detection of both ecosystems)
-./shai-hulud-detector.sh test-cases/polyglot-attack
-
-# Test safe PyPI versions (should be clean — verifies no false positives)
-./shai-hulud-detector.sh test-cases/pypi-clean
-
-# Test GitHub Actions runner detection (should show CRITICAL risk for SHA1HULUD self-hosted runners)
-./shai-hulud-detector.sh test-cases/github-actions-runners
-
-# Test file hash verification (should validate benign files against malicious hashes)
-./shai-hulud-detector.sh test-cases/hash-verification
-
-# Test destructive pattern detection (should show CRITICAL risk for data destruction commands)
-./shai-hulud-detector.sh test-cases/destructive-patterns
-```
-
-### Paranoid Mode Testing
-
-The `--paranoid` flag enables additional security checks beyond Shai-Hulud-specific detection:
-
-- **Typosquatting Detection**: Identifies packages with names similar to popular packages (e.g., "raect" instead of "react", "lodsh" instead of "lodash")
-- **Network Exfiltration Patterns**: Detects suspicious domains (webhook.site, pastebin.com), hardcoded IP addresses, WebSocket connections to external endpoints
-- **Enhanced Security Auditing**: Useful for comprehensive project security reviews
-
-**Note**: Paranoid mode may produce more false positives from legitimate code patterns, so review findings carefully.
-
-## How it Works
-
-The script performs these checks:
-
-1. **Package Database Loading**: Loads 2,700+ compromised packages from `compromised-packages.txt` into O(1) lookup maps
-2. **Workflow Detection**: Searches for `shai-hulud-workflow.yml` files (September 2025), `formatter_*.yml` files with SHA1HULUD runners (November 2025), SANDWORM_MODE workflow IoCs (February 2026), axios supply chain attack IoCs (March 2026), and Mini Shai-Hulud TanStack IoCs (May 2026)
-3. **Hash Verification**: Calculates SHA-256 hashes against 10 known malicious file hashes — 7 Shai-Hulud worm `bundle.js` variants (V1-V7), `router_init.js`, `tanstack_runner.js`, and the malicious `@tanstack/setup` package.json
-4. **Package Analysis**: Parses `package.json` files for compromised versions and affected namespaces
-5. **Semver Range Checking** (opt-in with `--check-semver-ranges`): Checks if version ranges could resolve to compromised versions
-6. **Postinstall Hook Detection**: Identifies suspicious postinstall/preinstall scripts containing curl, wget, eval, or fake Bun patterns
-7. **Content Scanning**: Searches for suspicious URLs, webhook endpoints, and malicious patterns
-8. **Cryptocurrency Theft Detection**: Identifies wallet replacement patterns, XMLHttpRequest hijacking, and crypto theft functions
-9. **Trufflehog Activity Detection**: Looks for credential scanning tools and secret harvesting patterns
-10. **Git Analysis**: Checks for suspicious branch names ("shai-hulud")
-11. **Repository Detection**: Identifies "Shai-Hulud", "Second Coming", and "Goldox-T3chs" repository patterns
-12. **November 2025 Bun Attack Detection**: Identifies `setup_bun.js`/`bun_installer.js` and `bun_environment.js`/`environment_source.js` attack files
-13. **GitHub Actions Runner Detection**: Identifies malicious SHA1HULUD runners
-14. **Discussion Workflow Detection**: Identifies workflows that trigger on discussion events (stealth persistence)
-15. **Destructive Payload Detection**: Identifies destructive fallback patterns (`rm -rf`, `fs.rmSync`, etc.)
-16. **Lockfile Integrity Checking**: Analyzes package-lock.json, yarn.lock, and pnpm-lock.yaml for compromised packages
-17. **Typosquatting Detection** (paranoid mode): Identifies packages with names similar to popular packages
-18. **Network Exfiltration Detection** (paranoid mode): Detects suspicious domains and hardcoded IPs
-19. **Obfuscated Exfiltration Detection**: Identifies Golden Path variant staging files (`3nvir0nm3nt.json`, `cl0vd.json`, etc.)
-20. **Mini Shai-Hulud / TanStack TheBeautifulSandsOfTime Detection** (May 2026): Identifies `router_init.js` / `tanstack_runner.js` payloads, the wipe-threat token-description string, marker repos, C2 domains, threat-actor references, malicious orphan-commit `optionalDependencies`, fake `@tanstack/setup` references, and (opt-in via `--check-host`) the `gh-token-monitor` dead-man's-switch persistence artifacts on the host. CRITICAL: revoking a monitored GitHub token while the service is active is designed to trigger a destructive wipe — stop the service before rotating credentials.
-21. **PyPI Ecosystem Support** (May 2026): Auto-detects Python projects via marker files (`pyproject.toml`, `requirements*.txt`, `Pipfile*`, `poetry.lock`, `uv.lock`, `setup.py`, `setup.cfg`) and parses them with pure-bash awk parsers (no Python required). Exact version pins are checked against the `pypi:` entries in `compromised-packages.txt`. Range specifiers in manifests are intentionally not enforced; lockfiles carry exact versions and are authoritative. PEP 503 name normalization (lowercase + collapse `-`/`_`/`.`) is applied before lookup. Override auto-detection with `--ecosystem=npm|pypi|all|<list>`.
+The script auto-selects the fastest available grep tool (`git grep` > `ripgrep` > `grep`). No runtime dependencies on Python, Node, or anything else.
 
 ## Limitations
 
-- **Hash Detection**: Only detects files with exact matches to the 7 known malicious hashes
-- **Package Versions**: Detects specific compromised versions; new variants may not be detected until the package list is updated
-- **False Positives**: Legitimate use of webhook.site, Trufflehog, or postinstall hooks may trigger alerts
-- **Worm Evolution**: New variants may emerge with different signatures
-- **Semver Ranges**: The `--check-semver-ranges` flag is informational only; compromised versions are largely unpublished from npm
+- Hash detection only catches exact SHA-256 matches against the 11 known-malicious hashes.
+- Compromised-package detection requires the version to be in `compromised-packages.txt` — new variants need a list update.
+- Paranoid-mode heuristics produce false positives on legitimate code.
+- The detector reads filesystem state; it doesn't query npm/PyPI registries for live data.
 
-## Security Note
+## Updating the compromised-packages list
 
-This script is for **detection only**. It does not:
-- Automatically remove malicious code
-- Fix compromised packages
-- Prevent future attacks
+`compromised-packages.txt` is a flat text file:
 
-Always verify findings manually and take appropriate remediation steps.
+```
+# Comments start with #
+axios:1.14.1                            # bare entry = npm (back-compat)
+npm:@tanstack/react-router:1.169.5      # explicit npm prefix
+pypi:mistralai:2.4.6                    # PyPI entry
+```
 
-## References
+To add new packages from a fresh advisory: append entries in that format, run `./run-tests.sh`, open a PR. Source the additions from a reputable security firm (Socket, StepSecurity, Aikido, Snyk, JFrog, Wiz, Semgrep, SafeDep, GitGuardian, OX Security) and cite them.
 
-### Primary Sources
-- [StepSecurity Blog: CTRL, tinycolor and 40 NPM packages compromised](https://www.stepsecurity.io/blog/ctrl-tinycolor-and-40-npm-packages-compromised)
-- [JFrog: New compromised packages in largest npm attack in history](https://jfrog.com/blog/new-compromised-packages-in-largest-npm-attack-in-history/)
-- [Aikido: NPM debug and chalk packages compromised](https://www.aikido.dev/blog/npm-debug-and-chalk-packages-compromised)
-- [Semgrep Security Advisory: NPM packages using secret scanning tools to steal credentials](https://semgrep.dev/blog/2025/security-advisory-npm-packages-using-secret-scanning-tools-to-steal-credentials/)
-- [Aikido: S1ngularity-nx attackers strike again](https://www.aikido.dev/blog/s1ngularity-nx-attackers-strike-again)
-- [Aikido: Shai-Hulud strikes again - The Golden Path](https://www.aikido.dev/blog/shai-hulud-strikes-again---the-golden-path)
+## Testing
 
-### Additional Resources
-- [Socket: Ongoing supply chain attack targets CrowdStrike npm packages](https://socket.dev/blog/ongoing-supply-chain-attack-targets-crowdstrike-npm-packages)
-- [Ox Security: NPM 2.0 hack: 40+ npm packages hit in major supply chain attack](https://www.ox.security/blog/npm-2-0-hack-40-npm-packages-hit-in-major-supply-chain-attack/)
-- [Phoenix Security: NPM tinycolor compromise](https://phoenix.security/npm-tinycolor-compromise/)
+```bash
+./run-tests.sh                          # full suite, 71 tests
+./shai-hulud-detector.sh test-cases/<fixture-name>   # run one fixture manually
+```
+
+Each subdirectory of `test-cases/` is a self-contained fixture (clean projects, infected projects with the various attack signatures, ecosystem-specific tests, paired clean/dirty pairs). Run `ls test-cases/` to see them all.
 
 ## Contributing
 
-We welcome contributions to improve any of the code, documentation, tests and packages covered. 
+PRs welcome — especially new compromised-package entries as fresh waves are disclosed.
 
-### How to Contribute
+1. Fork, branch, edit.
+2. For new packages: append to `compromised-packages.txt`, add a fixture under `test-cases/`, register it in `run-tests.sh`.
+3. For new content-pattern IoCs: extend the relevant `check_*` function in `shai-hulud-detector.sh`, add an assertion in `run-tests.sh`.
+4. `./run-tests.sh` must pass.
+5. Cite your sources (security advisories, vendor blog posts) in the PR description.
 
-#### Adding New Compromised Packages
+Don't include actual malware in test fixtures — inert string constants and synthetic files only.
 
-1. **Fork the repository** on GitHub, then clone your fork:
-   ```bash
-   git clone https://github.com/YOUR_USERNAME/shai-hulud-detect.git
-   cd shai-hulud-detect
-   ```
+## Security note
 
-2. **Update the package list**
-   - Add new packages to `compromised-packages.txt` in the format `package_name:version`
-   - Include a source/reference for where you found the compromised package
+Detection only. The script does not remove malicious code, downgrade packages, or block installs. Verify findings, then remediate manually.
 
-3. **Test your changes**
-   ```bash
-   ./run-tests.sh
-   # All 37 tests should pass
-   ```
+For the dead-man's-switch waves (May 11 + May 19, 2026), follow the remediation order printed by `--check-host`: **stop the persistence service first, delete its files, then rotate credentials**. Revoking a monitored token before stopping the service is designed to trigger a destructive wipe.
 
-4. **Submit a Pull Request**
-   - Push to your fork and open a PR against the upstream repository
-   - Include the source of the information (security advisory, blog post, etc.)
+## References
 
-#### Other Contributions
+For per-wave source advisories with IoC enumerations, see the `### Security` section of each release entry in [`CHANGELOG.md`](CHANGELOG.md). The original Shai-Hulud disclosures live at:
 
-- **Bug fixes**: Report and fix issues with detection accuracy
-- **New IoCs**: Add detection for additional indicators of compromise
-- **Documentation**: Improve clarity and add examples
-- **Test cases**: Add new test scenarios for edge cases
-
-### Contribution Guidelines
-
-- **Verify sources**: Only add packages confirmed by reputable security firms
-- **Test thoroughly**: Ensure changes don't break existing functionality
-- **Document changes**: Update relevant documentation and changelog
-- **Follow patterns**: Match existing code style and organization
-- **Security first**: Never include actual malicious code in test cases
-
-### Reporting New Compromised Packages
-
-If you can't submit a PR, you can still help by reporting new compromised packages:
-
-1. Open an issue with the title "New compromised package: [package-name]"
-2. Include the package name, version, and source of information
-3. Provide links to security advisories or reports
-4. We'll review and add verified packages to the detection list
-
-## Release Notes
-
-For a complete list of changes and version history, see the [CHANGELOG.md](CHANGELOG.md).
+- [StepSecurity — CTRL, tinycolor and 40 NPM packages compromised](https://www.stepsecurity.io/blog/ctrl-tinycolor-and-40-npm-packages-compromised)
+- [JFrog — Largest npm attack in history](https://jfrog.com/blog/new-compromised-packages-in-largest-npm-attack-in-history/)
+- [Aikido — npm debug and chalk packages compromised](https://www.aikido.dev/blog/npm-debug-and-chalk-packages-compromised)
+- [Semgrep — Secret-scanning-tool credential theft](https://semgrep.dev/blog/2025/security-advisory-npm-packages-using-secret-scanning-tools-to-steal-credentials/)
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT — see [LICENSE](LICENSE).
