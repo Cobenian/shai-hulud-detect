@@ -203,6 +203,7 @@ MALICIOUS_HASHLIST=(
     "ab4fcadaec49c03278063dd269ea5eef82d24f2124a8e15d7b90f2fa8601266c" # May 2026 Mini Shai-Hulud: router_init.js (StepSecurity IOC)
     "2ec78d556d696e208927cc503d48e4b5eb56b31abc2870c2ed2e98d6be27fc96" # May 2026 Mini Shai-Hulud: tanstack_runner.js (StepSecurity IOC)
     "7c12d8614c624c70d6dd6fc2ee289332474abaa38f70ebe2cdef064923ca3a9b" # May 2026 Mini Shai-Hulud: malicious @tanstack/setup package.json (StepSecurity IOC)
+    "a68dd1e6a6e35ec3771e1f94fe796f55dfe65a2b94560516ff4ac189390dfa1c" # May 2026 Mini Shai-Hulud (atool/AntV wave, May 19): 498KB obfuscated Bun bundle payload (SafeDep IOC)
 )
 
 PARALLELISM=4
@@ -836,6 +837,8 @@ collect_all_files() {
             -name "router_init.js" -o -name "tanstack_runner.js" -o \
             -name "gh-token-monitor.sh" -o -name "com.user.gh-token-monitor.plist" -o \
             -name "gh-token-monitor.service" -o \
+            -name "kitty-monitor.sh" -o -name "com.user.kitty-monitor.plist" -o \
+            -name "kitty-monitor.service" -o -name "cat.py" -o \
             -name "pyproject.toml" -o -name "Pipfile" -o -name "Pipfile.lock" -o \
             -name "poetry.lock" -o -name "uv.lock" -o \
             -name "requirements.txt" -o -name "requirements-*.txt" -o -name "*-requirements.txt" -o \
@@ -1132,9 +1135,11 @@ check_axios_attack_indicators() {
 check_mini_shai_hulud_indicators() {
     local scan_dir=$1
     local check_host=${2:-false}
-    print_status "$BLUE" "   Checking for Mini Shai-Hulud / TanStack TheBeautifulSandsOfTime IOCs..."
+    print_status "$BLUE" "   Checking for Mini Shai-Hulud IOCs (May 11 TanStack + May 19 atool/AntV waves)..."
 
-    # IOC 1: Payload file names anywhere in the tree
+    # IOC 1: Payload file names anywhere in the tree (router_init.js, tanstack_runner.js
+    # from May 11; index.js can't be flagged generically since legit packages use it,
+    # but its presence is caught structurally via the preinstall hook in IOC 7).
     if [[ -s "$TEMP_DIR/mini_shai_hulud_artifact_files.txt" ]]; then
         while IFS= read -r file; do
             if [[ -f "$file" ]]; then
@@ -1153,11 +1158,14 @@ check_mini_shai_hulud_indicators() {
             done
     fi
 
-    # IOC 3: Marker repository names and description from attacker's exfil repos
+    # IOC 3: Marker / beacon strings left on attacker-created exfil repos.
+    # May 11: "A Mini Shai-Hulud has Appeared" + two specific repo names.
+    # May 19: "niagA oG eW ereH :duluH-iahS" (character-reversed "Shai-Hulud: Here We Go Again"),
+    #         stamped on every exfil repo created by the wave.
     if [[ -s "$TEMP_DIR/code_files.txt" ]]; then
         fast_grep_files_fixed "A Mini Shai-Hulud has Appeared" < "$TEMP_DIR/code_files.txt" | \
             while IFS= read -r file; do
-                echo "$file:Mini Shai-Hulud marker repo description string" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
+                echo "$file:Mini Shai-Hulud marker repo description string (May 11 wave)" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
             done
         fast_grep_files_fixed "siridar-ghola-567" < "$TEMP_DIR/code_files.txt" | \
             while IFS= read -r file; do
@@ -1167,12 +1175,19 @@ check_mini_shai_hulud_indicators() {
             while IFS= read -r file; do
                 echo "$file:Mini Shai-Hulud marker repo name (tleilaxu-ornithopter-43)" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
             done
+        fast_grep_files_fixed "niagA oG eW ereH :duluH-iahS" < "$TEMP_DIR/code_files.txt" | \
+            while IFS= read -r file; do
+                echo "$file:Mini Shai-Hulud beacon string from exfil repos (May 19 wave)" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
+            done
     fi
 
-    # IOC 4: C2 domains observed in the attack
+    # IOC 4: C2 domains observed in the attack (May 11 + May 19).
     if [[ -s "$TEMP_DIR/code_files.txt" ]]; then
         local c2_domain
-        for c2_domain in "api.masscan.cloud" "git-tanstack.com" "filev2.getsession.org" "seed1.getsession.org"; do
+        for c2_domain in \
+            "api.masscan.cloud" "git-tanstack.com" "filev2.getsession.org" "seed1.getsession.org" \
+            "t.m-kosche.com"
+        do
             fast_grep_files_fixed "$c2_domain" < "$TEMP_DIR/code_files.txt" | \
                 while IFS= read -r file; do
                     echo "$file:Mini Shai-Hulud C2 domain ($c2_domain)" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
@@ -1180,19 +1195,46 @@ check_mini_shai_hulud_indicators() {
         done
     fi
 
-    # IOC 5: Threat actor account and malicious commit SHA
+    # IOC 5: Threat actor account references and malicious commit SHAs.
+    # May 11: voicproducoes account + one antv-router commit SHA.
+    # May 19: atool account (npm publisher) + three antvis/G2 orphan commit SHAs + forged-author email.
     if [[ -s "$TEMP_DIR/code_files.txt" ]]; then
         fast_grep_files_fixed "voicproducoes" < "$TEMP_DIR/code_files.txt" | \
             while IFS= read -r file; do
-                echo "$file:Mini Shai-Hulud threat actor reference (voicproducoes)" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
+                echo "$file:Mini Shai-Hulud threat actor reference (voicproducoes, May 11 wave)" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
             done
-        fast_grep_files_fixed "79ac49eedf774dd4b0cfa308722bc463cfe5885c" < "$TEMP_DIR/code_files.txt" | \
+        # atool: match in JSON publisher context (quoted) to avoid false-positive on bare "atool" text.
+        fast_grep_files_fixed '"_npmUser":{"name":"atool"' < "$TEMP_DIR/code_files.txt" | \
             while IFS= read -r file; do
-                echo "$file:Mini Shai-Hulud malicious commit SHA reference" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
+                echo "$file:Mini Shai-Hulud threat actor (atool, May 19 wave - npm publisher metadata)" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
+            done
+        # Forged author email used on impostor antvis/G2 commits.
+        fast_grep_files_fixed "huiyu.zjt@ant.com" < "$TEMP_DIR/code_files.txt" | \
+            while IFS= read -r file; do
+                echo "$file:Mini Shai-Hulud forged-author email (huiyu.zjt@ant.com, May 19 wave)" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
+            done
+        # Malicious commit SHAs across both waves.
+        local bad_sha
+        for bad_sha in \
+            "79ac49eedf774dd4b0cfa308722bc463cfe5885c" \
+            "1916faa365f2788b6e193514872d51a242876569" \
+            "7cb42f57561c321ecb09b4552802ae0ac55b3a7a" \
+            "dc3d62a2181beb9f326952a2d212900c94f2e13d"
+        do
+            fast_grep_files_fixed "$bad_sha" < "$TEMP_DIR/code_files.txt" | \
+                while IFS= read -r file; do
+                    echo "$file:Mini Shai-Hulud malicious orphan-commit SHA reference ($bad_sha)" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
+                done
+        done
+        # firedalazer: GitHub commit-search dead-drop keyword (May 19 wave). The payload polls
+        # commits matching this exact word to receive RSA-PSS signed C2 commands.
+        fast_grep_files_fixed "firedalazer" < "$TEMP_DIR/code_files.txt" | \
+            while IFS= read -r file; do
+                echo "$file:Mini Shai-Hulud C2 dead-drop keyword (firedalazer, May 19 wave)" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
             done
     fi
 
-    # IOC 6: Campaign-specific cryptographic constants
+    # IOC 6: Campaign-specific cryptographic constants (May 11 wave).
     if [[ -s "$TEMP_DIR/code_files.txt" ]]; then
         fast_grep_files_fixed "0c0e873033875f1bc471eda37e3b9d0f9b89bd41a4bbb4f86746caa2176c40aa" < "$TEMP_DIR/code_files.txt" | \
             while IFS= read -r file; do
@@ -1204,54 +1246,84 @@ check_mini_shai_hulud_indicators() {
             done
     fi
 
-    # IOC 7: Structural package.json signals - malicious optionalDependencies / prepare script
+    # IOC 7: Structural package.json signals - malicious optionalDependencies / prepare-or-preinstall script.
     if [[ -s "$TEMP_DIR/package_files.txt" ]]; then
-        # Orphan-commit github: reference matching the attacker's known fork+SHA
+        # May 11: orphan-commit github: ref to the attacker's tanstack/router fork.
         fast_grep_files_fixed "github:tanstack/router#79ac49ee" < "$TEMP_DIR/package_files.txt" | \
             while IFS= read -r file; do
-                echo "$file:Mini Shai-Hulud malicious optionalDependencies (orphan-commit ref to attacker fork)" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
+                echo "$file:Mini Shai-Hulud malicious optionalDependencies (May 11: tanstack/router orphan commit)" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
             done
-        # Prepare script that invokes the payload
+        # May 19: orphan-commit github: refs to antvis/G2 (any of the three known SHAs).
+        local antvis_sha
+        for antvis_sha in "1916faa365" "7cb42f5756" "dc3d62a218"; do
+            fast_grep_files_fixed "github:antvis/G2#$antvis_sha" < "$TEMP_DIR/package_files.txt" | \
+                while IFS= read -r file; do
+                    echo "$file:Mini Shai-Hulud malicious optionalDependencies (May 19: antvis/G2 orphan commit $antvis_sha...)" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
+                done
+        done
+        # Prepare/preinstall script that invokes the payload (May 11: tanstack_runner.js;
+        # May 19: bun run index.js).
         fast_grep_files_fixed "bun run tanstack_runner.js" < "$TEMP_DIR/package_files.txt" | \
             while IFS= read -r file; do
-                echo "$file:Mini Shai-Hulud prepare script invokes tanstack_runner.js" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
+                echo "$file:Mini Shai-Hulud prepare script invokes tanstack_runner.js (May 11 wave)" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
             done
-        # The synthetic @tanstack/setup package name (attacker-created)
+        # bun run index.js as a preinstall is a strong signal in non-Bun-targeted projects.
+        # Match it as a preinstall script value specifically; "scripts": { "preinstall": "bun run index.js" }.
+        if fast_grep_files_fixed '"preinstall": "bun run index.js"' < "$TEMP_DIR/package_files.txt" > "$TEMP_DIR/_mini_sh_preinstall_bun.tmp"; then
+            while IFS= read -r file; do
+                echo "$file:Mini Shai-Hulud preinstall script invokes bun run index.js (May 19 wave install vector)" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
+            done < "$TEMP_DIR/_mini_sh_preinstall_bun.tmp"
+        fi
+        rm -f "$TEMP_DIR/_mini_sh_preinstall_bun.tmp"
+        # The synthetic @tanstack/setup package name (attacker-created, May 11 wave).
         fast_grep_files_fixed "@tanstack/setup" < "$TEMP_DIR/package_files.txt" | \
             while IFS= read -r file; do
-                echo "$file:Mini Shai-Hulud reference to fake @tanstack/setup package" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
+                echo "$file:Mini Shai-Hulud reference to fake @tanstack/setup package (May 11 wave)" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
             done
     fi
 
-    # IOC 8: Dead-man's-switch host-level persistence (opt-in via --check-host)
-    # These files indicate the gh-token-monitor service is or was installed.
+    # IOC 8: Dead-man's-switch host-level persistence (opt-in via --check-host).
+    # Both waves install a polling daemon that wipes the host if its monitored token
+    # is revoked. May 11 wave: "gh-token-monitor". May 19 wave: "kitty-monitor".
     # CRITICAL: Revoking the monitored token is designed to TRIGGER A WIPE — do not
     # rotate credentials until the service is stopped and removed.
     if [[ "$check_host" == "true" ]]; then
         print_status "$BLUE" "   Checking host paths for dead-man's-switch artifacts..."
         local host_paths=(
+            # May 11 wave (gh-token-monitor)
             "$HOME/Library/LaunchAgents/com.user.gh-token-monitor.plist"
             "$HOME/.config/systemd/user/gh-token-monitor.service"
             "$HOME/.local/bin/gh-token-monitor.sh"
             "$HOME/.config/gh-token-monitor/token"
             "$HOME/.config/gh-token-monitor"
+            # May 19 wave (kitty-monitor + dead-drop fetcher)
+            "$HOME/Library/LaunchAgents/com.user.kitty-monitor.plist"
+            "$HOME/.config/systemd/user/kitty-monitor.service"
+            "$HOME/.local/bin/kitty-monitor.sh"
+            "$HOME/.config/kitty-monitor/token"
+            "$HOME/.config/kitty-monitor"
+            "$HOME/.local/share/kitty/cat.py"
+            "/var/tmp/.gh_update_state"
         )
         local host_path
         for host_path in "${host_paths[@]}"; do
             if [[ -e "$host_path" ]]; then
-                echo "$host_path:Mini Shai-Hulud dead-man's-switch artifact (gh-token-monitor)" >> "$TEMP_DIR/mini_shai_hulud_host_artifacts.txt"
+                local variant="gh-token-monitor"
+                [[ "$host_path" == *"kitty"* || "$host_path" == *"gh_update_state"* ]] && variant="kitty-monitor (May 19 wave)"
+                echo "$host_path:Mini Shai-Hulud dead-man's-switch artifact ($variant)" >> "$TEMP_DIR/mini_shai_hulud_host_artifacts.txt"
             fi
         done
     fi
 
     # Also catch dead-man's-switch artifacts that happen to live inside the scan dir
     # (e.g. a backup of a compromised home directory, or a staged install kit).
+    # Covers both the May 11 (gh-token-monitor) and May 19 (kitty-monitor + cat.py) variants.
     local in_tree_artifact
     while IFS= read -r in_tree_artifact; do
         if [[ -f "$in_tree_artifact" ]]; then
             echo "$in_tree_artifact:Mini Shai-Hulud dead-man's-switch artifact in scan tree" >> "$TEMP_DIR/mini_shai_hulud_host_artifacts.txt"
         fi
-    done < <(grep -E "(gh-token-monitor\.(sh|service)|com\.user\.gh-token-monitor\.plist)$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null || true)
+    done < <(grep -E "(gh-token-monitor\.(sh|service)|com\.user\.gh-token-monitor\.plist|kitty-monitor\.(sh|service)|com\.user\.kitty-monitor\.plist|/kitty/cat\.py)$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null || true)
 
     # Deduplicate both result files
     if [[ -s "$TEMP_DIR/mini_shai_hulud_indicators.txt" ]]; then
@@ -1879,8 +1951,9 @@ check_file_hashes() {
 
     # Priority files: recently modified (30 days) OR known malicious patterns
     {
-        # Priority 1: Known malicious file patterns (always check)
-        grep -E "(setup_bun\.js|bun_environment\.js|actionsSecrets\.json|trufflehog|router_init\.js|tanstack_runner\.js)" "$TEMP_DIR/code_files.txt" 2>/dev/null || true
+        # Priority 1: Known malicious file patterns (always check). Includes May 19 atool
+        # wave indicators (cat.py — kitty-monitor dead-drop fetcher, index.js — preinstall payload).
+        grep -E "(setup_bun\.js|bun_environment\.js|actionsSecrets\.json|trufflehog|router_init\.js|tanstack_runner\.js|kitty-monitor\.sh|cat\.py)" "$TEMP_DIR/code_files.txt" 2>/dev/null || true
 
         # Priority 2: Non-node_modules files (fast grep filter)
         grep -v "/node_modules/" "$TEMP_DIR/code_files.txt" 2>/dev/null || true

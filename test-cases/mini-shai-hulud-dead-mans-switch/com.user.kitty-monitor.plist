@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  TEST FIXTURE - Stand-in for the Mini Shai-Hulud May 19 wave's LaunchAgent persistence
+  file. The real artifact lives at ~/Library/LaunchAgents/com.user.kitty-monitor.plist
+  and keeps the monitor running across reboots. This file is inert (Disabled=true, no
+  Program key) and exists only to exercise filename-match detection.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.user.kitty-monitor.test-fixture</string>
+  <key>Disabled</key>
+  <true/>
+</dict>
+</plist>

@@ -5,6 +5,49 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.1] - 2026-05-19
+
+### Added
+- **Mini Shai-Hulud AntV/atool wave content-pattern IoCs**: PR #136 added the 643 compromised `package:version` entries for the May 19 wave but left the detector script unchanged, which meant a host where the dropper had landed but the compromised npm package had already been uninstalled would still slip past detection. This release extends `check_mini_shai_hulud_indicators` with the May 19 IoCs that don't depend on the package list:
+  - **New C2 domain**: `t.m-kosche.com` (the OpenTelemetry-disguised exfiltration endpoint at `/api/public/otel/v1/traces`)
+  - **Exfil-repo beacon string**: `niagA oG eW ereH :duluH-iahS` (character-reversed "Shai-Hulud: Here We Go Again", stamped on every fallback exfiltration repo)
+  - **Threat-actor publisher fingerprint**: `"_npmUser":{"name":"atool"` — matched in JSON publisher-metadata context (quoted) to avoid false positives on bare `atool` text
+  - **Forged commit-author email**: `huiyu.zjt@ant.com` (impostor identity used on the malicious `antvis/G2` commits)
+  - **C2 dead-drop trigger keyword**: `firedalazer` (the payload polls GitHub's commit-search API for commits matching this exact word to receive RSA-PSS-signed C2 commands)
+  - **Three malicious orphan-commit SHAs in `antvis/G2`**: `1916faa365f2788b6e193514872d51a242876569`, `7cb42f57561c321ecb09b4552802ae0ac55b3a7a`, `dc3d62a2181beb9f326952a2d212900c94f2e13d`
+  - **New structural manifest signal**: `"preinstall": "bun run index.js"` in a `package.json` script value (the May 19 install vector), and `github:antvis/G2#<sha>` in any dependency-section value where `<sha>` matches one of the three known orphan commits
+  - **New payload SHA-256**: `a68dd1e6a6e35ec3771e1f94fe796f55dfe65a2b94560516ff4ac189390dfa1c` (the 498KB obfuscated Bun bundle); added to `MALICIOUS_HASHLIST` and to the priority-files filter in `check_file_hashes` so the hash is computed even inside `node_modules`
+- **Dead-man's-switch detection extended to the `kitty-monitor` variant**: The May 19 wave renames the persistence daemon from `gh-token-monitor` (May 11) to `kitty-monitor` and adds a GitHub dead-drop fetcher at `~/.local/share/kitty/cat.py`. The same wipe-on-token-revocation trigger semantics apply. The detector now recognises:
+  - `~/Library/LaunchAgents/com.user.kitty-monitor.plist` (macOS LaunchAgent)
+  - `~/.config/systemd/user/kitty-monitor.service` (Linux systemd user unit)
+  - `~/.local/bin/kitty-monitor.sh` (the daemon script)
+  - `~/.config/kitty-monitor/` and `~/.config/kitty-monitor/token`
+  - `~/.local/share/kitty/cat.py` (the dead-drop fetcher)
+  - `/var/tmp/.gh_update_state` (execution-state tracker)
+  - The same artifacts inside the scan tree (covers staged install kits and backups of compromised home directories), via an extended in-tree-artifact regex
+  - `--check-host` now warns about the kitty-monitor variant with the same CRITICAL "stop service before rotating tokens" remediation order
+- **Test fixtures**:
+  - `test-cases/atool-attack/index.js` (new): synthetic payload file carrying every May 19 content IoC as inert string constants (C2 domain, beacon, forged-author email, three orphan-commit SHAs, `firedalazer`, `kitty-monitor` reference, `/var/tmp/.gh_update_state`, the `atool` publisher fingerprint). Inert by construction — string assignments only.
+  - `test-cases/atool-attack/package.json` (extended): now also carries an `optionalDependencies` entry pointing at `github:antvis/G2#1916faa365…` to exercise the orphan-commit structural check
+  - `test-cases/mini-shai-hulud-dead-mans-switch/kitty-monitor.sh`, `com.user.kitty-monitor.plist`, `kitty/cat.py` (new): inert filename-match fixtures for the kitty-monitor variant
+- **`run-tests.sh` content-IoC assertion block**: 13 new tests that lock in each May 19 IoC's detection (10 against `atool-attack`, 3 against `mini-shai-hulud-dead-mans-switch`). Each test runs the detector on the relevant fixture and asserts a specific substring appears in the output, so any regression that silently breaks one of the new content checks fails CI.
+
+### Changed
+- **`MALICIOUS_HASHLIST`** size: 10 → 11 (added the May 19 payload hash).
+- **`collect_all_files`** file collection: added `kitty-monitor.sh`, `com.user.kitty-monitor.plist`, `kitty-monitor.service`, `cat.py` to the `find` clause so the in-tree artifact regex can pick them up.
+- **`check_file_hashes`** priority-files regex: extended with `kitty-monitor\.sh` and `cat\.py` so the new payload is hashed even when buried inside `node_modules`.
+- **Test count**: 58 → 71 (+13 new content-IoC assertions; package-list and dead-man's-switch fixture exit-code expectations unchanged).
+
+### Security
+- Added high-confidence content-pattern detection for the May 19, 2026 Mini Shai-Hulud AntV/atool wave documented in:
+  - https://socket.dev/blog/antv-packages-compromised
+  - https://www.stepsecurity.io/blog/shai-hulud-here-we-go-again-mass-npm-supply-chain-attack-hits-the-antv-ecosystem
+  - https://safedep.io/mini-shai-hulud-strikes-again-314-npm-packages-compromised/
+  - https://snyk.io/blog/mini-shai-hulud-antv-npm-supply-chain-attack/
+  - https://www.aikido.dev/blog/mini-shai-hulud-antv-npm-supply-chain-attack
+  - https://www.ox.security/blog/the-antv-ecosystem-was-compromised-with-shai-hulud-malware-300-packages-affected
+  - https://thehackernews.com/2026/05/mini-shai-hulud-pushes-malicious-antv.html
+
 ## [3.3.0] - 2026-05-19
 
 ### Added
