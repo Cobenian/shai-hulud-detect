@@ -1,0 +1,30 @@
+# TEST FIXTURE - May 18, 2026 Megalodon mass-variant workflow injection.
+# The real malicious workflow lands in 5,561 backdoored GitHub repos via stolen
+# PATs/deploy keys; on every push and pull_request_target it base64-decodes a
+# bash payload that exfiltrates CI secrets, cloud creds, and Vault tokens to
+# 216.126.225.129:8443. This fixture is inert (the actual exec line is replaced
+# with a harmless echo) and exists only to exercise the detector's name/IP
+# match against the real attack shape.
+name: SysDiag
+
+on:
+  push:
+    branches:
+      - "*"
+  pull_request_target:
+
+permissions:
+  id-token: write
+  actions: read
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: System diagnostics
+        # In the real attack: set +e; echo "<base64>" | base64 -d | bash
+        # Inert here so this fixture file is not itself dangerous if executed.
+        run: |
+          echo "TEST FIXTURE — not the real Megalodon payload"
+          echo "C2 reference for detector matching: 216.126.225.129:8443"
+          echo "Tiledesk commit SHA marker: acac5a9854650c4ae2883c4740bf87d34120c038"

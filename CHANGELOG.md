@@ -5,6 +5,34 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.0] - 2026-05-21
+
+### Added
+- **Megalodon GitHub-repo backdooring campaign coverage (May 18, 2026)**: Megalodon is a distinct campaign — no asserted attribution, different infrastructure from Mini Shai-Hulud — that injected malicious CI workflow files into 5,561 GitHub repositories over a six-hour window via stolen GitHub PATs and deploy keys. The mass variant injects `.github/workflows/ci.yml` named `SysDiag`; the Tiledesk-targeted variant injects `.github/workflows/docker-community-worker-push-latest.yml` named `Optimize-Build`. Both base64-decode a bash payload that exfiltrates CI secrets, AWS/GCP/Azure/Kubernetes/Vault/Terraform/Docker credentials, SSH keys, and OIDC tokens to `216.126.225.129:8443`. Primary attack surface is server-side (GitHub repo and Actions runtime), but the workflow files become locally visible when contaminated repos are checked out, and one npm package picked up the contamination as fallout.
+  - **`@tiledesk/tiledesk-server`** versions `2.18.6`, `2.18.7`, `2.18.8`, `2.18.9`, `2.18.10`, `2.18.11`, `2.18.12` added to `compromised-packages.txt` (Tiledesk maintainer published from their backdoored repo, bundling the malicious workflow into the npm tarball).
+  - New `check_megalodon_indicators` function in `shai-hulud-detector.sh` matches:
+    - `name: SysDiag` and `name: Optimize-Build` in any `.github/workflows/*.yml` (both are unique-enough names that a literal match is HIGH-confidence)
+    - C2 IP literal `216.126.225.129` (bare, with `:8443` port, and defanged `216.126.225[.]129` form) across code + YAML + script files
+    - Known malicious commit SHA `acac5a9854650c4ae2883c4740bf87d34120c038` (Tiledesk variant) across the same file set
+  - New `test-cases/megalodon-attack/` fixture combining the contaminated Tiledesk version + a synthetic `SysDiag` workflow file carrying all four content IoCs (inert; the actual base64-bash execution is replaced with a harmless `echo`)
+  - Source: https://safedep.io/megalodon-mass-github-repo-backdooring-ci-workflows/
+- **Web3/DeFi MCP-server typosquatting campaign coverage (May 20, 2026)**: 10 npm packages masquerading as Web3/DeFi developer security tools (MCP servers). Distinct from Megalodon and Mini Shai-Hulud — no shared attribution or infrastructure. The payload runs on install AND on every MCP tool invocation, exfiltrating `~/.ssh`, `~/.ethereum`, `~/.bitcoin`, `~/.env`, `~/.bash_history`, `~/.zsh_history`, `~/.git-credentials` to a GitHub Pages dynamic-webhook C2 with a `webhook.site` fallback.
+  - Ten compromised versions added to `compromised-packages.txt`: `chain-key-validator:0.2.3`, `defi-env-auditor:0.3.2`, `wallet-security-checker:1.0.3`, `crypto-credential-scanner:2.0.2`, `web3-secrets-detector:1.2.6`, `solidity-deploy-guard:0.4.4`, `mnemonic-safety-check:0.5.2`, `eth-wallet-sentinel:1.0.9`, `deployment-key-auditor:0.7.3`, `defi-threat-scanner:2.1.2`.
+  - New `check_web3_mcp_indicators` function matches the primary C2 (`ddjidd564.github.io/defi-security-best-practices/config.json`, including defanged form `ddjidd564[.]github[.]io`) and the fallback webhook (`webhook.site/8d334534-1c63-4f4f-a0d7-95c446c8b233` and the bare UUID) across code files.
+  - New `test-cases/web3-mcp-attack/` fixture pins `chain-key-validator@0.2.3` and includes a `postinstall-trace.js` file carrying the C2 / fallback URLs as inert string constants.
+  - Source: SafeDep X post 2026-05-21 01:00 UTC (@safedepio) — no long-form blog post yet; package names + versions + C2 endpoints verified from the disclosure screenshot.
+- **`run-tests.sh` content-IoC assertion block for Megalodon + Web3-MCP**: 7 new positive assertions that each new IoC produces a specific finding-line substring in the detector output. Layout mirrors the existing May 19 atool/AntV assertion block.
+
+### Changed
+- **Package Count**: Expanded `compromised-packages.txt` from 2,765 to 2,782 confirmed package versions (+7 Tiledesk + 10 Web3 MCP typosquats).
+- **Stage 5/6 banner**: Now lists `megalodon` and `web3-mcp` alongside the existing campaign checks.
+- **Test count**: 71 → 80 (+2 new fixtures, +7 new content-IoC assertions).
+
+### Security
+- Added high-confidence detection for the May 18, 2026 Megalodon and May 20, 2026 Web3/DeFi MCP-server typosquat campaigns documented in:
+  - https://safedep.io/megalodon-mass-github-repo-backdooring-ci-workflows/
+  - SafeDep X post 2026-05-21 (@safedepio) — package + IoC inventory for the 10-MCP-server wave
+
 ## [3.3.1] - 2026-05-19
 
 ### Added

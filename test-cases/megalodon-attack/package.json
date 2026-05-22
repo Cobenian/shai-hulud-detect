@@ -1,0 +1,9 @@
+{
+  "name": "megalodon-attack-test",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Test fixture for May 18, 2026 Megalodon GitHub-repo backdooring campaign. Combines (a) the contaminated @tiledesk/tiledesk-server@2.18.6 npm version published from a backdoored Tiledesk repo, and (b) the SysDiag workflow file under .github/workflows/ that exercises check_megalodon_indicators. The synthetic workflow is inert.",
+  "dependencies": {
+    "@tiledesk/tiledesk-server": "2.18.6"
+  }
+}

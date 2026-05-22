@@ -3,15 +3,15 @@
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Shell](https://img.shields.io/badge/shell-Bash%205.0%2B-blue)](#requirements)
 [![Status](https://img.shields.io/badge/status-Active-success)](../../)
-[![Tests](https://img.shields.io/badge/tests-71%20passing-brightgreen)](#testing)
-[![Packages](https://img.shields.io/badge/compromised%20packages-2%2C700%2B-red)](compromised-packages.txt)
+[![Tests](https://img.shields.io/badge/tests-80%20passing-brightgreen)](#testing)
+[![Packages](https://img.shields.io/badge/compromised%20packages-2%2C780%2B-red)](compromised-packages.txt)
 [![Type](https://img.shields.io/badge/type-Security%20Tool-red)](#what-it-catches)
 [![Contributions](https://img.shields.io/badge/contributions-Welcome-orange)](#contributing)
 [![Last Commit](https://img.shields.io/github/last-commit/Cobenian/shai-hulud-detect)](https://github.com/Cobenian/shai-hulud-detect/commits/main)
 
 <img src="shai_hulu_detector.jpg" alt="sshd" width="80%" />
 
-A Bash script that scans a project — or many projects at once — for known traces of the September 2025 → May 2026 npm and PyPI supply-chain attacks. Cross-checks 2,700+ confirmed bad package versions and a library of content-pattern IoCs (file hashes, C2 domains, dead-man's-switch artifacts, wipe-threat strings, etc.).
+A Bash script that scans a project — or many projects at once — for known traces of the September 2025 → May 2026 npm and PyPI supply-chain attacks. Cross-checks 2,780+ confirmed bad package versions and a library of content-pattern IoCs (file hashes, C2 domains, dead-man's-switch artifacts, wipe-threat strings, etc.).
 
 ## Quick Start
 
@@ -48,7 +48,9 @@ The detector looks for two kinds of evidence on disk:
 | SANDWORM_MODE workflow poisoning | 2026-02-17 | 19 packages + GitHub Action | [CHANGELOG](CHANGELOG.md) |
 | Axios RAT compromise | 2026-03-31 | `axios@1.14.1`/`0.30.4` + `plain-crypto-js` | [CHANGELOG](CHANGELOG.md) |
 | Mini Shai-Hulud / TanStack | 2026-05-11 | 400+ versions, dead-man's-switch | [CHANGELOG](CHANGELOG.md) |
+| Megalodon (GitHub-repo backdooring) | 2026-05-18 | 5,561 repos via stolen PATs; `@tiledesk/tiledesk-server@2.18.6-2.18.12` as npm fallout | [CHANGELOG](CHANGELOG.md) |
 | Mini Shai-Hulud / AntV (atool) | 2026-05-19 | 643 versions, 323 packages | [CHANGELOG](CHANGELOG.md) |
+| Web3 / DeFi MCP-server typosquat | 2026-05-20 | 10 packages (`chain-key-validator`, `defi-threat-scanner`, …), exfiltrates SSH + wallet keys | [CHANGELOG](CHANGELOG.md) |
 | PyPI cross-spread (TeamPCP) | 2026-03 → 05 | `litellm`, `telnyx`, `xinference`, `lightning`, `mistralai`, `guardrails-ai` | [CHANGELOG](CHANGELOG.md) |
 
 For per-wave IoC inventories, payload hashes, source advisories, and version-by-version lists, see [`CHANGELOG.md`](CHANGELOG.md).

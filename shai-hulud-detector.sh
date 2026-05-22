@@ -111,6 +111,8 @@ create_temp_dir() {
     touch "$TEMP_DIR/axios_attack_indicators.txt"
     touch "$TEMP_DIR/mini_shai_hulud_indicators.txt"
     touch "$TEMP_DIR/mini_shai_hulud_host_artifacts.txt"
+    touch "$TEMP_DIR/megalodon_indicators.txt"
+    touch "$TEMP_DIR/web3_mcp_indicators.txt"
     touch "$TEMP_DIR/pypi_manifests.txt"
     touch "$TEMP_DIR/pypi_lockfiles.txt"
     touch "$TEMP_DIR/pypi_deps_normalized.txt"
@@ -1689,6 +1691,118 @@ check_pypi_packages() {
                     echo "$file_path:[PyPI] ${dep/:/@}" >> "$TEMP_DIR/compromised_found.txt"
             done
         done < "$TEMP_DIR/pypi_matched_deps.txt"
+    fi
+}
+
+# Function: check_megalodon_indicators
+# Purpose: Detect May 18, 2026 Megalodon GitHub-repo-backdooring campaign IoCs.
+#          Megalodon's primary vector is workflow-file injection into 5,561 GitHub repos
+#          (mass variant: ci.yml named "SysDiag"; targeted Tiledesk variant:
+#          docker-community-worker-push-latest.yml named "Optimize-Build"). The only
+#          on-disk artifacts we can see are (a) the workflow files themselves when a
+#          compromised repo is checked out locally, and (b) the C2 IP / known commit SHA
+#          as literal strings anywhere in scanned code.
+# Args: $1 = scan_dir
+# Modifies: $TEMP_DIR/megalodon_indicators.txt
+check_megalodon_indicators() {
+    local scan_dir=$1
+    print_status "$BLUE" "   Checking for Megalodon GitHub-repo backdooring IOCs (May 18, 2026)..."
+
+    # IOC 1: Workflow files carrying the specific Megalodon workflow names.
+    # `name: SysDiag` and `name: Optimize-Build` are unique enough to be HIGH-confidence
+    # signals on their own — no legitimate workflow uses these names.
+    if [[ -s "$TEMP_DIR/github_workflows.txt" ]]; then
+        # Build a clean list of accessible workflow files (mirror the SANDWORM pattern).
+        : > "$TEMP_DIR/valid_megalodon_workflows.txt"
+        while IFS= read -r f; do
+            [[ -f "$f" ]] && echo "$f"
+        done < "$TEMP_DIR/github_workflows.txt" > "$TEMP_DIR/valid_megalodon_workflows.txt"
+
+        if [[ -s "$TEMP_DIR/valid_megalodon_workflows.txt" ]]; then
+            # Match `name: SysDiag` (with or without quotes, leading whitespace tolerant).
+            tr '\n' '\0' < "$TEMP_DIR/valid_megalodon_workflows.txt" | \
+                xargs -0 -I {} grep -l -E "^[[:space:]]*name:[[:space:]]*[\"']?SysDiag[\"']?[[:space:]]*$" {} 2>/dev/null | \
+                while IFS= read -r file; do
+                    echo "$file:Megalodon workflow file (name: SysDiag — mass-variant injection)" >> "$TEMP_DIR/megalodon_indicators.txt"
+                done || true
+            # Match `name: Optimize-Build` (Tiledesk-targeted variant).
+            tr '\n' '\0' < "$TEMP_DIR/valid_megalodon_workflows.txt" | \
+                xargs -0 -I {} grep -l -E "^[[:space:]]*name:[[:space:]]*[\"']?Optimize-Build[\"']?[[:space:]]*$" {} 2>/dev/null | \
+                while IFS= read -r file; do
+                    echo "$file:Megalodon workflow file (name: Optimize-Build — Tiledesk-targeted variant)" >> "$TEMP_DIR/megalodon_indicators.txt"
+                done || true
+        fi
+    fi
+
+    # Megalodon's C2 IP and commit SHA can appear in YAML workflow files (where the
+    # attack lives natively) as well as in JS/TS/JSON code, so search both. Build a
+    # combined file list once for the two literal-string IoCs below.
+    : > "$TEMP_DIR/_megalodon_search_files.txt"
+    [[ -s "$TEMP_DIR/code_files.txt" ]] && cat "$TEMP_DIR/code_files.txt" >> "$TEMP_DIR/_megalodon_search_files.txt"
+    [[ -s "$TEMP_DIR/yaml_files.txt" ]] && cat "$TEMP_DIR/yaml_files.txt" >> "$TEMP_DIR/_megalodon_search_files.txt"
+    [[ -s "$TEMP_DIR/script_files.txt" ]] && cat "$TEMP_DIR/script_files.txt" >> "$TEMP_DIR/_megalodon_search_files.txt"
+
+    # IOC 2: C2 IP literal. Match the bare IP and the IP:port form. Match the defanged
+    # form too in case it appears in advisories/notes the user has checked into the repo.
+    if [[ -s "$TEMP_DIR/_megalodon_search_files.txt" ]]; then
+        local c2_ip
+        for c2_ip in "216.126.225.129" "216.126.225.129:8443" "216.126.225[.]129"; do
+            fast_grep_files_fixed "$c2_ip" < "$TEMP_DIR/_megalodon_search_files.txt" | \
+                while IFS= read -r file; do
+                    echo "$file:Megalodon C2 IP reference ($c2_ip)" >> "$TEMP_DIR/megalodon_indicators.txt"
+                done
+        done
+    fi
+
+    # IOC 3: Known Tiledesk malicious commit SHA. Anywhere in code/config (lockfiles,
+    # CI configs, vendored copies — anywhere a contaminated source tree might reference it).
+    if [[ -s "$TEMP_DIR/_megalodon_search_files.txt" ]]; then
+        fast_grep_files_fixed "acac5a9854650c4ae2883c4740bf87d34120c038" < "$TEMP_DIR/_megalodon_search_files.txt" | \
+            while IFS= read -r file; do
+                echo "$file:Megalodon malicious commit SHA (Tiledesk variant)" >> "$TEMP_DIR/megalodon_indicators.txt"
+            done
+    fi
+    rm -f "$TEMP_DIR/_megalodon_search_files.txt"
+
+    # Deduplicate
+    if [[ -s "$TEMP_DIR/megalodon_indicators.txt" ]]; then
+        sort -u "$TEMP_DIR/megalodon_indicators.txt" -o "$TEMP_DIR/megalodon_indicators.txt"
+    fi
+}
+
+# Function: check_web3_mcp_indicators
+# Purpose: Detect May 20, 2026 Web3/DeFi MCP-server typosquatting campaign content IoCs.
+#          The 10 specific malicious package versions are caught by the standard package-
+#          version check via compromised-packages.txt. This function adds the C2 / fallback-
+#          webhook URLs as literal grep IoCs so that contaminated install logs, vendored
+#          copies of the postinstall script, or staged payloads still surface even if the
+#          package itself has already been npm-uninstalled.
+# Args: $1 = scan_dir
+# Modifies: $TEMP_DIR/web3_mcp_indicators.txt
+check_web3_mcp_indicators() {
+    local scan_dir=$1
+    print_status "$BLUE" "   Checking for Web3/DeFi MCP-server typosquat IOCs (May 20, 2026)..."
+
+    if [[ -s "$TEMP_DIR/code_files.txt" ]]; then
+        # Primary C2: dynamic-webhook config fetched from an attacker-controlled GitHub Pages site.
+        local web3_indicator
+        for web3_indicator in \
+            "ddjidd564.github.io/defi-security-best-practices/config.json" \
+            "ddjidd564.github.io" \
+            "ddjidd564[.]github[.]io" \
+            "webhook.site/8d334534-1c63-4f4f-a0d7-95c446c8b233" \
+            "8d334534-1c63-4f4f-a0d7-95c446c8b233"
+        do
+            fast_grep_files_fixed "$web3_indicator" < "$TEMP_DIR/code_files.txt" | \
+                while IFS= read -r file; do
+                    echo "$file:Web3/DeFi MCP-typosquat C2 reference ($web3_indicator)" >> "$TEMP_DIR/web3_mcp_indicators.txt"
+                done
+        done
+    fi
+
+    # Deduplicate
+    if [[ -s "$TEMP_DIR/web3_mcp_indicators.txt" ]]; then
+        sort -u "$TEMP_DIR/web3_mcp_indicators.txt" -o "$TEMP_DIR/web3_mcp_indicators.txt"
     fi
 }
 
@@ -3291,6 +3405,8 @@ write_log_file() {
         [[ -s "$TEMP_DIR/axios_attack_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/axios_attack_indicators.txt" || true
         [[ -s "$TEMP_DIR/mini_shai_hulud_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/mini_shai_hulud_indicators.txt" || true
         [[ -s "$TEMP_DIR/mini_shai_hulud_host_artifacts.txt" ]] && cut -d: -f1 "$TEMP_DIR/mini_shai_hulud_host_artifacts.txt" || true
+        [[ -s "$TEMP_DIR/megalodon_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/megalodon_indicators.txt" || true
+        [[ -s "$TEMP_DIR/web3_mcp_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/web3_mcp_indicators.txt" || true
         [[ -s "$TEMP_DIR/github_runners.txt" ]] && cut -d: -f1 "$TEMP_DIR/github_runners.txt" || true
 
         # Destructive patterns (extract file path before colon)
@@ -3516,6 +3632,39 @@ generate_report() {
         print_status "$RED" "    📋 IMMEDIATE ACTION: Pin @tanstack/* to last-known-good versions, audit CI logs"
         print_status "$RED" "                         for orphan-commit github: refs, rotate GitHub/npm tokens AFTER"
         print_status "$RED" "                         confirming no gh-token-monitor service is active (see below)."
+    fi
+
+    if [[ -s "$TEMP_DIR/megalodon_indicators.txt" ]]; then
+        print_status "$RED" "🚨 HIGH RISK: May 18, 2026 Megalodon GitHub-repo backdooring indicators detected:"
+        print_status "$RED" "    ⚠️  Workflow injected on a stolen GitHub PAT / deploy key. Exfiltrates CI secrets."
+        while IFS= read -r line; do
+            local file="${line%%:*}"
+            local reason="${line#*:}"
+            echo "   - $file"
+            echo "     Reason: $reason"
+            show_file_preview "$file" "HIGH RISK: Megalodon GitHub-repo backdooring indicator"
+            high_risk=$((high_risk+1))
+        done < "$TEMP_DIR/megalodon_indicators.txt"
+        print_status "$RED" "    📋 IMMEDIATE ACTION: Remove the malicious workflow file, rotate all GitHub PATs"
+        print_status "$RED" "                         and deploy keys on the repo, audit recent workflow runs for"
+        print_status "$RED" "                         exfiltrated secrets, rotate any CI/cloud credentials touched."
+    fi
+
+    if [[ -s "$TEMP_DIR/web3_mcp_indicators.txt" ]]; then
+        print_status "$RED" "🚨 HIGH RISK: May 20, 2026 Web3/DeFi MCP-server typosquat C2 indicators detected:"
+        print_status "$RED" "    ⚠️  Payload exfiltrates ~/.ssh, ~/.ethereum, ~/.bitcoin, ~/.env, shell history,"
+        print_status "$RED" "        ~/.git-credentials on install AND on every MCP tool invocation."
+        while IFS= read -r line; do
+            local file="${line%%:*}"
+            local reason="${line#*:}"
+            echo "   - $file"
+            echo "     Reason: $reason"
+            show_file_preview "$file" "HIGH RISK: Web3/DeFi MCP-server typosquat C2 reference"
+            high_risk=$((high_risk+1))
+        done < "$TEMP_DIR/web3_mcp_indicators.txt"
+        print_status "$RED" "    📋 IMMEDIATE ACTION: Uninstall the offending package, rotate SSH keys, wallet"
+        print_status "$RED" "                         seeds/keystores, GitHub credentials, and any secret found in"
+        print_status "$RED" "                         your .env files. Assume shell history was harvested."
     fi
 
     if [[ -s "$TEMP_DIR/mini_shai_hulud_host_artifacts.txt" ]]; then
@@ -4867,11 +5016,13 @@ main() {
     print_stage_complete "Repository analysis"
 
     # Advanced pattern detection
-    print_status "$ORANGE" "[Stage 5/6] Advanced detection (discussions, sandworm, axios, mini-shai-hulud, runners, destructive)"
+    print_status "$ORANGE" "[Stage 5/6] Advanced detection (discussions, sandworm, axios, mini-shai-hulud, megalodon, web3-mcp, runners, destructive)"
     check_discussion_workflows "$scan_dir"
     check_sandworm_mode_workflows "$scan_dir"
     check_axios_attack_indicators "$scan_dir"
     check_mini_shai_hulud_indicators "$scan_dir" "$check_host"
+    check_megalodon_indicators "$scan_dir"
+    check_web3_mcp_indicators "$scan_dir"
     check_github_runners "$scan_dir"
     check_destructive_patterns "$scan_dir"
     check_preinstall_bun_patterns "$scan_dir"
