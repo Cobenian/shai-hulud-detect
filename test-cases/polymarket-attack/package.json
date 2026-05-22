@@ -1,0 +1,9 @@
+{
+  "name": "polymarket-attack-test",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Test fixture for May 21, 2026 Polymarket wallet-drainer typosquat campaign. Pins one of the 18 confirmed-malicious polymarketdev versions (polymarket-bot@0.1.0) so the standard package-version check fires, and exercises check_polymarket_indicators via the companion postinstall-trace.js (C2 + payload hash + publisher fingerprint + attacker source repo) plus the in-tree .polybot/wallets.json staging-artifact path. All fixture content is inert string constants — no executable malware.",
+  "dependencies": {
+    "polymarket-bot": "0.1.0"
+  }
+}

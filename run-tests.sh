@@ -77,6 +77,10 @@ declare -A EXPECTED=(
     ["atool-clean"]="0|no|no|no"               # Clean: last-known-good versions of atool-wave-targeted packages
     ["megalodon-attack"]="1|yes|no|no"         # HIGH: May 18, 2026 Megalodon GitHub-repo backdooring (SysDiag workflow + Tiledesk npm fallout + C2 IP + commit SHA)
     ["web3-mcp-attack"]="1|yes|yes|no"         # HIGH: May 20, 2026 Web3/DeFi MCP-server typosquat (chain-key-validator + C2 ddjidd564.github.io + webhook.site fallback); MEDIUM piggybacks because the generic webhook.site content-pattern check fires on the same fallback URL
+    ["polymarket-attack"]="1|yes|no|no"        # HIGH: May 21, 2026 Polymarket wallet-drainer typosquat (polymarket-bot@0.1.0 + C2 polymarketbot.polymarketdev.workers.dev + payload SHA + .polybot/wallets.json staging artifact)
+    ["sl4x0-attack"]="1|yes|no|no"             # HIGH: sl4x0 dependency-confusion campaign (oc-aa-module-client@9.9.10 + C2 oob.sl4x0.xyz + @sl4x0.xyz publisher fingerprint + slaxorg fab org + hex-named helpers b02e30.js / 6ad264.js)
+    ["art-template-attack"]="1|yes|no|no"      # HIGH: 2025-2026 art-template npm hijack (art-template@4.13.5 + iOS exploit-kit C2 v3.jiathis.com / utaq.cfww.shop / l1ewsu3yjkqeroy.xyz + threat-actor goofychris/daughtrymom)
+    ["durabletask-attack"]="1|yes|no|no"       # HIGH: May 19, 2026 durabletask PyPI compromise (pypi:durabletask@1.4.1 + C2 check.git-service.com + secondary t.m-kosche.com + FIRESCALE/BABA-YAGA-KOSCHEI beacons + pgsql-monitor persistence)
     ["semver-matching"]="0|no|no|yes"          # LOW: semver edge cases
     ["semver-wildcards"]="0|no|no|no"          # Clean
     ["spaces-in-filenames"]="0|no|no|no"       # Clean: handles spaces in filenames (issue #92)
@@ -265,6 +269,98 @@ do
         ((passed++))
     else
         echo -e "${RED}FAIL${NC}: web3-mcp-attack did NOT fire: $label (looked for: '$pattern')"
+        ((failed++))
+    fi
+done
+
+ART_OUT=$("$BASH_CMD" "$DETECTOR" "$SCRIPT_DIR/test-cases/art-template-attack" 2>&1)
+for art_check in \
+    "art-template compromised version|art-template@4.13.5" \
+    "art-template C2 v3.jiathis.com|art-template hijack C2 reference (v3.jiathis.com)" \
+    "art-template C2 git.youzzjizz.com|art-template hijack C2 reference (git.youzzjizz.com)" \
+    "art-template C2 utaq.cfww.shop|art-template hijack C2 reference (utaq.cfww.shop)" \
+    "art-template C2 l1ewsu3yjkqeroy.xyz|art-template hijack C2 reference (l1ewsu3yjkqeroy.xyz)" \
+    "art-template API endpoint|art-template hijack C2 reference (/api/ip-sync/sync)" \
+    "art-template obfuscation seed|cecd08aa6ff548c2" \
+    "art-template publisher daughtrymom|art-template hijack threat-actor fingerprint" \
+    "art-template GitHub goofychris|github.com/goofychris/"
+do
+    label="${art_check%|*}"
+    pattern="${art_check#*|}"
+    ((total++))
+    if grep -qF "$pattern" <<< "$ART_OUT"; then
+        echo -e "${GREEN}PASS${NC}: art-template-attack fires IoC: $label"
+        ((passed++))
+    else
+        echo -e "${RED}FAIL${NC}: art-template-attack did NOT fire: $label (looked for: '$pattern')"
+        ((failed++))
+    fi
+done
+
+DT_OUT=$("$BASH_CMD" "$DETECTOR" "$SCRIPT_DIR/test-cases/durabletask-attack" 2>&1)
+for dt_check in \
+    "durabletask compromised PyPI version|durabletask@1.4.1" \
+    "durabletask primary C2|durabletask C2 reference (check.git-service.com)" \
+    "durabletask C2 /rope.pyz|durabletask C2 reference (/rope.pyz)" \
+    "durabletask C2 /v1/models|durabletask C2 reference (/v1/models)" \
+    "durabletask C2 /api/public/version|durabletask C2 reference (/api/public/version)" \
+    "durabletask beacon FIRESCALE|durabletask beacon string (FIRESCALE)" \
+    "durabletask beacon BABA-YAGA-KOSCHEI|durabletask beacon string (BABA-YAGA-KOSCHEI)" \
+    "durabletask beacon PUSH UR T3MPRR|durabletask beacon string (PUSH UR T3MPRR)" \
+    "durabletask pgsql-monitor persistence|pgsql-monitor.service" \
+    "durabletask shared C2 with Mini Shai-Hulud|t.m-kosche.com"
+do
+    label="${dt_check%|*}"
+    pattern="${dt_check#*|}"
+    ((total++))
+    if grep -qF "$pattern" <<< "$DT_OUT"; then
+        echo -e "${GREEN}PASS${NC}: durabletask-attack fires IoC: $label"
+        ((passed++))
+    else
+        echo -e "${RED}FAIL${NC}: durabletask-attack did NOT fire: $label (looked for: '$pattern')"
+        ((failed++))
+    fi
+done
+
+SL4X0_OUT=$("$BASH_CMD" "$DETECTOR" "$SCRIPT_DIR/test-cases/sl4x0-attack" 2>&1)
+for sl4x0_check in \
+    "sl4x0 compromised version|oc-aa-module-client@9.9.10" \
+    "sl4x0 C2 domain reference|sl4x0 C2/domain reference (oob.sl4x0.xyz)" \
+    "sl4x0 publisher email fingerprint|sl4x0 publisher email-domain fingerprint" \
+    "sl4x0 fabricated GitHub org|fabricated GitHub org reference (slaxorg)" \
+    "sl4x0 hex helper b02e30.js|sl4x0 hex-named payload helper (b02e30.js)" \
+    "sl4x0 hex helper 6ad264.js|sl4x0 hex-named payload helper (6ad264.js)"
+do
+    label="${sl4x0_check%|*}"
+    pattern="${sl4x0_check#*|}"
+    ((total++))
+    if grep -qF "$pattern" <<< "$SL4X0_OUT"; then
+        echo -e "${GREEN}PASS${NC}: sl4x0-attack fires IoC: $label"
+        ((passed++))
+    else
+        echo -e "${RED}FAIL${NC}: sl4x0-attack did NOT fire: $label (looked for: '$pattern')"
+        ((failed++))
+    fi
+done
+
+POLY_OUT=$("$BASH_CMD" "$DETECTOR" "$SCRIPT_DIR/test-cases/polymarket-attack" 2>&1)
+for poly_check in \
+    "Polymarket compromised version|polymarket-bot@0.1.0" \
+    "Cloudflare Workers C2 host|Polymarket C2 reference (polymarketbot.polymarketdev.workers.dev)" \
+    "C2 exfil endpoint path|Polymarket C2 reference (/v1/wallets/keys)" \
+    "Polymarket payload SHA-256|Polymarket payload SHA-256 literal reference" \
+    "polymarketdev publisher fingerprint|Polymarket threat-actor publisher (polymarketdev)" \
+    "attacker source repo reference|texsellix/polymarket-trading-bot" \
+    "in-tree .polybot/wallets.json artifact|.polybot/wallets.json"
+do
+    label="${poly_check%|*}"
+    pattern="${poly_check#*|}"
+    ((total++))
+    if grep -qF "$pattern" <<< "$POLY_OUT"; then
+        echo -e "${GREEN}PASS${NC}: polymarket-attack fires IoC: $label"
+        ((passed++))
+    else
+        echo -e "${RED}FAIL${NC}: polymarket-attack did NOT fire: $label (looked for: '$pattern')"
         ((failed++))
     fi
 done

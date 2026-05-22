@@ -1,0 +1,5 @@
+{
+  "_comment": "TEST FIXTURE - inert stand-in for the Polymarket wallet-drainer staging file. The real ~/.polybot/wallets.json holds harvested private keys before the dropper exfiltrates them. This fixture contains no actual key material; it exists only so the detector's .polybot/ artifact match has something to find inside the scan tree.",
+  "fixture": true,
+  "wallets": []
+}

@@ -5,6 +5,77 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.2] - 2026-05-21
+
+### Added
+- **sl4x0 dependency-confusion campaign coverage (June 2025 → March 2026)**: SafeDep documented a sustained dependency-confusion operation targeting Fortune 500 companies. 92+ packages published across 32 throwaway accounts (all under `*@sl4x0.xyz` email domain; account names follow `<target>poc` convention). Payload is DNS-only reconnaissance — reads OS username + hostname + cwd basename + timestamp and exfils via DNS query to `oob.sl4x0.xyz`. No persistence, no file or credential theft. Likely security research / bug bounty given the explicit "poc" naming, but the code DID execute on install and leak developer identity to a third party.
+  - **22 still-live `name:version` entries** added to `compromised-packages.txt` (the 70+ already-removed packages are caught by the publisher-fingerprint check below): `oc-aa-module-client@9.9.10`, `oc-navbar-module-client@9.9.10`, `oc-ccp-module-client@9.9.10`, `oc-pdc-module-client@9.9.0`, `oc-conversation-history-module-client@9.9.0`, `oc-ecm-module-client@9.9.0`, `oc-cip-module-client@9.9.0`, `oc-recommendedupgrade-module-client@9.9.0`, `oc-agent-toolbar-module-client@9.9.0`, `oc-pico-module-client@9.9.0`, `@phonos/types@9.9.10`, `@wame/ngx-frf-utilities@9.9.11`, `@wame/ngx-adfs@9.9.11`, `cclr-component-resources@9.9.10`, `@ceeferenderer/itg-renderer-sdk@99.9.9`, `@ceeferenderer/fe-renderer-sdk@99.9.9`, `cr-static-shared-components@9.9.9`, `@the-coca-cola-company/ngps-global-common-utils@9.9.9`, `@the-coca-cola-company/receipt-scanner-admin-lib@9.9.9`, `@cloudsop/hmoment@9.9.9`, `tombac-chronos@9.9.9`, `ftapi-core@99.9.9`.
+  - **New `check_sl4x0_indicators` function** matches: C2 domain `oob.sl4x0.xyz` (bare and defanged), publisher email-domain fingerprint `@sl4x0.xyz` (catches every package the campaign has ever published, including the 70+ removed ones, as long as the cached package.json is on disk), fabricated GitHub org `slaxorg`, and the two unique hex-named payload helpers `lib/b02e30.js` and `lib/6ad264.js`.
+  - **New `test-cases/sl4x0-attack/`** fixture with a synthetic `node_modules/oc-aa-module-client/` layout exercising every IoC class.
+  - Source: https://safedep.io/sl4x0-dependency-confusion-campaign/
+- **art-template npm hijack coverage (March 2025 → May 2026)**: Compromised maintainer account (`daughtrymom` on npm, `goofychris` on GitHub — renamed from `aui` in late November 2024) injected a stage-1 loader into the package's browser bundle (`lib/template-web.js`). Payload chain-loads an iOS browser exploit kit attributed by Google TAG to the Chinese financially-motivated threat actor UNC6691. Distinct from TeamPCP / Mini Shai-Hulud / Megalodon / Polymarket / sl4x0 — no actor or infrastructure overlap.
+  - **4 versions** added to `compromised-packages.txt`: `art-template@4.13.3`, `art-template@4.13.4`, `art-template@4.13.5`, `art-template@4.13.6`.
+  - **2 stage-2/4 payload SHA-256 hashes** added to `MALICIOUS_HASHLIST`: `d8e3973a…` (stage-2 jia.js/art.js loader) and `f31bdd06…` (stage-4 loader `49554fde7424c31c.js`). Priority-files filter extended so these are hashed even inside `node_modules/`.
+  - **New `check_art_template_indicators` function** matches: C2 domains `v3.jiathis.com`, `git.youzzjizz.com`, `utaq.cfww.shop`, `l1ewsu3yjkqeroy.xyz` (all with defanged variants), API endpoint `/api/ip-sync/sync`, threat-actor publisher fingerprints (`v4v5qc`, `npmpacketmaintainmember7`, `daughtrymom` in `_npmUser` metadata; `goofychris` in GitHub URL references; `eb8org@gmail.com`, `npmpacketmaintainmember7@proton.me` email addresses), and the obfuscation seed `cecd08aa6ff548c2`.
+  - **New `test-cases/art-template-attack/`** fixture with a synthetic `node_modules/art-template/` layout (minified-JSON `_npmUser` to match npm's post-install cache format).
+  - Important note: payload activates ONLY in browser context (no preinstall/postinstall). Node.js server-side consumers are unaffected unless they explicitly load the browser bundle.
+  - Source: https://safedep.io/art-template-npm-supply-chain-compromise
+- **durabletask PyPI compromise coverage (May 19, 2026)**: Three malicious `durabletask` versions published within 35 minutes by a compromised maintainer. Runtime dropper injected at module import time downloads stage-2 payload (`rope.pyz`) from `check.git-service.com` and exfiltrates multi-cloud credentials (AWS / Azure / GCP across all profiles + regions, Kubernetes secrets across all contexts/namespaces, HashiCorp Vault KV, password-manager vaults including 1Password / Bitwarden / pass / gopass, SSH keys, Docker creds, npm/PyPI/Cargo tokens, kubeconfig, Terraform state, VPN configs Tailscale + WireGuard, MCP server configs, `.env` files, shell history, GitHub tokens). Worm capabilities: lateral movement via AWS SSM `SendCommand` (up to 5 EC2 instances) and Kubernetes `kubectl exec` (up to 5 pods). Slavic-folklore beacon strings (FIRESCALE, BABA-YAGA-KOSCHEI, "PUSH UR T3MPRR") in commit messages and exfil repos.
+  - **Notable**: secondary C2 is `t.m-kosche.com` — **the same C2 as the May 19 Mini Shai-Hulud atool/AntV wave** (already covered by `check_mini_shai_hulud_indicators`). Strong toolkit overlap with TeamPCP suspected but not asserted in the disclosure.
+  - **3 PyPI versions** added to `compromised-packages.txt`: `pypi:durabletask:1.4.1`, `pypi:durabletask:1.4.2`, `pypi:durabletask:1.4.3`.
+  - **1 stage-2 payload SHA-256** added to `MALICIOUS_HASHLIST`: `069ac1dc7f7649b76bc72a11ac700f373804bfd81dab7e561157b703999f44ce` (the `rope.pyz` downloaded from C2). Priority-files filter extended so it's hashed even inside virtualenvs / site-packages.
+  - **New `check_durabletask_indicators` function** matches: primary C2 `check.git-service.com` (and defanged), C2 endpoints `/api/public/version`, `/v1/models`, `/rope.pyz`, `/audio.mp3`, the three beacon strings, the `rope.pyz` filename anywhere in the tree, and the persistence artifacts `pgsql-monitor.service` + `pgmonitor.py` + `~/.cache/.sys-update-check{,-k8s}` markers (both as direct path lookups and as anywhere-in-tree filename matches). The check scans code, script, AND yaml file lists so Python `__init__.py` injection points get caught.
+  - **New `test-cases/durabletask-attack/`** fixture with `pyproject.toml` + synthetic `site-packages/durabletask/__init__.py` + `pgsql-monitor.service` exercising every IoC class.
+  - Source: https://safedep.io/malicious-durabletask-pypi-supply-chain-attack
+- **`run-tests.sh` content-IoC assertion blocks** for all three new campaigns: 6 assertions for sl4x0, 9 for art-template, 10 for durabletask. Total: 25 new positive assertions plus 3 new EXPECTED-table fixtures (`sl4x0-attack`, `art-template-attack`, `durabletask-attack`).
+
+### Changed
+- **Package Count**: Expanded `compromised-packages.txt` from 2,800 to 2,829 confirmed package versions (+22 sl4x0 + 4 art-template + 3 durabletask).
+- **`MALICIOUS_HASHLIST`**: 11 → 14 hashes (+ art-template stage-2 + art-template stage-4 + durabletask rope.pyz).
+- **`collect_all_files`**: extended with `b02e30.js`, `6ad264.js`, `49554fde7424c31c.js`, `rope.pyz`, `pgmonitor.py`, `pgsql-monitor.service`, `template-web.js` so the new filename-based artifact matches have something to find.
+- **`check_file_hashes` priority filter**: now also covers `49554fde7424c31c.js`, `rope.pyz`, `template-web.js`, `pgmonitor.py` — so they're hashed even inside `node_modules/` / site-packages.
+- **Stage 5/6 banner**: now lists `sl4x0`, `art-template`, and `durabletask` alongside the existing campaign checks.
+- **Test count**: 88 → 116 (+3 fixtures, +25 content-IoC assertions).
+
+### Security
+- Added high-confidence detection for three additional campaigns documented in:
+  - https://safedep.io/sl4x0-dependency-confusion-campaign/
+  - https://safedep.io/art-template-npm-supply-chain-compromise
+  - https://safedep.io/malicious-durabletask-pypi-supply-chain-attack
+
+## [3.4.1] - 2026-05-21
+
+### Added
+- **Polymarket wallet-drainer typosquat coverage (May 21, 2026)**: Nine npm packages from the attacker-controlled `polymarketdev` account impersonate legitimate Polymarket trading tools. The postinstall hook prompts the user through a fake "wallet onboarding" UI, captures raw private keys, and exfiltrates them (plus env vars and `.env` files) to a Cloudflare Workers C2. Distinct from Megalodon and Mini Shai-Hulud — no shared attribution or infrastructure.
+  - **18 compromised version artifacts** across 9 packages added to `compromised-packages.txt` (each package has exactly two published versions, `0.1.0` and `0.1.1`, verified against npm's registry on 2026-05-21):
+    - `polymarket-trading-cli:0.1.0/0.1.1`
+    - `polymarket-terminal:0.1.0/0.1.1`
+    - `polymarket-trade:0.1.0/0.1.1`
+    - `polymarket-auto-trade:0.1.0/0.1.1`
+    - `polymarket-copy-trading:0.1.0/0.1.1`
+    - `polymarket-bot:0.1.0/0.1.1`
+    - `polymarket-claude-code:0.1.0/0.1.1`
+    - `polymarket-ai-agent:0.1.0/0.1.1`
+    - `polymarket-trader:0.1.0/0.1.1`
+  - **New `check_polymarket_indicators` function** in `shai-hulud-detector.sh` matches:
+    - C2 host `polymarketbot.polymarketdev.workers.dev` (and defanged form `polymarketbot.polymarketdev[.]workers[.]dev`)
+    - Exfiltration endpoint path `/v1/wallets/keys`
+    - Payload SHA-256 `e01b85c1437085a519217338fe4ee5ed7858c28a10f8c1477b2f1857c3386edb` as a literal-string reference (incident-response notes, advisories checked into the repo)
+    - Threat-actor publisher fingerprint `"_npmUser":{"name":"polymarketdev"` matched in JSON context (mirrors the `atool`-publisher detection approach from the May 19 wave to avoid bare-name false positives)
+    - Attacker GitHub source repo reference `texsellix/polymarket-trading-bot`
+    - Local-artifact paths `~/.polybot/device.json` and `~/.polybot/wallets.json` (the dropper's staging files for harvested wallet keys), both as direct path lookups under the scan root and as anywhere-in-tree regex matches against `/\.polybot/(device|wallets)\.json$`
+  - **New `test-cases/polymarket-attack/` fixture** pins `polymarket-bot@0.1.0`, includes a `postinstall-trace.js` carrying every content IoC as inert string constants, and includes a synthetic `.polybot/wallets.json` to exercise the staging-artifact match end-to-end.
+- **`run-tests.sh` content-IoC assertion block for Polymarket**: 7 new positive assertions covering every IoC class added above. Layout mirrors the existing Megalodon and atool/AntV assertion blocks.
+
+### Changed
+- **Package Count**: Expanded `compromised-packages.txt` from 2,782 to 2,800 confirmed package versions (+18 Polymarket entries).
+- **Stage 5/6 banner**: Now also lists `polymarket` alongside the existing campaign checks.
+- **Test count**: 80 → 88 (+1 new fixture, +7 new content-IoC assertions).
+
+### Security
+- Added high-confidence detection for the May 21, 2026 Polymarket wallet-drainer typosquat campaign documented in:
+  - https://safedep.io/malicious-polymarket-npm-crypto-wallet-drainer
+
 ## [3.4.0] - 2026-05-21
 
 ### Added

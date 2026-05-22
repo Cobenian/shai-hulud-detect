@@ -2979,3 +2979,107 @@ mnemonic-safety-check:0.5.2
 eth-wallet-sentinel:1.0.9
 deployment-key-auditor:0.7.3
 defi-threat-scanner:2.1.2
+
+# ========================================================================
+# MAY 21, 2026 - POLYMARKET wallet-drainer typosquats (9 packages, 18 versions)
+# Nine npm packages impersonating legitimate Polymarket trading tools, all
+# published by the attacker-controlled `polymarketdev` account. The postinstall
+# hook prompts the user through a fake "wallet onboarding" flow that captures
+# raw private keys, then exfiltrates them (plus env vars + .env files) to
+# polymarketbot.polymarketdev.workers.dev:443/v1/wallets/keys. Local artifacts:
+# ~/.polybot/device.json, ~/.polybot/wallets.json. Payload SHA-256:
+# e01b85c1437085a519217338fe4ee5ed7858c28a10f8c1477b2f1857c3386edb.
+# Attribution: unknown; distinct from Megalodon and Mini Shai-Hulud.
+# Source: https://safedep.io/malicious-polymarket-npm-crypto-wallet-drainer
+# ========================================================================
+polymarket-trading-cli:0.1.0
+polymarket-trading-cli:0.1.1
+polymarket-terminal:0.1.0
+polymarket-terminal:0.1.1
+polymarket-trade:0.1.0
+polymarket-trade:0.1.1
+polymarket-auto-trade:0.1.0
+polymarket-auto-trade:0.1.1
+polymarket-copy-trading:0.1.0
+polymarket-copy-trading:0.1.1
+polymarket-bot:0.1.0
+polymarket-bot:0.1.1
+polymarket-claude-code:0.1.0
+polymarket-claude-code:0.1.1
+polymarket-ai-agent:0.1.0
+polymarket-ai-agent:0.1.1
+polymarket-trader:0.1.0
+polymarket-trader:0.1.1
+
+# ========================================================================
+# JUNE 2025 → MARCH 2026 - sl4x0 dependency-confusion campaign
+# Sustained dependency confusion operation targeting Fortune 500 internal package
+# names. 92+ packages published across 32 throwaway accounts (all under the
+# *@sl4x0.xyz email domain; account-name convention is `<target>poc`). Payload is
+# minimal: postinstall hook reads OS username + hostname + cwd basename + unix
+# timestamp and exfiltrates them via DNS query to oob.sl4x0.xyz. No file or env
+# theft, no persistence. Likely security research / bug bounty given the explicit
+# "poc" naming, but it still executes on install and leaks developer identity to
+# a third party.
+# Only the 22 versions confirmed still live on npm as of 2026-03-24 are
+# enumerated here; the 70+ removed packages are caught by the publisher
+# fingerprint check (`@sl4x0.xyz` in `_npmUser` metadata).
+# Source: https://safedep.io/sl4x0-dependency-confusion-campaign/
+# ========================================================================
+oc-aa-module-client:9.9.10
+oc-navbar-module-client:9.9.10
+oc-ccp-module-client:9.9.10
+oc-pdc-module-client:9.9.0
+oc-conversation-history-module-client:9.9.0
+oc-ecm-module-client:9.9.0
+oc-cip-module-client:9.9.0
+oc-recommendedupgrade-module-client:9.9.0
+oc-agent-toolbar-module-client:9.9.0
+oc-pico-module-client:9.9.0
+@phonos/types:9.9.10
+@wame/ngx-frf-utilities:9.9.11
+@wame/ngx-adfs:9.9.11
+cclr-component-resources:9.9.10
+@ceeferenderer/itg-renderer-sdk:99.9.9
+@ceeferenderer/fe-renderer-sdk:99.9.9
+cr-static-shared-components:9.9.9
+@the-coca-cola-company/ngps-global-common-utils:9.9.9
+@the-coca-cola-company/receipt-scanner-admin-lib:9.9.9
+@cloudsop/hmoment:9.9.9
+tombac-chronos:9.9.9
+ftapi-core:99.9.9
+
+# ========================================================================
+# MARCH 12, 2025 → MAY 20, 2026 - art-template npm hijack (UNC6691-attributed)
+# Compromised maintainer account (npm: daughtrymom; GitHub: goofychris, renamed
+# from `aui` in late November 2024) injected a stage-1 loader into the package's
+# browser bundle (lib/template-web.js). The payload activates only in browser
+# context (no preinstall/postinstall) and chain-loads an iOS browser exploit kit
+# attributed by Google TAG to the Chinese financially-motivated threat actor
+# UNC6691. C2: v3.jiathis.com, git.youzzjizz.com, utaq.cfww.shop, l1ewsu3yjkqeroy.xyz.
+# Attribution: distinct from TeamPCP / Mini Shai-Hulud / Megalodon / Polymarket / sl4x0.
+# Source: https://safedep.io/art-template-npm-supply-chain-compromise
+# ========================================================================
+art-template:4.13.3
+art-template:4.13.4
+art-template:4.13.5
+art-template:4.13.6
+
+# ========================================================================
+# MAY 19, 2026 - durabletask PyPI multi-cloud credential stealer
+# Three versions of `durabletask` published within 35 minutes by a compromised
+# maintainer. Runtime dropper injected at module import time downloads stage-2
+# (rope.pyz) from check.git-service.com and exfiltrates AWS/Azure/GCP creds,
+# Kubernetes/Vault secrets, password manager vaults, SSH keys, npm/PyPI tokens,
+# Terraform state, MCP configs, and .env files. Worm: lateral movement via
+# AWS SSM SendCommand and Kubernetes kubectl exec. Persistence:
+# pgsql-monitor.service + /usr/bin/pgmonitor.py.
+# Notable: secondary C2 is `t.m-kosche.com` — the SAME C2 as the May 19 Mini
+# Shai-Hulud atool/AntV wave (already covered by check_mini_shai_hulud_indicators).
+# Strong toolkit overlap with TeamPCP suspected but not asserted in the disclosure.
+# Slavic-folklore naming (Koschei, Baba Yaga, FIRESCALE beacon).
+# Source: https://safedep.io/malicious-durabletask-pypi-supply-chain-attack
+# ========================================================================
+pypi:durabletask:1.4.1
+pypi:durabletask:1.4.2
+pypi:durabletask:1.4.3

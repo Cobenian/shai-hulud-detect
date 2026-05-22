@@ -1,0 +1,14 @@
+# TEST FIXTURE - inert stand-in for the systemd persistence unit the durabletask
+# payload installs. The real file lives at /etc/systemd/system/pgsql-monitor.service
+# or ~/.config/systemd/user/pgsql-monitor.service and keeps the credential-stealer
+# binary running across reboots. Disabled here; exists only so the detector can
+# match the filename in scan trees.
+[Unit]
+Description=TEST FIXTURE - not the real pgsql-monitor unit
+
+[Service]
+Type=oneshot
+ExecStart=/bin/true
+
+[Install]
+WantedBy=default.target
