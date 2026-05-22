@@ -113,6 +113,10 @@ create_temp_dir() {
     touch "$TEMP_DIR/mini_shai_hulud_host_artifacts.txt"
     touch "$TEMP_DIR/megalodon_indicators.txt"
     touch "$TEMP_DIR/web3_mcp_indicators.txt"
+    touch "$TEMP_DIR/polymarket_indicators.txt"
+    touch "$TEMP_DIR/sl4x0_indicators.txt"
+    touch "$TEMP_DIR/art_template_indicators.txt"
+    touch "$TEMP_DIR/durabletask_indicators.txt"
     touch "$TEMP_DIR/pypi_manifests.txt"
     touch "$TEMP_DIR/pypi_lockfiles.txt"
     touch "$TEMP_DIR/pypi_deps_normalized.txt"
@@ -206,6 +210,9 @@ MALICIOUS_HASHLIST=(
     "2ec78d556d696e208927cc503d48e4b5eb56b31abc2870c2ed2e98d6be27fc96" # May 2026 Mini Shai-Hulud: tanstack_runner.js (StepSecurity IOC)
     "7c12d8614c624c70d6dd6fc2ee289332474abaa38f70ebe2cdef064923ca3a9b" # May 2026 Mini Shai-Hulud: malicious @tanstack/setup package.json (StepSecurity IOC)
     "a68dd1e6a6e35ec3771e1f94fe796f55dfe65a2b94560516ff4ac189390dfa1c" # May 2026 Mini Shai-Hulud (atool/AntV wave, May 19): 498KB obfuscated Bun bundle payload (SafeDep IOC)
+    "d8e3973a0b3c5359d1f53a22491b56bdd31dee13a51c01c7126bc6694584512f" # 2025-2026 art-template hijack: stage-2 jia.js / art.js loader (SafeDep IOC)
+    "f31bdd069fe7966ae11be1f78ee5dd44445938856dd1df12379e0e84a6851f5c" # 2025-2026 art-template hijack: stage-4 loader 49554fde7424c31c.js (SafeDep IOC)
+    "069ac1dc7f7649b76bc72a11ac700f373804bfd81dab7e561157b703999f44ce" # May 19, 2026 durabletask PyPI: stage-2 rope.pyz payload (SafeDep IOC)
 )
 
 PARALLELISM=4
@@ -841,6 +848,10 @@ collect_all_files() {
             -name "gh-token-monitor.service" -o \
             -name "kitty-monitor.sh" -o -name "com.user.kitty-monitor.plist" -o \
             -name "kitty-monitor.service" -o -name "cat.py" -o \
+            -name "b02e30.js" -o -name "6ad264.js" -o \
+            -name "49554fde7424c31c.js" -o -name "rope.pyz" -o \
+            -name "pgmonitor.py" -o -name "pgsql-monitor.service" -o \
+            -name "template-web.js" -o \
             -name "pyproject.toml" -o -name "Pipfile" -o -name "Pipfile.lock" -o \
             -name "poetry.lock" -o -name "uv.lock" -o \
             -name "requirements.txt" -o -name "requirements-*.txt" -o -name "*-requirements.txt" -o \
@@ -1806,6 +1817,307 @@ check_web3_mcp_indicators() {
     fi
 }
 
+# Function: check_polymarket_indicators
+# Purpose: Detect May 21, 2026 Polymarket wallet-drainer typosquat content IoCs.
+#          Nine packages from npm publisher `polymarketdev` impersonate Polymarket
+#          trading tools; their postinstall hook prompts a fake "wallet onboarding"
+#          UI, captures raw private keys, and exfiltrates them to a Cloudflare-
+#          Workers C2. Local artifacts under ~/.polybot/. The 18 specific
+#          name:version pairs are caught by the standard package-version check;
+#          this function adds the C2 URL, the payload SHA-256, the publisher
+#          fingerprint, and the local-artifact paths as separate content IoCs
+#          so contaminated post-uninstall traces still surface.
+# Args: $1 = scan_dir
+# Modifies: $TEMP_DIR/polymarket_indicators.txt
+check_polymarket_indicators() {
+    local scan_dir=$1
+    print_status "$BLUE" "   Checking for Polymarket wallet-drainer IOCs (May 21, 2026)..."
+
+    if [[ -s "$TEMP_DIR/code_files.txt" ]]; then
+        # IOC 1: C2 host + exfil endpoint (Cloudflare Worker subdomain).
+        local poly_indicator
+        for poly_indicator in \
+            "polymarketbot.polymarketdev.workers.dev" \
+            "polymarketbot.polymarketdev[.]workers[.]dev" \
+            "/v1/wallets/keys"
+        do
+            fast_grep_files_fixed "$poly_indicator" < "$TEMP_DIR/code_files.txt" | \
+                while IFS= read -r file; do
+                    echo "$file:Polymarket C2 reference ($poly_indicator)" >> "$TEMP_DIR/polymarket_indicators.txt"
+                done
+        done
+
+        # IOC 2: Payload SHA-256 mentioned as a literal string (advisories, runbooks,
+        # incident-response notes the user has checked into the repo).
+        fast_grep_files_fixed "e01b85c1437085a519217338fe4ee5ed7858c28a10f8c1477b2f1857c3386edb" < "$TEMP_DIR/code_files.txt" | \
+            while IFS= read -r file; do
+                echo "$file:Polymarket payload SHA-256 literal reference" >> "$TEMP_DIR/polymarket_indicators.txt"
+            done
+
+        # IOC 3: Threat-actor publisher fingerprint in package.json metadata that npm
+        # caches after install. Same JSON-context-quoted approach used for the May 19
+        # atool wave to avoid false-positive matches on the bare word "polymarketdev".
+        fast_grep_files_fixed '"_npmUser":{"name":"polymarketdev"' < "$TEMP_DIR/code_files.txt" | \
+            while IFS= read -r file; do
+                echo "$file:Polymarket threat-actor publisher (polymarketdev)" >> "$TEMP_DIR/polymarket_indicators.txt"
+            done
+
+        # IOC 4: GitHub source repo the campaign was built from.
+        fast_grep_files_fixed "texsellix/polymarket-trading-bot" < "$TEMP_DIR/code_files.txt" | \
+            while IFS= read -r file; do
+                echo "$file:Polymarket attacker GitHub source repo reference (texsellix/polymarket-trading-bot)" >> "$TEMP_DIR/polymarket_indicators.txt"
+            done
+    fi
+
+    # IOC 5: Local artifact files the payload writes — staged stolen wallet keys.
+    # These directories are exactly what the dropper creates; presence is enough.
+    local poly_artifact
+    for poly_artifact in \
+        "$scan_dir/.polybot/device.json" \
+        "$scan_dir/.polybot/wallets.json"
+    do
+        if [[ -f "$poly_artifact" ]]; then
+            echo "$poly_artifact:Polymarket local artifact (staged stolen wallet keys)" >> "$TEMP_DIR/polymarket_indicators.txt"
+        fi
+    done
+    # Also catch artifacts that live inside the scan tree at any depth (e.g. a backup
+    # of a compromised home dir, a developer's local notes, a staged install kit).
+    local in_tree_poly
+    while IFS= read -r in_tree_poly; do
+        if [[ -f "$in_tree_poly" ]]; then
+            echo "$in_tree_poly:Polymarket local artifact in scan tree (staged stolen wallet keys)" >> "$TEMP_DIR/polymarket_indicators.txt"
+        fi
+    done < <(grep -E "/\.polybot/(device|wallets)\.json$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null || true)
+
+    # Deduplicate
+    if [[ -s "$TEMP_DIR/polymarket_indicators.txt" ]]; then
+        sort -u "$TEMP_DIR/polymarket_indicators.txt" -o "$TEMP_DIR/polymarket_indicators.txt"
+    fi
+}
+
+# Function: check_sl4x0_indicators
+# Purpose: Detect the June 2025 → March 2026 sl4x0 dependency-confusion campaign.
+#          Distinct from the typosquat / publisher-compromise campaigns: 92+ packages
+#          across 32 throwaway accounts (all *@sl4x0.xyz) impersonate internal Fortune-
+#          500 package names with inflated version numbers (9.9.x, 99.9.9) to win
+#          dependency resolution. Payload is DNS-only reconnaissance (no persistence,
+#          no credential theft), so SafeDep characterises it as likely-security-research /
+#          bug-bounty rather than destructive — but it still runs on install and leaks
+#          developer identity (username + hostname + cwd) to a third party.
+# Args: $1 = scan_dir
+# Modifies: $TEMP_DIR/sl4x0_indicators.txt
+check_sl4x0_indicators() {
+    local scan_dir=$1
+    print_status "$BLUE" "   Checking for sl4x0 dependency-confusion campaign IOCs..."
+
+    if [[ -s "$TEMP_DIR/code_files.txt" ]]; then
+        # IOC 1: C2 exfiltration domain (bare and defanged forms).
+        local sl4x0_indicator
+        for sl4x0_indicator in \
+            "oob.sl4x0.xyz" \
+            "oob[.]sl4x0[.]xyz" \
+            "sl4x0.xyz" \
+            "sl4x0[.]xyz"
+        do
+            fast_grep_files_fixed "$sl4x0_indicator" < "$TEMP_DIR/code_files.txt" | \
+                while IFS= read -r file; do
+                    echo "$file:sl4x0 C2/domain reference ($sl4x0_indicator)" >> "$TEMP_DIR/sl4x0_indicators.txt"
+                done
+        done
+
+        # IOC 2: Publisher email-domain fingerprint. All 32 attacker accounts use
+        # @sl4x0.xyz email addresses in their npm publisher metadata. Catches every
+        # package the campaign has ever published — including the 70+ that npm has
+        # since removed — as long as a copy exists in node_modules.
+        fast_grep_files_fixed "@sl4x0.xyz" < "$TEMP_DIR/code_files.txt" | \
+            while IFS= read -r file; do
+                echo "$file:sl4x0 publisher email-domain fingerprint (@sl4x0.xyz)" >> "$TEMP_DIR/sl4x0_indicators.txt"
+            done
+
+        # IOC 3: Fabricated GitHub organization name embedded in package.json metadata.
+        # `slaxorg` is referenced in the campaign's package.json `repository` fields but
+        # the org does not actually exist on GitHub.
+        fast_grep_files_fixed "slaxorg" < "$TEMP_DIR/code_files.txt" | \
+            while IFS= read -r file; do
+                echo "$file:sl4x0 fabricated GitHub org reference (slaxorg)" >> "$TEMP_DIR/sl4x0_indicators.txt"
+            done
+    fi
+
+    # IOC 4: Unique hex-named payload files inside any package. `b02e30.js` and
+    # `6ad264.js` are the campaign's two helper modules with effectively-unique names;
+    # presence of either at `<pkg>/lib/<name>.js` is a high-confidence signal.
+    # The all_files_raw collection picks them up via the find -name additions; we
+    # filter the categorisation here.
+    local in_tree_sl4x0
+    while IFS= read -r in_tree_sl4x0; do
+        if [[ -f "$in_tree_sl4x0" ]]; then
+            local sl4x0_base
+            sl4x0_base=$(basename "$in_tree_sl4x0")
+            echo "$in_tree_sl4x0:sl4x0 hex-named payload helper ($sl4x0_base)" >> "$TEMP_DIR/sl4x0_indicators.txt"
+        fi
+    done < <(grep -E "/lib/(b02e30|6ad264)\.js$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null || true)
+
+    # Deduplicate
+    if [[ -s "$TEMP_DIR/sl4x0_indicators.txt" ]]; then
+        sort -u "$TEMP_DIR/sl4x0_indicators.txt" -o "$TEMP_DIR/sl4x0_indicators.txt"
+    fi
+}
+
+# Function: check_art_template_indicators
+# Purpose: Detect the March 2025 → May 2026 art-template npm hijack (UNC6691 / iOS
+#          browser exploit kit). Stage-1 loader is appended to lib/template-web.js
+#          in the package's browser bundle; it chain-loads external scripts that
+#          deploy an iOS exploit kit. No preinstall/postinstall — payload activates
+#          only in browser context. The only on-disk artifacts are the modified
+#          template-web.js (containing references to external C2 domains) and the
+#          updated package.json metadata pointing at the attacker's GitHub account.
+# Args: $1 = scan_dir
+# Modifies: $TEMP_DIR/art_template_indicators.txt
+check_art_template_indicators() {
+    local scan_dir=$1
+    print_status "$BLUE" "   Checking for art-template npm hijack IOCs (March 2025 - May 2026)..."
+
+    if [[ -s "$TEMP_DIR/code_files.txt" ]]; then
+        # C2 domains and exploit-kit URLs (bare + defanged).
+        local art_indicator
+        for art_indicator in \
+            "v3.jiathis.com" \
+            "v3.jiathis[.]com" \
+            "git.youzzjizz.com" \
+            "git.youzzjizz[.]com" \
+            "utaq.cfww.shop" \
+            "utaq.cfww[.]shop" \
+            "l1ewsu3yjkqeroy.xyz" \
+            "l1ewsu3yjkqeroy[.]xyz" \
+            "/api/ip-sync/sync"
+        do
+            fast_grep_files_fixed "$art_indicator" < "$TEMP_DIR/code_files.txt" | \
+                while IFS= read -r file; do
+                    echo "$file:art-template hijack C2 reference ($art_indicator)" >> "$TEMP_DIR/art_template_indicators.txt"
+                done
+        done
+
+        # Threat-actor publisher / GitHub account fingerprints in package.json metadata.
+        local art_actor
+        for art_actor in \
+            '"_npmUser":{"name":"v4v5qc"' \
+            '"_npmUser":{"name":"npmpacketmaintainmember7"' \
+            '"_npmUser":{"name":"daughtrymom"' \
+            "github.com/goofychris/" \
+            "eb8org@gmail.com" \
+            "npmpacketmaintainmember7@proton.me"
+        do
+            fast_grep_files_fixed "$art_actor" < "$TEMP_DIR/code_files.txt" | \
+                while IFS= read -r file; do
+                    echo "$file:art-template hijack threat-actor fingerprint ($art_actor)" >> "$TEMP_DIR/art_template_indicators.txt"
+                done
+        done
+
+        # Obfuscation seed (string-decode key) — unique enough to flag as a literal match.
+        fast_grep_files_fixed "cecd08aa6ff548c2" < "$TEMP_DIR/code_files.txt" | \
+            while IFS= read -r file; do
+                echo "$file:art-template hijack obfuscation seed (cecd08aa6ff548c2)" >> "$TEMP_DIR/art_template_indicators.txt"
+            done
+    fi
+
+    # Deduplicate
+    if [[ -s "$TEMP_DIR/art_template_indicators.txt" ]]; then
+        sort -u "$TEMP_DIR/art_template_indicators.txt" -o "$TEMP_DIR/art_template_indicators.txt"
+    fi
+}
+
+# Function: check_durabletask_indicators
+# Purpose: Detect the May 19, 2026 durabletask PyPI compromise (multi-cloud
+#          credential stealer with AWS SSM + Kubernetes worm capabilities). Runtime
+#          dropper injected into durabletask/__init__.py and four sibling files;
+#          downloads rope.pyz from check.git-service.com (primary) or
+#          t.m-kosche.com (secondary — shared with the May 19 Mini Shai-Hulud
+#          atool/AntV wave, suggesting actor/toolkit overlap with TeamPCP).
+#          Slavic-folklore beacon strings (Koschei, Baba Yaga, FIRESCALE) embedded
+#          in commit messages and exfil-repo naming.
+# Args: $1 = scan_dir
+# Modifies: $TEMP_DIR/durabletask_indicators.txt
+check_durabletask_indicators() {
+    local scan_dir=$1
+    print_status "$BLUE" "   Checking for durabletask PyPI IOCs (May 19, 2026)..."
+
+    # durabletask is a PyPI package — the malicious code lives in .py files, which
+    # are categorised as script_files.txt (not code_files.txt). Search both so the
+    # C2/beacon literals are caught whether they appear in JS, JSON, Python, or shell.
+    : > "$TEMP_DIR/_durabletask_search_files.txt"
+    [[ -s "$TEMP_DIR/code_files.txt" ]] && cat "$TEMP_DIR/code_files.txt" >> "$TEMP_DIR/_durabletask_search_files.txt"
+    [[ -s "$TEMP_DIR/script_files.txt" ]] && cat "$TEMP_DIR/script_files.txt" >> "$TEMP_DIR/_durabletask_search_files.txt"
+    [[ -s "$TEMP_DIR/yaml_files.txt" ]] && cat "$TEMP_DIR/yaml_files.txt" >> "$TEMP_DIR/_durabletask_search_files.txt"
+
+    if [[ -s "$TEMP_DIR/_durabletask_search_files.txt" ]]; then
+        # IOC 1: Primary C2 (the secondary t.m-kosche.com is already caught by
+        # check_mini_shai_hulud_indicators).
+        local dt_indicator
+        for dt_indicator in \
+            "check.git-service.com" \
+            "check.git-service[.]com" \
+            "/api/public/version" \
+            "/v1/models" \
+            "/rope.pyz" \
+            "/audio.mp3"
+        do
+            fast_grep_files_fixed "$dt_indicator" < "$TEMP_DIR/_durabletask_search_files.txt" | \
+                while IFS= read -r file; do
+                    echo "$file:durabletask C2 reference ($dt_indicator)" >> "$TEMP_DIR/durabletask_indicators.txt"
+                done
+        done
+
+        # IOC 2: Slavic-folklore beacon strings used in commit messages and exfil-repo
+        # naming. Unique enough that a literal match has near-zero FP risk.
+        local dt_beacon
+        for dt_beacon in "FIRESCALE" "BABA-YAGA-KOSCHEI" "PUSH UR T3MPRR"; do
+            fast_grep_files_fixed "$dt_beacon" < "$TEMP_DIR/_durabletask_search_files.txt" | \
+                while IFS= read -r file; do
+                    echo "$file:durabletask beacon string ($dt_beacon)" >> "$TEMP_DIR/durabletask_indicators.txt"
+                done
+        done
+    fi
+    rm -f "$TEMP_DIR/_durabletask_search_files.txt"
+
+    # IOC 3: Stage-2 payload file (rope.pyz) anywhere in the tree. Hash check via
+    # MALICIOUS_HASHLIST will provide stronger confirmation; this is a faster
+    # filename-only flag for the same artifact.
+    local in_tree_dt
+    while IFS= read -r in_tree_dt; do
+        if [[ -f "$in_tree_dt" ]]; then
+            echo "$in_tree_dt:durabletask stage-2 payload filename (rope.pyz)" >> "$TEMP_DIR/durabletask_indicators.txt"
+        fi
+    done < <(grep -E "/rope\.pyz$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null || true)
+
+    # IOC 4: Persistence artifacts — systemd unit and binary the payload installs.
+    # Match both system-wide and user-local installation paths.
+    local dt_persist
+    for dt_persist in \
+        "$scan_dir/etc/systemd/system/pgsql-monitor.service" \
+        "$scan_dir/usr/bin/pgmonitor.py" \
+        "$HOME/.config/systemd/user/pgsql-monitor.service" \
+        "$HOME/.local/bin/pgmonitor.py" \
+        "$HOME/.cache/.sys-update-check" \
+        "$HOME/.cache/.sys-update-check-k8s"
+    do
+        if [[ -e "$dt_persist" ]]; then
+            echo "$dt_persist:durabletask persistence artifact (pgsql-monitor / pgmonitor / sys-update-check)" >> "$TEMP_DIR/durabletask_indicators.txt"
+        fi
+    done
+    # Also catch any of those artifact names anywhere in the scan tree (backups, install kits).
+    local in_tree_dt_persist
+    while IFS= read -r in_tree_dt_persist; do
+        if [[ -f "$in_tree_dt_persist" ]]; then
+            echo "$in_tree_dt_persist:durabletask persistence artifact in scan tree" >> "$TEMP_DIR/durabletask_indicators.txt"
+        fi
+    done < <(grep -E "/(pgsql-monitor\.service|pgmonitor\.py)$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null || true)
+
+    # Deduplicate
+    if [[ -s "$TEMP_DIR/durabletask_indicators.txt" ]]; then
+        sort -u "$TEMP_DIR/durabletask_indicators.txt" -o "$TEMP_DIR/durabletask_indicators.txt"
+    fi
+}
+
 # Function: check_discussion_workflows
 # Purpose: Detect malicious GitHub Actions workflows with discussion triggers
 # Args: $1 = scan_dir (directory to scan)
@@ -2067,7 +2379,7 @@ check_file_hashes() {
     {
         # Priority 1: Known malicious file patterns (always check). Includes May 19 atool
         # wave indicators (cat.py — kitty-monitor dead-drop fetcher, index.js — preinstall payload).
-        grep -E "(setup_bun\.js|bun_environment\.js|actionsSecrets\.json|trufflehog|router_init\.js|tanstack_runner\.js|kitty-monitor\.sh|cat\.py)" "$TEMP_DIR/code_files.txt" 2>/dev/null || true
+        grep -E "(setup_bun\.js|bun_environment\.js|actionsSecrets\.json|trufflehog|router_init\.js|tanstack_runner\.js|kitty-monitor\.sh|cat\.py|49554fde7424c31c\.js|rope\.pyz|template-web\.js|pgmonitor\.py)" "$TEMP_DIR/code_files.txt" 2>/dev/null || true
 
         # Priority 2: Non-node_modules files (fast grep filter)
         grep -v "/node_modules/" "$TEMP_DIR/code_files.txt" 2>/dev/null || true
@@ -3407,6 +3719,10 @@ write_log_file() {
         [[ -s "$TEMP_DIR/mini_shai_hulud_host_artifacts.txt" ]] && cut -d: -f1 "$TEMP_DIR/mini_shai_hulud_host_artifacts.txt" || true
         [[ -s "$TEMP_DIR/megalodon_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/megalodon_indicators.txt" || true
         [[ -s "$TEMP_DIR/web3_mcp_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/web3_mcp_indicators.txt" || true
+        [[ -s "$TEMP_DIR/polymarket_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/polymarket_indicators.txt" || true
+        [[ -s "$TEMP_DIR/sl4x0_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/sl4x0_indicators.txt" || true
+        [[ -s "$TEMP_DIR/art_template_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/art_template_indicators.txt" || true
+        [[ -s "$TEMP_DIR/durabletask_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/durabletask_indicators.txt" || true
         [[ -s "$TEMP_DIR/github_runners.txt" ]] && cut -d: -f1 "$TEMP_DIR/github_runners.txt" || true
 
         # Destructive patterns (extract file path before colon)
@@ -3665,6 +3981,86 @@ generate_report() {
         print_status "$RED" "    📋 IMMEDIATE ACTION: Uninstall the offending package, rotate SSH keys, wallet"
         print_status "$RED" "                         seeds/keystores, GitHub credentials, and any secret found in"
         print_status "$RED" "                         your .env files. Assume shell history was harvested."
+    fi
+
+    if [[ -s "$TEMP_DIR/sl4x0_indicators.txt" ]]; then
+        print_status "$RED" "🚨 HIGH RISK: sl4x0 dependency-confusion campaign indicators detected:"
+        print_status "$RED" "    ⚠️  Postinstall hook reads OS username + hostname + cwd basename and DNS-exfils"
+        print_status "$RED" "        them to oob.sl4x0.xyz. No persistence, no file/credential theft observed,"
+        print_status "$RED" "        but developer identity has been leaked to a third party."
+        print_status "$RED" "    📋 NOTE: Account naming (*poc) and minimal payload suggest likely security"
+        print_status "$RED" "            research / bug bounty rather than destructive intent — but the code"
+        print_status "$RED" "            DID execute on install. Treat findings as confirmed exposure."
+        while IFS= read -r line; do
+            local file="${line%%:*}"
+            local reason="${line#*:}"
+            echo "   - $file"
+            echo "     Reason: $reason"
+            show_file_preview "$file" "HIGH RISK: sl4x0 dependency-confusion indicator"
+            high_risk=$((high_risk+1))
+        done < "$TEMP_DIR/sl4x0_indicators.txt"
+        print_status "$RED" "    📋 IMMEDIATE ACTION: Uninstall the offending package(s), audit DNS egress logs"
+        print_status "$RED" "                         for queries to *.oob.sl4x0.xyz to confirm whether the"
+        print_status "$RED" "                         payload ever ran, and investigate how the internal package"
+        print_status "$RED" "                         name leaked (private registry config, lockfile commit, etc.)."
+    fi
+
+    if [[ -s "$TEMP_DIR/art_template_indicators.txt" ]]; then
+        print_status "$RED" "🚨 HIGH RISK: art-template npm hijack indicators detected (UNC6691 / iOS exploit kit):"
+        print_status "$RED" "    ⚠️  Browser-bundle injection — payload activates only when the package is loaded"
+        print_status "$RED" "        via <script> tag or bundled for client-side rendering. Node.js-only consumers"
+        print_status "$RED" "        are unaffected unless they explicitly load the browser bundle."
+        while IFS= read -r line; do
+            local file="${line%%:*}"
+            local reason="${line#*:}"
+            echo "   - $file"
+            echo "     Reason: $reason"
+            show_file_preview "$file" "HIGH RISK: art-template hijack indicator"
+            high_risk=$((high_risk+1))
+        done < "$TEMP_DIR/art_template_indicators.txt"
+        print_status "$RED" "    📋 IMMEDIATE ACTION: Downgrade art-template to 4.13.2 or earlier, rebuild any"
+        print_status "$RED" "                         browser bundles produced after 2025-03-12, and audit any end-user"
+        print_status "$RED" "                         iOS Safari sessions that loaded the affected pages."
+    fi
+
+    if [[ -s "$TEMP_DIR/durabletask_indicators.txt" ]]; then
+        print_status "$RED" "🚨 HIGH RISK: May 19, 2026 durabletask PyPI compromise indicators detected:"
+        print_status "$RED" "    ⚠️  Multi-cloud credential stealer with AWS SSM + Kubernetes worm capabilities."
+        print_status "$RED" "        Targets AWS / Azure / GCP creds, Kubernetes/Vault secrets, password-manager"
+        print_status "$RED" "        vaults, SSH keys, npm/PyPI/Cargo tokens, Terraform state, MCP configs."
+        print_status "$RED" "        Secondary C2 is t.m-kosche.com — same C2 as the May 19 Mini Shai-Hulud"
+        print_status "$RED" "        atool/AntV wave (likely TeamPCP toolkit overlap)."
+        while IFS= read -r line; do
+            local file="${line%%:*}"
+            local reason="${line#*:}"
+            echo "   - $file"
+            echo "     Reason: $reason"
+            show_file_preview "$file" "HIGH RISK: durabletask PyPI compromise indicator"
+            high_risk=$((high_risk+1))
+        done < "$TEMP_DIR/durabletask_indicators.txt"
+        print_status "$RED" "    📋 IMMEDIATE ACTION: Pin durabletask to <=1.4.0 or remove, disable pgsql-monitor"
+        print_status "$RED" "                         systemd unit (systemctl --user stop pgsql-monitor.service),"
+        print_status "$RED" "                         delete /usr/bin/pgmonitor.py and ~/.cache/.sys-update-check*,"
+        print_status "$RED" "                         rotate AWS/GCP/Azure/Kubernetes/Vault/GitHub credentials, and"
+        print_status "$RED" "                         audit AWS SSM + kubectl exec history for lateral movement."
+    fi
+
+    if [[ -s "$TEMP_DIR/polymarket_indicators.txt" ]]; then
+        print_status "$RED" "🚨 HIGH RISK: May 21, 2026 Polymarket wallet-drainer indicators detected:"
+        print_status "$RED" "    ⚠️  Fake \"wallet onboarding\" prompt captures raw private keys and exfiltrates"
+        print_status "$RED" "        them (plus env vars and .env files) to a Cloudflare Workers C2."
+        while IFS= read -r line; do
+            local file="${line%%:*}"
+            local reason="${line#*:}"
+            echo "   - $file"
+            echo "     Reason: $reason"
+            show_file_preview "$file" "HIGH RISK: Polymarket wallet-drainer indicator"
+            high_risk=$((high_risk+1))
+        done < "$TEMP_DIR/polymarket_indicators.txt"
+        print_status "$RED" "    📋 IMMEDIATE ACTION: Uninstall any polymarket-* package from the polymarketdev"
+        print_status "$RED" "                         publisher, delete ~/.polybot/, and treat any crypto wallet"
+        print_status "$RED" "                         whose keys you entered into the onboarding prompt as fully"
+        print_status "$RED" "                         compromised — move funds to a fresh wallet immediately."
     fi
 
     if [[ -s "$TEMP_DIR/mini_shai_hulud_host_artifacts.txt" ]]; then
@@ -5023,6 +5419,10 @@ main() {
     check_mini_shai_hulud_indicators "$scan_dir" "$check_host"
     check_megalodon_indicators "$scan_dir"
     check_web3_mcp_indicators "$scan_dir"
+    check_polymarket_indicators "$scan_dir"
+    check_sl4x0_indicators "$scan_dir"
+    check_art_template_indicators "$scan_dir"
+    check_durabletask_indicators "$scan_dir"
     check_github_runners "$scan_dir"
     check_destructive_patterns "$scan_dir"
     check_preinstall_bun_patterns "$scan_dir"

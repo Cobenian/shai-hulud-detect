@@ -1,0 +1,13 @@
+# TEST FIXTURE - May 19, 2026 durabletask PyPI compromise.
+# Pins one of the three malicious versions so the standard PyPI package-version
+# check fires. Companion files in this fixture (synthetic durabletask/__init__.py
+# carrying the inert C2 / beacon IoCs, and pgsql-monitor.service persistence
+# artifact name) exercise check_durabletask_indicators end-to-end.
+[project]
+name = "durabletask-attack-test"
+version = "0.0.1"
+description = "Test fixture for durabletask PyPI compromise (May 19, 2026)"
+requires-python = ">=3.10"
+dependencies = [
+    "durabletask==1.4.1"
+]

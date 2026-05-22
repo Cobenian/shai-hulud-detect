@@ -1,0 +1,9 @@
+{
+  "name": "art-template-attack-test",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Test fixture for the March 2025 → May 2026 art-template npm hijack (UNC6691 / iOS browser exploit kit). Pins art-template@4.13.5 (one of the 4 confirmed-malicious versions) and includes a synthetic node_modules/art-template/lib/template-web.js carrying the campaign's C2 / threat-actor IoCs as inert string constants. The real payload only activates in browser context — no Node.js postinstall/preinstall — but the on-disk template-web.js modifications are detectable by content scan.",
+  "dependencies": {
+    "art-template": "4.13.5"
+  }
+}

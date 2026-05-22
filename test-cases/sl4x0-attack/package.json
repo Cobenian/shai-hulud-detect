@@ -1,0 +1,9 @@
+{
+  "name": "sl4x0-attack-test",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Test fixture for the sl4x0 dependency-confusion campaign (June 2025 - March 2026). The campaign published 92+ packages across 32 throwaway accounts (all *@sl4x0.xyz) with inflated version numbers to win internal-package-name resolution at Fortune 500 targets. Fixture pins one of the 22 still-live packages (oc-aa-module-client@9.9.10), and includes a synthetic node_modules layout carrying the campaign's two hex-named payload helpers (lib/b02e30.js + lib/6ad264.js) and a package.json that mirrors the publisher metadata (@sl4x0.xyz email) so every IoC class exercises end-to-end.",
+  "dependencies": {
+    "oc-aa-module-client": "9.9.10"
+  }
+}
