@@ -1,0 +1,13 @@
+{
+  "name": "paranoid-confusable-regression-fixture",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Regression fixture for the paranoid-mode confusable-substring check. Mixes legitimate package names that happen to contain confusable bigrams (yarn, intern, return) with a synthetic typosquat (cornrnander, which substitutes 'rn'->'m' to impersonate commander). The detector should flag ONLY the synthetic typosquat under --paranoid; the legitimate names must NOT be flagged.",
+  "dependencies": {
+    "yarn": "^1.22.22",
+    "intern": "^4.10.1",
+    "return": "^1.0.0",
+    "modern": "^1.0.0",
+    "cornrnander": "^1.0.0"
+  }
+}

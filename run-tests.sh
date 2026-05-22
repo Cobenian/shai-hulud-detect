@@ -81,6 +81,7 @@ declare -A EXPECTED=(
     ["sl4x0-attack"]="1|yes|no|no"             # HIGH: sl4x0 dependency-confusion campaign (oc-aa-module-client@9.9.10 + C2 oob.sl4x0.xyz + @sl4x0.xyz publisher fingerprint + slaxorg fab org + hex-named helpers b02e30.js / 6ad264.js)
     ["art-template-attack"]="1|yes|no|no"      # HIGH: 2025-2026 art-template npm hijack (art-template@4.13.5 + iOS exploit-kit C2 v3.jiathis.com / utaq.cfww.shop / l1ewsu3yjkqeroy.xyz + threat-actor goofychris/daughtrymom)
     ["durabletask-attack"]="1|yes|no|no"       # HIGH: May 19, 2026 durabletask PyPI compromise (pypi:durabletask@1.4.1 + C2 check.git-service.com + secondary t.m-kosche.com + FIRESCALE/BABA-YAGA-KOSCHEI beacons + pgsql-monitor persistence)
+    ["paranoid-confusable-fp"]="0|no|no|no"    # Clean: without --paranoid the typosquatting check is disabled. The paranoid-mode behavior (cornrnander flagged, yarn/intern/return/modern skipped) is asserted in the dedicated assertion block further down.
     ["semver-matching"]="0|no|no|yes"          # LOW: semver edge cases
     ["semver-wildcards"]="0|no|no|no"          # Clean
     ["spaces-in-filenames"]="0|no|no|no"       # Clean: handles spaces in filenames (issue #92)
@@ -319,6 +320,40 @@ do
     else
         echo -e "${RED}FAIL${NC}: durabletask-attack did NOT fire: $label (looked for: '$pattern')"
         ((failed++))
+    fi
+done
+
+# ============================================================
+#  Paranoid-mode confusable-substring regression
+# ============================================================
+# Lock in the fix for the bare-substring false positive (yarn/intern/return/modern
+# being flagged as typosquats because they contain `rn`). The fixture mixes
+# legitimate names that contain confusable bigrams with one synthetic typosquat
+# (cornrnander, which substitutes `rn`->`m` to impersonate commander). Under
+# --paranoid the detector should flag ONLY cornrnander.
+CONF_OUT=$("$BASH_CMD" "$DETECTOR" --paranoid "$SCRIPT_DIR/test-cases/paranoid-confusable-fp" 2>&1)
+
+# Positive case: the synthetic typosquat must be flagged.
+((total++))
+if grep -qF "'cornrnander' resembles popular package 'commander'" <<< "$CONF_OUT"; then
+    echo -e "${GREEN}PASS${NC}: paranoid-confusable-fp flags cornrnander (substituted form matches commander)"
+    ((passed++))
+else
+    echo -e "${RED}FAIL${NC}: paranoid-confusable-fp did NOT flag cornrnander (the substituted-form check is broken)"
+    ((failed++))
+fi
+
+# Negative cases: legitimate names containing confusable bigrams must NOT be flagged.
+for legit_name in yarn intern return modern; do
+    ((total++))
+    # Match the specific finding-line shape so we don't accidentally count substring
+    # collisions in unrelated output (e.g. the word "return" in a remediation note).
+    if grep -E "Potential typosquatting.*'$legit_name'" <<< "$CONF_OUT" >/dev/null 2>&1; then
+        echo -e "${RED}FAIL${NC}: paranoid-confusable-fp wrongly flagged legitimate '$legit_name' as a typosquat"
+        ((failed++))
+    else
+        echo -e "${GREEN}PASS${NC}: paranoid-confusable-fp does NOT flag legitimate '$legit_name'"
+        ((passed++))
     fi
 done
 
