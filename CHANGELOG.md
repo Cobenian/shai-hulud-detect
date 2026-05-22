@@ -5,6 +5,16 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.3] - 2026-05-21
+
+### Fixed
+- **Paranoid-mode `rn` confusable-substring false positive**: `check_typosquatting`'s confusable-character check used a bare substring match — any package name containing `rn`, `vv`, `cl`, `ii`, `nn`, or `oo` was flagged as a potential typosquat. That correctly catches real typosquats like `rnodule` (which substitutes `rn` for `m` to impersonate `module`), but also produced a flood of false positives on every legitimate name that happens to contain one of those bigrams: `yarn`, `intern`, `return`, `learn`, `barn`, `modern`, and dozens of others. The intent of the check has always been to detect character substitutions that produce known popular package names, but the original implementation parsed the substitution target (e.g. `:m` in `rn:m`) without ever using it. The check now actually applies the substitution and only flags the name if the result matches a popular package — so `cornrnander` still triggers a warning ("resembles popular package `commander`") but `yarn` (substituted form `yam`) does not.
+- **Regression test**: New `test-cases/paranoid-confusable-fp/` fixture mixes four legitimate names containing confusable bigrams (`yarn`, `intern`, `return`, `modern`) with one synthetic typosquat (`cornrnander`). A new paranoid-mode assertion block in `run-tests.sh` verifies that `cornrnander` is flagged ("resembles popular package commander") and that none of the four legitimate names are flagged. Six new assertions in total.
+
+### Changed
+- **Test count**: 116 → 122 (+1 fixture entry + 5 paranoid-mode assertions: 1 positive + 4 negative).
+- **Confusable check finding text**: now includes the substituted form and the popular package it resembles, e.g. `Potential typosquatting via 'rn'->'m' substitution: 'cornrnander' resembles popular package 'commander'`, so users can immediately judge whether the finding is a real typosquat or a false positive.
+
 ## [3.4.2] - 2026-05-21
 
 ### Added

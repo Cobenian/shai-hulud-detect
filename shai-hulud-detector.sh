@@ -3370,20 +3370,44 @@ check_typosquatting() {
                     fi
                 fi
 
-                # Check for confusable characters (common typosquatting patterns)
+                # Check for confusable-character substitutions used by typosquatters.
+                # The semantic is: certain character pairs look like other characters
+                # in some fonts (`rn` looks like `m`, `vv` looks like `w`, etc.), so an
+                # attacker publishes `rnodule` hoping a user reading their `package.json`
+                # mistakes it for `module`.
+                #
+                # Previously this check flagged any name containing one of the substrings,
+                # which caught real typosquats (rnodule, vvebpack, …) but also produced
+                # a flood of false positives on legitimate names that just happen to
+                # contain the same bigrams (yarn, return, learn, barn, modern, intern, …).
+                #
+                # The principled fix: compute what the name would be AFTER the
+                # substitution and only flag if that substituted form matches a known
+                # popular package. `yarn` → swap `rn`→`m` → `yam` (not popular) → skip.
+                # `rnodule` → swap → `module` (would flag if module is in popular_packages).
                 local confusables=(
-                    # Common character substitutions
                     "rn:m" "vv:w" "cl:d" "ii:i" "nn:n" "oo:o"
                 )
 
+                local confusable pattern target substituted impersonated
                 for confusable in "${confusables[@]}"; do
-                    local pattern="${confusable%:*}"
-                    local target="${confusable#*:}"
-                    if echo "$package_name" | grep -q "$pattern"; then
-                        if ! already_warned "$package_name" "$package_file"; then
-                            echo "$package_file:Potential typosquatting pattern '$pattern' in package: $package_name" >> "$TEMP_DIR/typosquatting_warnings.txt"
-                            warned_packages+=("$package_file:$package_name")
+                    pattern="${confusable%:*}"
+                    target="${confusable#*:}"
+                    # Cheap pre-filter: skip if the package name doesn't contain the substring.
+                    [[ "$package_name" == *"$pattern"* ]] || continue
+                    # Compute the substituted form (all occurrences replaced).
+                    substituted="${package_name//$pattern/$target}"
+                    # Only flag if the substituted form exactly matches a popular package.
+                    impersonated=""
+                    for popular in "${popular_packages[@]}"; do
+                        if [[ "$substituted" == "$popular" ]]; then
+                            impersonated="$popular"
+                            break
                         fi
+                    done
+                    if [[ -n "$impersonated" ]] && ! already_warned "$package_name" "$package_file"; then
+                        echo "$package_file:Potential typosquatting via '$pattern'->'$target' substitution: '$package_name' resembles popular package '$impersonated'" >> "$TEMP_DIR/typosquatting_warnings.txt"
+                        warned_packages+=("$package_file:$package_name")
                     fi
                 done
 
