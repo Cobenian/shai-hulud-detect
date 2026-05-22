@@ -75,6 +75,8 @@ declare -A EXPECTED=(
     ["pypi-clean"]="0|no|no|no"                # Clean: safe versions of campaign-targeted PyPI packages
     ["atool-attack"]="1|yes|no|no"             # HIGH: May 2026 Mini Shai-Hulud AntV/atool wave (size-sensor@1.0.4, echarts-for-react@3.0.7, @antv/scale@0.6.2, timeago.js@4.1.2, @antv/g2@5.5.8)
     ["atool-clean"]="0|no|no|no"               # Clean: last-known-good versions of atool-wave-targeted packages
+    ["megalodon-attack"]="1|yes|no|no"         # HIGH: May 18, 2026 Megalodon GitHub-repo backdooring (SysDiag workflow + Tiledesk npm fallout + C2 IP + commit SHA)
+    ["web3-mcp-attack"]="1|yes|yes|no"         # HIGH: May 20, 2026 Web3/DeFi MCP-server typosquat (chain-key-validator + C2 ddjidd564.github.io + webhook.site fallback); MEDIUM piggybacks because the generic webhook.site content-pattern check fires on the same fallback URL
     ["semver-matching"]="0|no|no|yes"          # LOW: semver edge cases
     ["semver-wildcards"]="0|no|no|no"          # Clean
     ["spaces-in-filenames"]="0|no|no|no"       # Clean: handles spaces in filenames (issue #92)
@@ -214,6 +216,55 @@ do
         ((passed++))
     else
         echo -e "${RED}FAIL${NC}: dead-mans-switch did NOT surface: $label (looked for: '$pattern')"
+        ((failed++))
+    fi
+done
+
+# ============================================================
+#  May 18+20 Megalodon + Web3-MCP IoC assertions
+# ============================================================
+# Verify content-pattern IoCs for the May 18 Megalodon GitHub-repo backdooring
+# campaign and the May 20 Web3/DeFi MCP-server typosquat campaign actually fire
+# on their fixtures (in addition to the package-version exit-code expectations
+# already covered by the EXPECTED table at the top of this file).
+echo ""
+echo "========================================"
+echo "  Testing Megalodon + Web3-MCP IoC coverage"
+echo "========================================"
+
+MEGALODON_OUT=$("$BASH_CMD" "$DETECTOR" "$SCRIPT_DIR/test-cases/megalodon-attack" 2>&1)
+for megalodon_check in \
+    "Tiledesk compromised version|@tiledesk/tiledesk-server@2.18.6" \
+    "SysDiag workflow name|SysDiag — mass-variant injection" \
+    "C2 IP 216.126.225.129|216.126.225.129" \
+    "Tiledesk malicious commit SHA|Tiledesk variant"
+do
+    label="${megalodon_check%|*}"
+    pattern="${megalodon_check#*|}"
+    ((total++))
+    if grep -qF "$pattern" <<< "$MEGALODON_OUT"; then
+        echo -e "${GREEN}PASS${NC}: megalodon-attack fires IoC: $label"
+        ((passed++))
+    else
+        echo -e "${RED}FAIL${NC}: megalodon-attack did NOT fire: $label (looked for: '$pattern')"
+        ((failed++))
+    fi
+done
+
+WEB3_OUT=$("$BASH_CMD" "$DETECTOR" "$SCRIPT_DIR/test-cases/web3-mcp-attack" 2>&1)
+for web3_check in \
+    "MCP typosquat compromised version|chain-key-validator@0.2.3" \
+    "GitHub-Pages C2 reference|ddjidd564.github.io/defi-security-best-practices/config.json" \
+    "webhook.site fallback UUID|webhook.site/8d334534-1c63-4f4f-a0d7-95c446c8b233"
+do
+    label="${web3_check%|*}"
+    pattern="${web3_check#*|}"
+    ((total++))
+    if grep -qF "$pattern" <<< "$WEB3_OUT"; then
+        echo -e "${GREEN}PASS${NC}: web3-mcp-attack fires IoC: $label"
+        ((passed++))
+    else
+        echo -e "${RED}FAIL${NC}: web3-mcp-attack did NOT fire: $label (looked for: '$pattern')"
         ((failed++))
     fi
 done

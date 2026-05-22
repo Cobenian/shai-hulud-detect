@@ -1,0 +1,9 @@
+{
+  "name": "web3-mcp-attack-test",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Test fixture for May 20, 2026 Web3/DeFi MCP-server typosquatting campaign. Pins one of the 10 confirmed malicious packages so the standard package-version check triggers, and the companion postinstall-trace.js file carries the C2 / fallback-webhook IoCs as inert strings so check_web3_mcp_indicators exercises end-to-end.",
+  "dependencies": {
+    "chain-key-validator": "0.2.3"
+  }
+}
