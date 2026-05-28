@@ -1,0 +1,12 @@
+# TEST FIXTURE - TrapDoor Crates.io side. The malicious Move/Sui build helpers ship a
+# build.rs that decrypts a payload with the XOR key "cargo-build-helper-2026" at compile
+# time. Name-matched version-agnostically by check_trapdoor_indicators.
+[package]
+name = "trapdoor-attack-test"
+version = "0.0.1"
+edition = "2021"
+
+[dependencies]
+serde = "1.0.200"
+sui-move-build-helper = "0.1.0"
+move-compiler-tools = { version = "0.1.0", features = ["full"] }

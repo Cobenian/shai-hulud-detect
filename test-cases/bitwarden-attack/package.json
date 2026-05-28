@@ -1,0 +1,8 @@
+{
+  "name": "bitwarden-attack-test",
+  "version": "1.0.0",
+  "description": "TEST FIXTURE - April 22 2026 @bitwarden/cli@2026.4.0 compromise (Shai-Hulud: The Third Coming). Pins the malicious version so the package-version check fires; the companion bw1.js carries the content IoCs.",
+  "dependencies": {
+    "@bitwarden/cli": "2026.4.0"
+  }
+}

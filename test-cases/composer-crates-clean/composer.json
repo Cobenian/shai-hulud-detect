@@ -1,0 +1,9 @@
+{
+    "name": "test/composer-crates-clean",
+    "description": "TEST FIXTURE - clean Composer + Crates project. Exercises the new ecosystem detection and parsers; must produce NO findings (exit 0).",
+    "require": {
+        "php": ">=8.1",
+        "symfony/console": "6.4.7",
+        "monolog/monolog": "3.6.0"
+    }
+}

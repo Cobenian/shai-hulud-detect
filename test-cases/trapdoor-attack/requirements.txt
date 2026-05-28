@@ -1,0 +1,4 @@
+# TEST FIXTURE - TrapDoor PyPI side. eth-security-auditor@0.1.0 is the one concrete
+# malicious version disclosed in advisories (first package published, May 22 20:20 UTC).
+eth-security-auditor==0.1.0
+defi-risk-scanner==0.0.1

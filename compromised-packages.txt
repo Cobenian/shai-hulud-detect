@@ -1,13 +1,18 @@
 # Shai-Hulud Supply Chain Attack - Compromised Packages List
 #
-# This file contains 2,700+ confirmed compromised package versions from
+# This file contains 2,800+ confirmed compromised package versions from
 # multiple supply chain attacks between September 2025 and May 2026.
 # The campaigns were self-replicating, so new compromised packages may still be discovered.
 #
 # Sources: StepSecurity, Wiz.io, Semgrep, JFrog security advisories and Socket.dev
 # Format: <ecosystem>:package_name:version, OR bare package_name:version (defaults to npm)
 #         Bare entries (e.g. "axios:1.14.1") are interpreted as npm for backward compatibility.
-#         Explicit npm entries use the "npm:" prefix; PyPI entries use "pypi:".
+#         Explicit npm entries use the "npm:" prefix; PyPI entries use "pypi:";
+#         Composer/PHP entries use "composer:vendor/package:version"; Crates/Rust
+#         entries use "crates:name:version".
+#         NOTE: campaigns where ALL versions of a package are malicious (TrapDoor,
+#         Laravel-Lang) are detected version-agnostically by their dedicated
+#         check_* functions in shai-hulud-detector.sh, not by per-version entries here.
 # Last updated: May 2026
 #
 # MAINTAINING THIS LIST:
@@ -3083,3 +3088,66 @@ art-template:4.13.6
 pypi:durabletask:1.4.1
 pypi:durabletask:1.4.2
 pypi:durabletask:1.4.3
+
+# ========================================================================
+# APRIL 22, 2026 - @bitwarden/cli npm compromise ("Shai-Hulud: The Third Coming")
+# Malicious @bitwarden/cli@2026.4.0 served on npm for ~1.5h (5:57-7:30p ET) as a
+# downstream effect of the Checkmarx ast-github-action breach. Payload in bw1.js
+# steals GitHub/npm tokens, .ssh, .env, shell history and cloud secrets, exfiltrating
+# to audit.checkmarx.cx (94.154.172.43) and as GitHub commits. Beacon strings:
+# "Shai-Hulud: The Third Coming", "Would be executing butlerian jihad!",
+# "LongLiveTheResistanceAgainstMachines". Content IoCs via check_bitwarden_indicators.
+# Sources: https://socket.dev/blog/bitwarden-cli-compromised
+#          https://www.endorlabs.com/learn/shai-hulud-the-third-coming----inside-the-bitwarden-cli-2026-4-0-supply-chain-attack
+# ========================================================================
+@bitwarden/cli:2026.4.0
+
+# ========================================================================
+# MAY 14, 2026 - node-ipc npm backdoor (hijacked `atiertant` account)
+# Three versions published with an obfuscated IIFE appended to node-ipc.cjs that
+# fires on every require('node-ipc'), harvesting credential files and DNS-exfiltrating
+# to sh.azurestaticprovider.net (37.16.75.69, suffix bt.node.js). node-ipc.cjs hash is
+# in MALICIOUS_HASHLIST; content IoCs via check_node_ipc_indicators. NOTE: distinct
+# from the unrelated 2022 node-ipc protestware (9.2.2 / 10.1.1 / 11.0.0).
+# Sources: https://securitylabs.datadoghq.com/articles/node-ipc-npm-malware-analysis/
+#          https://socket.dev/blog/node-ipc-package-compromised
+# ========================================================================
+node-ipc:9.1.6
+node-ipc:9.2.3
+node-ipc:12.0.1
+
+# ========================================================================
+# MAY 22-25, 2026 - TrapDoor crypto-stealer (TeamPCP / UNC6780)
+# Multi-ecosystem campaign: 34 packages / 384+ versions across npm + PyPI + Crates.io.
+# ALL published versions of the campaign packages are malicious, so the authoritative
+# detection is the version-agnostic NAME match in check_trapdoor_indicators (which also
+# matches the P-2024-001 marker, the cargo-build-helper-2026 XOR key, the shared
+# ddjidd564.github.io GitHub-Pages C2 — same account as the May 20 Web3/DeFi MCP wave —
+# the trap-core.js payload, and the AI-extraction-framework docs). The one concrete
+# version disclosed in advisories is pinned below as a belt-and-braces entry; the full
+# 34-name set is enumerated in check_trapdoor_indicators. chain-key-validator and
+# defi-threat-scanner overlap with the May 20 wave and are covered there.
+# Steals SSH keys, Solana/Sui/Aptos wallets, AWS creds, GitHub tokens, browser DBs,
+# env vars; plants .cursorrules/CLAUDE.md droppers to subvert AI coding assistants.
+# Sources: https://socket.dev/blog/trapdoor-crypto-stealer-npm-pypi-crates
+#          https://thehackernews.com/2026/05/trapdoor-supply-chain-attack-spreads.html
+# ========================================================================
+pypi:eth-security-auditor:0.1.0
+
+# ========================================================================
+# MAY 22, 2026 - Laravel-Lang Composer tag-rewrite supply-chain attack
+# An attacker with push access force-rewrote 700+ git tags across four community
+# Composer packages (laravel-lang/lang ~502 tags, /http-statuses, /attributes,
+# /actions) so EVERY version resolves to a malicious commit; RCE fires on Composer
+# autoload (src/helpers.php added to autoload.files). Defeats version pinning, so the
+# authoritative detection is the version-agnostic NAME match in
+# check_laravel_lang_indicators (which also matches flipboxstudio.info C2,
+# DebugElevator/DebugChromium payload, and the known malicious commit SHAs). The
+# specific malicious tags whose commit SHAs were disclosed are pinned below.
+# Sources: https://www.stepsecurity.io/blog/laravel-lang-supply-chain-attack
+#          https://socket.dev/blog/laravel-lang-compromise
+#          https://github.com/Laravel-Lang/lang/issues/8295
+# ========================================================================
+composer:laravel-lang/lang:15.29.5
+composer:laravel-lang/http-statuses:3.4.5
+composer:laravel-lang/http-statuses:3.4.0

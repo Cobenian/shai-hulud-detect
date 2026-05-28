@@ -1,0 +1,8 @@
+{
+  "name": "node-ipc-attack-test",
+  "version": "1.0.0",
+  "description": "TEST FIXTURE - May 14 2026 node-ipc backdoor. Pins one of the three malicious versions (9.1.6) so the npm package-version check fires; the companion node-ipc.cjs carries the content IoCs.",
+  "dependencies": {
+    "node-ipc": "9.1.6"
+  }
+}

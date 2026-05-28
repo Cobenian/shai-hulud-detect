@@ -1,0 +1,9 @@
+{
+  "name": "trapdoor-attack-test",
+  "version": "1.0.0",
+  "description": "TEST FIXTURE - May 22-25 2026 TrapDoor crypto-stealer (npm side). All published versions of the campaign packages are malicious, so the detector name-matches the dependency regardless of pinned version.",
+  "dependencies": {
+    "eth-wallet-sentinel": "1.0.0",
+    "token-usage-tracker": "0.0.3"
+  }
+}

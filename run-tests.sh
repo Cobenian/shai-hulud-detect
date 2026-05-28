@@ -81,6 +81,13 @@ declare -A EXPECTED=(
     ["sl4x0-attack"]="1|yes|no|no"             # HIGH: sl4x0 dependency-confusion campaign (oc-aa-module-client@9.9.10 + C2 oob.sl4x0.xyz + @sl4x0.xyz publisher fingerprint + slaxorg fab org + hex-named helpers b02e30.js / 6ad264.js)
     ["art-template-attack"]="1|yes|no|no"      # HIGH: 2025-2026 art-template npm hijack (art-template@4.13.5 + iOS exploit-kit C2 v3.jiathis.com / utaq.cfww.shop / l1ewsu3yjkqeroy.xyz + threat-actor goofychris/daughtrymom)
     ["durabletask-attack"]="1|yes|no|no"       # HIGH: May 19, 2026 durabletask PyPI compromise (pypi:durabletask@1.4.1 + C2 check.git-service.com + secondary t.m-kosche.com + FIRESCALE/BABA-YAGA-KOSCHEI beacons + pgsql-monitor persistence)
+    ["trapdoor-attack"]="1|yes|no|no"          # HIGH: May 22-25, 2026 TrapDoor (TeamPCP) multi-ecosystem crypto-stealer — npm (eth-wallet-sentinel) + PyPI (pypi:eth-security-auditor@0.1.0) + Crates (sui-move-build-helper) name matches, P-2024-001 marker, cargo-build-helper-2026 XOR key, trap-core.js payload, and the .cursorrules AI-assistant dropper
+    ["laravel-lang-attack"]="1|yes|no|no"      # HIGH: May 22, 2026 Laravel-Lang Composer tag-rewrite — name match on laravel-lang/lang + /http-statuses (all tags backdoored), composer exact-version (composer:laravel-lang/lang@15.29.5), flipboxstudio.info C2 + DebugElevator/DebugChromium payload + malicious commit SHAs
+    ["node-ipc-attack"]="1|yes|no|no"          # HIGH: May 14, 2026 node-ipc backdoor (node-ipc@9.1.6 + sh.azurestaticprovider.net C2 + __ntRun/key markers; node-ipc.cjs hash in MALICIOUS_HASHLIST)
+    ["bitwarden-attack"]="1|yes|no|no"         # HIGH: April 22, 2026 @bitwarden/cli@2026.4.0 "Shai-Hulud: The Third Coming" (audit.checkmarx.cx C2 + butlerian-jihad/resistance beacon strings + bw1.js payload)
+    ["nx-console-attack"]="1|yes|no|no"        # HIGH: May 18, 2026 Nx Console 18.95.0 (TeamPCP) — orphan commit 558b09d7 in nrwl/nx + github:nrwl/nx#558b09d7 npx ref + firedalazer/install-mcp-extension/__DAEMONIZED markers (payload hashes in MALICIOUS_HASHLIST)
+    ["malware-slop-attack"]="1|yes|yes|no"     # HIGH: May 26, 2026 mouse5212-super-formatter "Malware-Slop" (unplowed3584 + embedded github_pat + /mnt/user-data Claude-dir abuse); MEDIUM piggybacks because the embedded PAT trips the generic secret-scanning pattern
+    ["composer-crates-clean"]="0|no|no|no"     # Clean: exercises the new Composer + Crates ecosystem detection/parsers with safe versions (symfony/console, monolog, serde, tokio) — must produce NO findings
     ["paranoid-confusable-fp"]="0|no|no|no"    # Clean: without --paranoid the typosquatting check is disabled. The paranoid-mode behavior (cornrnander flagged, yarn/intern/return/modern skipped) is asserted in the dedicated assertion block further down.
     ["semver-matching"]="0|no|no|yes"          # LOW: semver edge cases
     ["semver-wildcards"]="0|no|no|no"          # Clean
@@ -399,6 +406,187 @@ do
         ((failed++))
     fi
 done
+
+# ============================================================
+#  May 22-25 TrapDoor (TeamPCP) multi-ecosystem content-IoC assertions
+# ============================================================
+TRAPDOOR_OUT=$("$BASH_CMD" "$DETECTOR" "$SCRIPT_DIR/test-cases/trapdoor-attack" 2>&1)
+for trapdoor_check in \
+    "TrapDoor npm name match (eth-wallet-sentinel)|TrapDoor compromised package dependency (eth-wallet-sentinel" \
+    "TrapDoor npm name match (token-usage-tracker)|TrapDoor compromised package dependency (token-usage-tracker" \
+    "TrapDoor PyPI name match (defi-risk-scanner)|TrapDoor compromised package dependency (defi-risk-scanner" \
+    "TrapDoor PyPI exact version|eth-security-auditor@0.1.0" \
+    "TrapDoor Crates name match (sui-move-build-helper)|TrapDoor compromised package dependency (sui-move-build-helper" \
+    "TrapDoor Crates name match (move-compiler-tools)|TrapDoor compromised package dependency (move-compiler-tools" \
+    "TrapDoor campaign marker P-2024-001|TrapDoor campaign indicator (P-2024-001)" \
+    "TrapDoor crates XOR key|TrapDoor campaign indicator (cargo-build-helper-2026)" \
+    "TrapDoor extraction framework|TrapDoor campaign indicator (Universal AI Agent Extraction Framework)" \
+    "TrapDoor trap-core.js payload|TrapDoor payload/framework artifact (trap-core.js)" \
+    "TrapDoor .cursorrules AI-dropper|Malicious AI-assistant config dropper"
+do
+    label="${trapdoor_check%|*}"
+    pattern="${trapdoor_check#*|}"
+    ((total++))
+    if grep -qF "$pattern" <<< "$TRAPDOOR_OUT"; then
+        echo -e "${GREEN}PASS${NC}: trapdoor-attack fires IoC: $label"
+        ((passed++))
+    else
+        echo -e "${RED}FAIL${NC}: trapdoor-attack did NOT fire: $label (looked for: '$pattern')"
+        ((failed++))
+    fi
+done
+
+# ============================================================
+#  May 22 Laravel-Lang Composer tag-rewrite content-IoC assertions
+# ============================================================
+LARAVEL_OUT=$("$BASH_CMD" "$DETECTOR" "$SCRIPT_DIR/test-cases/laravel-lang-attack" 2>&1)
+for laravel_check in \
+    "Laravel-Lang name match (lang)|Laravel-Lang compromised package dependency (laravel-lang/lang" \
+    "Laravel-Lang name match (http-statuses)|Laravel-Lang compromised package dependency (laravel-lang/http-statuses" \
+    "Laravel-Lang composer exact version|[Composer] laravel-lang/lang@15.29.5" \
+    "Laravel-Lang C2 flipboxstudio.info|Laravel-Lang campaign indicator (flipboxstudio.info)" \
+    "Laravel-Lang DebugElevator payload|Laravel-Lang campaign indicator (DebugElevator)" \
+    "Laravel-Lang DebugChromium payload|Laravel-Lang campaign indicator (DebugChromium)" \
+    "Laravel-Lang malicious commit SHA|Laravel-Lang campaign indicator (a5ea2e8fa92ccf29cdb1d2dadbeb27722b2bff37)"
+do
+    label="${laravel_check%|*}"
+    pattern="${laravel_check#*|}"
+    ((total++))
+    if grep -qF "$pattern" <<< "$LARAVEL_OUT"; then
+        echo -e "${GREEN}PASS${NC}: laravel-lang-attack fires IoC: $label"
+        ((passed++))
+    else
+        echo -e "${RED}FAIL${NC}: laravel-lang-attack did NOT fire: $label (looked for: '$pattern')"
+        ((failed++))
+    fi
+done
+
+# ============================================================
+#  May 14 node-ipc backdoor content-IoC assertions
+# ============================================================
+NODEIPC_OUT=$("$BASH_CMD" "$DETECTOR" "$SCRIPT_DIR/test-cases/node-ipc-attack" 2>&1)
+for nodeipc_check in \
+    "node-ipc compromised version|node-ipc@9.1.6" \
+    "node-ipc C2 host|node-ipc backdoor indicator (sh.azurestaticprovider.net)" \
+    "node-ipc C2 IP|node-ipc backdoor indicator (37.16.75.69)" \
+    "node-ipc export marker|node-ipc backdoor indicator (__ntRun)" \
+    "node-ipc embedded key|node-ipc backdoor indicator (qZ8pL3vNxR9wKmTyHbVcFgDsJaEoUi)"
+do
+    label="${nodeipc_check%|*}"
+    pattern="${nodeipc_check#*|}"
+    ((total++))
+    if grep -qF "$pattern" <<< "$NODEIPC_OUT"; then
+        echo -e "${GREEN}PASS${NC}: node-ipc-attack fires IoC: $label"
+        ((passed++))
+    else
+        echo -e "${RED}FAIL${NC}: node-ipc-attack did NOT fire: $label (looked for: '$pattern')"
+        ((failed++))
+    fi
+done
+
+# ============================================================
+#  April 22 Bitwarden CLI ("Third Coming") content-IoC assertions
+# ============================================================
+BW_OUT=$("$BASH_CMD" "$DETECTOR" "$SCRIPT_DIR/test-cases/bitwarden-attack" 2>&1)
+for bw_check in \
+    "Bitwarden compromised version|@bitwarden/cli@2026.4.0" \
+    "Bitwarden C2 host|Bitwarden CLI compromise indicator (audit.checkmarx.cx)" \
+    "Bitwarden C2 IP|Bitwarden CLI compromise indicator (94.154.172.43)" \
+    "Bitwarden Third Coming beacon|Bitwarden CLI compromise indicator (Shai-Hulud: The Third Coming)" \
+    "Bitwarden butlerian-jihad beacon|Bitwarden CLI compromise indicator (Would be executing butlerian jihad!)"
+do
+    label="${bw_check%|*}"
+    pattern="${bw_check#*|}"
+    ((total++))
+    if grep -qF "$pattern" <<< "$BW_OUT"; then
+        echo -e "${GREEN}PASS${NC}: bitwarden-attack fires IoC: $label"
+        ((passed++))
+    else
+        echo -e "${RED}FAIL${NC}: bitwarden-attack did NOT fire: $label (looked for: '$pattern')"
+        ((failed++))
+    fi
+done
+
+# ============================================================
+#  May 18 Nx Console 18.95.0 content-IoC assertions
+# ============================================================
+NX_OUT=$("$BASH_CMD" "$DETECTOR" "$SCRIPT_DIR/test-cases/nx-console-attack" 2>&1)
+for nx_check in \
+    "Nx orphan commit SHA|Nx Console 18.95.0 compromise indicator (558b09d7ad0d1660e2a0fb8a06da81a6f42e06d2)" \
+    "Nx npx github ref|Nx Console 18.95.0 compromise indicator (github:nrwl/nx#558b09d7)" \
+    "Nx daemon flag|Nx Console 18.95.0 compromise indicator (__DAEMONIZED=1)" \
+    "Nx C2 poll firedalazer|Nx Console 18.95.0 compromise indicator (firedalazer)" \
+    "Nx task disguise|Nx Console 18.95.0 compromise indicator (install-mcp-extension)"
+do
+    label="${nx_check%|*}"
+    pattern="${nx_check#*|}"
+    ((total++))
+    if grep -qF "$pattern" <<< "$NX_OUT"; then
+        echo -e "${GREEN}PASS${NC}: nx-console-attack fires IoC: $label"
+        ((passed++))
+    else
+        echo -e "${RED}FAIL${NC}: nx-console-attack did NOT fire: $label (looked for: '$pattern')"
+        ((failed++))
+    fi
+done
+
+# ============================================================
+#  May 26 mouse5212 "Malware-Slop" content-IoC assertions
+# ============================================================
+SLOP_OUT=$("$BASH_CMD" "$DETECTOR" "$SCRIPT_DIR/test-cases/malware-slop-attack" 2>&1)
+for slop_check in \
+    "Malware-Slop package name|Malware-Slop indicator (mouse5212-super-formatter)" \
+    "Malware-Slop attacker username|Malware-Slop indicator (unplowed3584)" \
+    "Malware-Slop embedded PAT|Malware-Slop indicator (github_pat_11CEVM5CA0SRA)" \
+    "Malware-Slop Claude upload dir|References Claude upload directory /mnt/user-data"
+do
+    label="${slop_check%|*}"
+    pattern="${slop_check#*|}"
+    ((total++))
+    if grep -qF "$pattern" <<< "$SLOP_OUT"; then
+        echo -e "${GREEN}PASS${NC}: malware-slop-attack fires IoC: $label"
+        ((passed++))
+    else
+        echo -e "${RED}FAIL${NC}: malware-slop-attack did NOT fire: $label (looked for: '$pattern')"
+        ((failed++))
+    fi
+done
+
+# ============================================================
+#  Composer + Crates clean-project negative assertions
+# ============================================================
+# The new ecosystems must be detected AND produce no findings on safe versions.
+CC_OUT=$("$BASH_CMD" "$DETECTOR" "$SCRIPT_DIR/test-cases/composer-crates-clean" 2>&1)
+((total++))
+if grep -qE "Detected ecosystems:.*composer" <<< "$CC_OUT" && grep -qE "Detected ecosystems:.*crates" <<< "$CC_OUT"; then
+    echo -e "${GREEN}PASS${NC}: composer-crates-clean detects both composer and crates ecosystems"
+    ((passed++))
+else
+    echo -e "${RED}FAIL${NC}: composer-crates-clean did NOT detect both new ecosystems"
+    ((failed++))
+fi
+((total++))
+if grep -qE "HIGH RISK|MEDIUM RISK|LOW RISK" <<< "$CC_OUT"; then
+    echo -e "${RED}FAIL${NC}: composer-crates-clean produced a finding on safe versions (false positive)"
+    ((failed++))
+else
+    echo -e "${GREEN}PASS${NC}: composer-crates-clean produces no findings (no false positives)"
+    ((passed++))
+fi
+
+# Regression: --ecosystem=all must run to completion even when some active ecosystems
+# have zero marker files in the tree (the ecosystem_banner empty-grep + set -eo pipefail
+# abort). On an npm-only project it should finish clean (exit 0) rather than truncating.
+ECO_ALL_OUT=$("$BASH_CMD" "$DETECTOR" --ecosystem=all "$SCRIPT_DIR/test-cases/clean-project" 2>&1)
+ECO_ALL_EXIT=$?
+((total++))
+if [[ $ECO_ALL_EXIT -eq 0 ]] && grep -qF "No indicators of Shai-Hulud compromise detected" <<< "$ECO_ALL_OUT"; then
+    echo -e "${GREEN}PASS${NC}: --ecosystem=all completes a full scan on a single-ecosystem project (no set -e abort)"
+    ((passed++))
+else
+    echo -e "${RED}FAIL${NC}: --ecosystem=all truncated or errored on clean-project (exit $ECO_ALL_EXIT)"
+    ((failed++))
+fi
 
 # Test --save-log feature
 echo ""

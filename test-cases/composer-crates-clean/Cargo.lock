@@ -1,0 +1,14 @@
+# TEST FIXTURE - clean Cargo.lock; resolved versions, none compromised.
+version = 3
+
+[[package]]
+name = "serde"
+version = "1.0.200"
+
+[[package]]
+name = "tokio"
+version = "1.37.0"
+
+[[package]]
+name = "criterion"
+version = "0.5.1"
