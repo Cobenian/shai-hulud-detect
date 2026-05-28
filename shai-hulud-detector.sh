@@ -117,11 +117,23 @@ create_temp_dir() {
     touch "$TEMP_DIR/sl4x0_indicators.txt"
     touch "$TEMP_DIR/art_template_indicators.txt"
     touch "$TEMP_DIR/durabletask_indicators.txt"
+    touch "$TEMP_DIR/trapdoor_indicators.txt"
+    touch "$TEMP_DIR/laravel_lang_indicators.txt"
+    touch "$TEMP_DIR/node_ipc_indicators.txt"
+    touch "$TEMP_DIR/bitwarden_indicators.txt"
+    touch "$TEMP_DIR/nx_console_indicators.txt"
+    touch "$TEMP_DIR/ai_assistant_dropper.txt"
     touch "$TEMP_DIR/pypi_manifests.txt"
     touch "$TEMP_DIR/pypi_lockfiles.txt"
     touch "$TEMP_DIR/pypi_deps_normalized.txt"
     touch "$TEMP_DIR/pypi_compromised_lookup.txt"
     touch "$TEMP_DIR/pypi_matched_deps.txt"
+    touch "$TEMP_DIR/composer_manifests.txt"
+    touch "$TEMP_DIR/composer_lockfiles.txt"
+    touch "$TEMP_DIR/composer_all_deps.txt"
+    touch "$TEMP_DIR/crates_manifests.txt"
+    touch "$TEMP_DIR/crates_lockfiles.txt"
+    touch "$TEMP_DIR/crates_all_deps.txt"
     touch "$TEMP_DIR/github_runners.txt"
     touch "$TEMP_DIR/malicious_hashes.txt"
     touch "$TEMP_DIR/destructive_patterns.txt"
@@ -213,6 +225,10 @@ MALICIOUS_HASHLIST=(
     "d8e3973a0b3c5359d1f53a22491b56bdd31dee13a51c01c7126bc6694584512f" # 2025-2026 art-template hijack: stage-2 jia.js / art.js loader (SafeDep IOC)
     "f31bdd069fe7966ae11be1f78ee5dd44445938856dd1df12379e0e84a6851f5c" # 2025-2026 art-template hijack: stage-4 loader 49554fde7424c31c.js (SafeDep IOC)
     "069ac1dc7f7649b76bc72a11ac700f373804bfd81dab7e561157b703999f44ce" # May 19, 2026 durabletask PyPI: stage-2 rope.pyz payload (SafeDep IOC)
+    "96097e0612d9575cb133021017fb1a5c68a03b60f9f3d24ebdc0e628d9034144" # May 14, 2026 node-ipc backdoor: malicious node-ipc.cjs entrypoint (Datadog IOC)
+    "e7347d90653efc565f03733a95e9209d78f9cfa81e31ff2b2dd9d48d75a4b8b1" # May 18, 2026 Nx Console 18.95.0: obfuscated index.js payload (Ox Security IOC)
+    "b0cefb66b953e5184b6adb3035e9e267335ac5eabfe1848e07834777b9397b74" # May 18, 2026 Nx Console 18.95.0: malicious main.js payload (Ox Security IOC)
+    "1a4afce34918bdc74ae3f31edaffffaa0ee074d83618f53edfd88137927340b8" # May 18, 2026 Nx Console 18.95.0: malicious VSIX bundle (Ox Security IOC)
 )
 
 PARALLELISM=4
@@ -256,12 +272,16 @@ print_stage_complete() {
 declare -A ECOSYSTEM_MARKERS=(
     ["npm"]="package.json|package-lock.json|yarn.lock|pnpm-lock.yaml"
     ["pypi"]="pyproject.toml|requirements.txt|requirements-dev.txt|requirements-prod.txt|Pipfile|Pipfile.lock|poetry.lock|uv.lock|setup.py|setup.cfg"
+    ["composer"]="composer.json|composer.lock"
+    ["crates"]="Cargo.toml|Cargo.lock"
 )
 declare -A ECOSYSTEM_EXCLUDE_PATHS=(
     ["npm"]="node_modules"
     ["pypi"]="node_modules|\\.venv|/venv/|\\.tox|site-packages"
+    ["composer"]="node_modules|/vendor/"
+    ["crates"]="node_modules|/target/"
 )
-declare -a SUPPORTED_ECOSYSTEMS=("npm" "pypi")
+declare -a SUPPORTED_ECOSYSTEMS=("npm" "pypi" "composer" "crates")
 declare -a ACTIVE_ECOSYSTEMS=()
 ECOSYSTEM_OVERRIDE=""  # set by --ecosystem flag; empty = auto-detect
 
@@ -280,6 +300,8 @@ ECOSYSTEM_OVERRIDE=""  # set by --ecosystem flag; empty = auto-detect
 declare -A ECOSYSTEM_CHECK_FUNCTIONS=(
     ["npm"]="check_packages check_semver_ranges"
     ["pypi"]="check_pypi_packages"
+    ["composer"]="check_composer_packages"
+    ["crates"]="check_crates_packages"
 )
 
 # Function: ecosystem_active
@@ -354,8 +376,12 @@ ecosystem_banner() {
     for eco in "${ACTIVE_ECOSYSTEMS[@]}"; do
         markers="${ECOSYSTEM_MARKERS[$eco]}"
         exclude="${ECOSYSTEM_EXCLUDE_PATHS[$eco]}"
+        # `|| true` + default keep set -eo pipefail from aborting when an active
+        # ecosystem has zero marker files in the tree (e.g. under --ecosystem=all on a
+        # single-ecosystem project) — the leading grep exits non-zero on no match.
         count=$(grep -E "/($markers)$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null | \
-                grep -vE "/($exclude)/" 2>/dev/null | wc -l | tr -d ' ')
+                grep -vE "/($exclude)/" 2>/dev/null | wc -l | tr -d ' ' || true)
+        count=${count:-0}
         if [[ -z "$summary" ]]; then
             summary="$eco ($count marker file(s))"
         else
@@ -382,7 +408,7 @@ load_compromised_packages() {
     # Entries may be ecosystem-prefixed ("pypi:name:version", "npm:name:version")
     # or bare ("name:version"), in which case they default to npm. The internal
     # map key is always "ecosystem:name:version" for unambiguous lookups.
-    local pypi_count=0 npm_count=0
+    local pypi_count=0 npm_count=0 composer_count=0 crates_count=0
 
     if [[ -f "$packages_file" ]]; then
         local -a raw_lines
@@ -418,6 +444,28 @@ load_compromised_packages() {
                 COMPROMISED_VERSIONS_BY_NAME["$pkg_name"]+="$pkg_version "
                 ((npm_count++)) || true
                 ((count++)) || true
+            elif [[ "$line" == composer:* ]]; then
+                # composer:vendor/package:version  (PHP / Packagist)
+                eco="composer"
+                pkg_name="${line#composer:}"
+                pkg_name="${pkg_name%:*}"
+                pkg_version="${line##*:}"
+                [[ -z "$pkg_version" || "$pkg_version" == "$line" ]] && continue
+                key="composer:$pkg_name:$pkg_version"
+                COMPROMISED_PACKAGES_MAP["$key"]=1
+                ((composer_count++)) || true
+                ((count++)) || true
+            elif [[ "$line" == crates:* ]]; then
+                # crates:name:version  (Rust / crates.io)
+                eco="crates"
+                pkg_name="${line#crates:}"
+                pkg_name="${pkg_name%:*}"
+                pkg_version="${line##*:}"
+                [[ -z "$pkg_version" || "$pkg_version" == "$line" ]] && continue
+                key="crates:$pkg_name:$pkg_version"
+                COMPROMISED_PACKAGES_MAP["$key"]=1
+                ((crates_count++)) || true
+                ((count++)) || true
             elif [[ "$line" =~ ^[@a-zA-Z][^:]+:[0-9]+\.[0-9]+\.[0-9]+ ]]; then
                 # Bare entry -> npm
                 pkg_name="${line%:*}"
@@ -430,7 +478,7 @@ load_compromised_packages() {
             fi
         done
 
-        print_status "$BLUE" "📦 Loaded $count compromised packages from $packages_file (npm: $npm_count, pypi: $pypi_count)"
+        print_status "$BLUE" "📦 Loaded $count compromised packages from $packages_file (npm: $npm_count, pypi: $pypi_count, composer: $composer_count, crates: $crates_count)"
     else
         # Fallback to embedded list if file not found
         print_status "$YELLOW" "⚠️  Warning: $packages_file not found, using embedded package list"
@@ -830,9 +878,10 @@ collect_all_files() {
     # Single comprehensive find operation for all file types needed (silent)
     {
         find "$scan_dir" \( \
-            -name "*.js" -o -name "*.ts" -o -name "*.json" -o -name "*.mjs" -o \
+            -name "*.js" -o -name "*.ts" -o -name "*.json" -o -name "*.mjs" -o -name "*.cjs" -o \
             -name "*.yml" -o -name "*.yaml" -o \
             -name "*.py" -o -name "*.sh" -o -name "*.bat" -o -name "*.ps1" -o -name "*.cmd" -o \
+            -name "*.php" -o \
             -name "package.json" -o \
             -name "package-lock.json" -o -name "yarn.lock" -o -name "pnpm-lock.yaml" -o \
             -name "shai-hulud-workflow.yml" -o \
@@ -852,10 +901,15 @@ collect_all_files() {
             -name "49554fde7424c31c.js" -o -name "rope.pyz" -o \
             -name "pgmonitor.py" -o -name "pgsql-monitor.service" -o \
             -name "template-web.js" -o \
+            -name "node-ipc.cjs" -o -name "bw1.js" -o -name "trap-core.js" -o \
+            -name ".cursorrules" -o -name "CLAUDE.md" -o -name "AGENTS.md" -o \
+            -name "AUDIT-MATRIX.md" -o -name "SWARM.md" -o \
             -name "pyproject.toml" -o -name "Pipfile" -o -name "Pipfile.lock" -o \
             -name "poetry.lock" -o -name "uv.lock" -o \
             -name "requirements.txt" -o -name "requirements-*.txt" -o -name "*-requirements.txt" -o \
-            -name "setup.py" -o -name "setup.cfg" \
+            -name "setup.py" -o -name "setup.cfg" -o \
+            -name "composer.json" -o -name "composer.lock" -o \
+            -name "Cargo.toml" -o -name "Cargo.lock" \
         \) -type f 2>/dev/null || true
     } > "$TEMP_DIR/all_files_raw.txt"
 
@@ -870,9 +924,9 @@ collect_all_files() {
 
     # Categorize files for specific functions using grep (much faster than separate finds)
     grep "package\.json$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/package_files.txt" 2>/dev/null || touch "$TEMP_DIR/package_files.txt"
-    grep "\.\(js\|ts\|json\|mjs\)$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/code_files.txt" 2>/dev/null || touch "$TEMP_DIR/code_files.txt"
+    grep "\.\(js\|ts\|json\|mjs\|cjs\)$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/code_files.txt" 2>/dev/null || touch "$TEMP_DIR/code_files.txt"
     grep "\.\(yml\|yaml\)$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/yaml_files.txt" 2>/dev/null || touch "$TEMP_DIR/yaml_files.txt"
-    grep "\.\(py\|sh\|bat\|ps1\|cmd\)$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/script_files.txt" 2>/dev/null || touch "$TEMP_DIR/script_files.txt"
+    grep "\.\(py\|sh\|bat\|ps1\|cmd\|php\)$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/script_files.txt" 2>/dev/null || touch "$TEMP_DIR/script_files.txt"
     grep "\(package-lock\.json\|yarn\.lock\|pnpm-lock\.yaml\)$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/lockfiles.txt" 2>/dev/null || touch "$TEMP_DIR/lockfiles.txt"
     grep "shai-hulud-workflow\.yml$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/workflow_files_found.txt" 2>/dev/null || touch "$TEMP_DIR/workflow_files_found.txt"
     grep "\(setup_bun\.js\|bun_installer\.js\)$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/setup_bun_files.txt" 2>/dev/null || touch "$TEMP_DIR/setup_bun_files.txt"
@@ -889,6 +943,18 @@ collect_all_files() {
         grep -vE "/(node_modules|\.venv|venv|\.tox|site-packages)/" > "$TEMP_DIR/pypi_manifests.txt" || touch "$TEMP_DIR/pypi_manifests.txt"
     grep -E "/(poetry\.lock|uv\.lock|Pipfile\.lock)$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null | \
         grep -vE "/(node_modules|\.venv|venv|\.tox|site-packages)/" > "$TEMP_DIR/pypi_lockfiles.txt" || touch "$TEMP_DIR/pypi_lockfiles.txt"
+
+    # Composer (PHP) manifests/lockfiles. Exclude vendored copies under vendor/.
+    grep -E "/composer\.json$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null | \
+        grep -vE "/(node_modules|vendor)/" > "$TEMP_DIR/composer_manifests.txt" || touch "$TEMP_DIR/composer_manifests.txt"
+    grep -E "/composer\.lock$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null | \
+        grep -vE "/(node_modules|vendor)/" > "$TEMP_DIR/composer_lockfiles.txt" || touch "$TEMP_DIR/composer_lockfiles.txt"
+
+    # Crates (Rust) manifests/lockfiles. Exclude build output under target/.
+    grep -E "/Cargo\.toml$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null | \
+        grep -vE "/(node_modules|target)/" > "$TEMP_DIR/crates_manifests.txt" || touch "$TEMP_DIR/crates_manifests.txt"
+    grep -E "/Cargo\.lock$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null | \
+        grep -vE "/(node_modules|target)/" > "$TEMP_DIR/crates_lockfiles.txt" || touch "$TEMP_DIR/crates_lockfiles.txt"
 
     # Filter GitHub workflow files specifically
     grep "/.github/workflows/.*\.ya\?ml$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/github_workflows.txt" 2>/dev/null || touch "$TEMP_DIR/github_workflows.txt"
@@ -1705,6 +1771,189 @@ check_pypi_packages() {
     fi
 }
 
+# Function: parse_composer_json
+# Args: $1 = path to a composer.json
+# Output: normalized name:version lines (only exact-pinned constraints emit a usable
+#         version; range constraints like "^15.0" emit name:^15.0 and simply won't
+#         intersect the exact compromised-version list — that's fine, the version-
+#         agnostic campaign checks (e.g. check_laravel_lang_indicators) cover ranges).
+parse_composer_json() {
+    awk '
+        /"require"[[:space:]]*:|"require-dev"[[:space:]]*:/ { flag=1; next }
+        /^[[:space:]]*\}/ { flag=0 }
+        flag && /^[[:space:]]*"[^"]+\/[^"]+"[[:space:]]*:/ {
+            line=$0
+            sub(/^[[:space:]]*"/, "", line)
+            name=line; sub(/".*$/, "", name)
+            ver=line; sub(/^[^:]*"[[:space:]]*:[[:space:]]*"/, "", ver); sub(/".*$/, "", ver)
+            # strip range operators + leading v for exact-pin detection
+            gsub(/^[v^~>=< ]+/, "", ver)
+            if (length(name) > 0 && length(ver) > 0) print name ":" ver
+        }
+    ' "$1"
+}
+
+# Function: parse_composer_lock
+# Args: $1 = path to a composer.lock
+# Output: normalized name:version lines (resolved versions — authoritative)
+parse_composer_lock() {
+    awk '
+        /"name"[[:space:]]*:/ {
+            n=$0; sub(/^[^:]*:[[:space:]]*"/, "", n); sub(/".*$/, "", n); cur=n; next
+        }
+        /"version"[[:space:]]*:/ && cur != "" {
+            v=$0; sub(/^[^:]*:[[:space:]]*"/, "", v); sub(/".*$/, "", v)
+            gsub(/^v/, "", v)
+            if (length(cur) > 0 && length(v) > 0) print cur ":" v
+            cur=""
+        }
+    ' "$1"
+}
+
+# Function: parse_cargo_toml
+# Args: $1 = path to a Cargo.toml
+# Output: normalized name:version lines for [dependencies]/[dev-dependencies]/
+#         [build-dependencies] (incl. [target.*.dependencies]). Handles both
+#         `name = "1.2.3"` and `name = { version = "1.2.3", ... }`.
+parse_cargo_toml() {
+    awk '
+        /^[[:space:]]*\[/ {
+            # Any TOML section header ending in "dependencies]" is a deps table:
+            # [dependencies], [dev-dependencies], [build-dependencies],
+            # [target.'\''cfg(...)'\''.dependencies], [workspace.dependencies], ...
+            indep = ($0 ~ /dependencies\][[:space:]]*$/) ? 1 : 0
+            next
+        }
+        indep && /^[[:space:]]*[A-Za-z0-9_-]+[[:space:]]*=/ {
+            name=$0; sub(/[[:space:]]*=.*/, "", name); gsub(/[[:space:]]/, "", name)
+            ver=""
+            if ($0 ~ /=[[:space:]]*"/) {
+                ver=$0; sub(/^[^=]*=[[:space:]]*"/, "", ver); sub(/".*$/, "", ver)
+            } else if ($0 ~ /version[[:space:]]*=[[:space:]]*"/) {
+                ver=$0; sub(/^.*version[[:space:]]*=[[:space:]]*"/, "", ver); sub(/".*$/, "", ver)
+            }
+            gsub(/^[v^~>=< ]+/, "", ver)
+            if (length(name) > 0 && length(ver) > 0) print name ":" ver
+        }
+    ' "$1"
+}
+
+# Function: parse_cargo_lock
+# Args: $1 = path to a Cargo.lock
+# Output: normalized name:version lines (resolved versions — authoritative)
+parse_cargo_lock() {
+    awk '
+        /^name[[:space:]]*=[[:space:]]*"/ {
+            n=$0; sub(/^name[[:space:]]*=[[:space:]]*"/, "", n); sub(/".*$/, "", n); cur=n; next
+        }
+        /^version[[:space:]]*=[[:space:]]*"/ && cur != "" {
+            v=$0; sub(/^version[[:space:]]*=[[:space:]]*"/, "", v); sub(/".*$/, "", v)
+            if (length(cur) > 0 && length(v) > 0) print cur ":" v
+            cur=""
+        }
+    ' "$1"
+}
+
+# Function: check_composer_packages
+# Purpose: Scan Composer (PHP / Packagist) manifests + lockfiles for compromised
+#          packages. Mirrors check_pypi_packages. Also always populates
+#          composer_all_deps.txt (file|name:version) so version-agnostic campaign
+#          checks (check_laravel_lang_indicators) can reuse the parsed dependency
+#          set without re-parsing.
+# Args: $1 = scan_dir
+# Modifies: $TEMP_DIR/compromised_found.txt, $TEMP_DIR/composer_all_deps.txt
+check_composer_packages() {
+    local scan_dir=$1
+    local manifest_count lockfile_count
+    manifest_count=$(wc -l < "$TEMP_DIR/composer_manifests.txt" 2>/dev/null | tr -d ' ' || echo "0")
+    lockfile_count=$(wc -l < "$TEMP_DIR/composer_lockfiles.txt" 2>/dev/null | tr -d ' ' || echo "0")
+    [[ "$manifest_count" == "0" && "$lockfile_count" == "0" ]] && return 0
+
+    print_status "$BLUE" "   Checking $manifest_count Composer manifest(s) and $lockfile_count lockfile(s)..."
+
+    : > "$TEMP_DIR/composer_all_deps.txt"
+    local file
+    while IFS= read -r file; do
+        [[ -z "$file" || ! -f "$file" ]] && continue
+        parse_composer_json "$file" | while IFS= read -r dep; do
+            [[ -n "$dep" ]] && echo "$file|$dep"
+        done >> "$TEMP_DIR/composer_all_deps.txt"
+    done < "$TEMP_DIR/composer_manifests.txt"
+    while IFS= read -r file; do
+        [[ -z "$file" || ! -f "$file" ]] && continue
+        parse_composer_lock "$file" | while IFS= read -r dep; do
+            [[ -n "$dep" ]] && echo "$file|$dep"
+        done >> "$TEMP_DIR/composer_all_deps.txt"
+    done < "$TEMP_DIR/composer_lockfiles.txt"
+
+    # Exact-version match against the composer: entries in the database (if any).
+    awk -F: '
+        /^[[:space:]]*#/ || NF < 3 { next }
+        $1 == "composer" { print $2":"$3 }
+    ' "$SCRIPT_DIR/compromised-packages.txt" | LC_ALL=C sort > "$TEMP_DIR/composer_compromised_lookup.txt"
+
+    if [[ -s "$TEMP_DIR/composer_compromised_lookup.txt" && -s "$TEMP_DIR/composer_all_deps.txt" ]]; then
+        cut -d'|' -f2 "$TEMP_DIR/composer_all_deps.txt" | LC_ALL=C sort | uniq > "$TEMP_DIR/composer_deps_only.txt"
+        LC_ALL=C comm -12 "$TEMP_DIR/composer_compromised_lookup.txt" "$TEMP_DIR/composer_deps_only.txt" > "$TEMP_DIR/composer_matched_deps.txt"
+        if [[ -s "$TEMP_DIR/composer_matched_deps.txt" ]]; then
+            while IFS= read -r matched_dep; do
+                { grep -F "|$matched_dep" "$TEMP_DIR/composer_all_deps.txt" || true; } | while IFS='|' read -r file_path dep; do
+                    [[ -n "$file_path" ]] && echo "$file_path:[Composer] ${dep/:/@}" >> "$TEMP_DIR/compromised_found.txt"
+                done
+            done < "$TEMP_DIR/composer_matched_deps.txt"
+        fi
+    fi
+}
+
+# Function: check_crates_packages
+# Purpose: Scan Crates.io (Rust / Cargo) manifests + lockfiles for compromised
+#          packages. Mirrors check_pypi_packages. Always populates
+#          crates_all_deps.txt (file|name:version) so version-agnostic campaign
+#          checks (check_trapdoor_indicators) can reuse the parsed dependency set.
+# Args: $1 = scan_dir
+# Modifies: $TEMP_DIR/compromised_found.txt, $TEMP_DIR/crates_all_deps.txt
+check_crates_packages() {
+    local scan_dir=$1
+    local manifest_count lockfile_count
+    manifest_count=$(wc -l < "$TEMP_DIR/crates_manifests.txt" 2>/dev/null | tr -d ' ' || echo "0")
+    lockfile_count=$(wc -l < "$TEMP_DIR/crates_lockfiles.txt" 2>/dev/null | tr -d ' ' || echo "0")
+    [[ "$manifest_count" == "0" && "$lockfile_count" == "0" ]] && return 0
+
+    print_status "$BLUE" "   Checking $manifest_count Cargo manifest(s) and $lockfile_count lockfile(s)..."
+
+    : > "$TEMP_DIR/crates_all_deps.txt"
+    local file
+    while IFS= read -r file; do
+        [[ -z "$file" || ! -f "$file" ]] && continue
+        parse_cargo_toml "$file" | while IFS= read -r dep; do
+            [[ -n "$dep" ]] && echo "$file|$dep"
+        done >> "$TEMP_DIR/crates_all_deps.txt"
+    done < "$TEMP_DIR/crates_manifests.txt"
+    while IFS= read -r file; do
+        [[ -z "$file" || ! -f "$file" ]] && continue
+        parse_cargo_lock "$file" | while IFS= read -r dep; do
+            [[ -n "$dep" ]] && echo "$file|$dep"
+        done >> "$TEMP_DIR/crates_all_deps.txt"
+    done < "$TEMP_DIR/crates_lockfiles.txt"
+
+    awk -F: '
+        /^[[:space:]]*#/ || NF < 3 { next }
+        $1 == "crates" { print $2":"$3 }
+    ' "$SCRIPT_DIR/compromised-packages.txt" | LC_ALL=C sort > "$TEMP_DIR/crates_compromised_lookup.txt"
+
+    if [[ -s "$TEMP_DIR/crates_compromised_lookup.txt" && -s "$TEMP_DIR/crates_all_deps.txt" ]]; then
+        cut -d'|' -f2 "$TEMP_DIR/crates_all_deps.txt" | LC_ALL=C sort | uniq > "$TEMP_DIR/crates_deps_only.txt"
+        LC_ALL=C comm -12 "$TEMP_DIR/crates_compromised_lookup.txt" "$TEMP_DIR/crates_deps_only.txt" > "$TEMP_DIR/crates_matched_deps.txt"
+        if [[ -s "$TEMP_DIR/crates_matched_deps.txt" ]]; then
+            while IFS= read -r matched_dep; do
+                { grep -F "|$matched_dep" "$TEMP_DIR/crates_all_deps.txt" || true; } | while IFS='|' read -r file_path dep; do
+                    [[ -n "$file_path" ]] && echo "$file_path:[Crates] ${dep/:/@}" >> "$TEMP_DIR/compromised_found.txt"
+                done
+            done < "$TEMP_DIR/crates_matched_deps.txt"
+        fi
+    fi
+}
+
 # Function: check_megalodon_indicators
 # Purpose: Detect May 18, 2026 Megalodon GitHub-repo-backdooring campaign IoCs.
 #          Megalodon's primary vector is workflow-file injection into 5,561 GitHub repos
@@ -2118,6 +2367,352 @@ check_durabletask_indicators() {
     fi
 }
 
+# Function: check_trapdoor_indicators
+# Purpose: Detect the May 22-25, 2026 TrapDoor crypto-stealer campaign (TeamPCP /
+#          UNC6780) — 34 packages / 384+ versions across npm + PyPI + Crates.io.
+#          ALL published versions of the campaign packages are malicious, so the
+#          authoritative signal is a *name* match in any manifest (version-agnostic),
+#          reusing the dependency sets already parsed by the per-ecosystem package
+#          checks. We also match the campaign's distinctive content IoCs: the
+#          P-2024-001 marker, the Crates build.rs XOR key, the shared GitHub-Pages
+#          C2 path (same ddjidd564 account as the May 20 Web3/DeFi MCP wave), the
+#          trap-core.js payload, and the C2-hosted "extraction framework" docs.
+#          The .cursorrules / CLAUDE.md AI-assistant droppers TrapDoor plants are
+#          handled by the generic check_ai_assistant_dropper.
+# Args: $1 = scan_dir
+# Modifies: $TEMP_DIR/trapdoor_indicators.txt
+check_trapdoor_indicators() {
+    local scan_dir=$1
+    print_status "$BLUE" "   Checking for TrapDoor npm/PyPI/Crates crypto-stealer IOCs (May 22-25, 2026)..."
+
+    # IOC 1: Campaign package names as declared dependencies. All versions malicious,
+    # so match the name in any ecosystem's parsed dependency set (file|name:version).
+    # chain-key-validator and defi-threat-scanner overlap with the May 20 Web3/DeFi MCP
+    # wave and are already covered by check_web3_mcp_indicators + the package list.
+    local trapdoor_names=(
+        "async-pipeline-builder" "build-scripts-utils" "crypto-credential-scanner"
+        "defi-env-auditor" "deployment-key-auditor" "dev-env-bootstrapper"
+        "eth-wallet-sentinel" "llm-context-compressor" "mnemonic-safety-check"
+        "model-switch-router" "node-setup-helpers" "project-init-tools"
+        "prompt-engineering-toolkit" "solidity-deploy-guard" "token-usage-tracker"
+        "wallet-backup-verifier" "wallet-security-checker" "web3-secrets-detector"
+        "workspace-config-loader"
+        "cryptowallet-safety" "data-pipeline-check" "defi-risk-scanner"
+        "env-loader-cli" "eth-security-auditor" "git-config-sync" "solidity-build-guard"
+        "move-analyzer-build" "move-compiler-tools" "move-project-builder"
+        "sui-framework-helpers" "sui-move-build-helper" "sui-sdk-build-utils"
+    )
+    : > "$TEMP_DIR/_trapdoor_deps.txt"
+    local df
+    for df in all_deps pypi_all_deps crates_all_deps composer_all_deps; do
+        [[ -s "$TEMP_DIR/$df.txt" ]] && cat "$TEMP_DIR/$df.txt" >> "$TEMP_DIR/_trapdoor_deps.txt"
+    done
+    if [[ -s "$TEMP_DIR/_trapdoor_deps.txt" ]]; then
+        local td_name
+        for td_name in "${trapdoor_names[@]}"; do
+            { grep -F "|$td_name:" "$TEMP_DIR/_trapdoor_deps.txt" || true; } | cut -d'|' -f1 | sort -u | \
+                while IFS= read -r file; do
+                    [[ -n "$file" ]] && echo "$file:TrapDoor compromised package dependency ($td_name — all published versions malicious)" >> "$TEMP_DIR/trapdoor_indicators.txt"
+                done
+        done
+    fi
+    rm -f "$TEMP_DIR/_trapdoor_deps.txt"
+
+    # IOC 2: Content literals across code/script/yaml files.
+    : > "$TEMP_DIR/_trapdoor_search_files.txt"
+    [[ -s "$TEMP_DIR/code_files.txt" ]] && cat "$TEMP_DIR/code_files.txt" >> "$TEMP_DIR/_trapdoor_search_files.txt"
+    [[ -s "$TEMP_DIR/script_files.txt" ]] && cat "$TEMP_DIR/script_files.txt" >> "$TEMP_DIR/_trapdoor_search_files.txt"
+    [[ -s "$TEMP_DIR/yaml_files.txt" ]] && cat "$TEMP_DIR/yaml_files.txt" >> "$TEMP_DIR/_trapdoor_search_files.txt"
+    if [[ -s "$TEMP_DIR/_trapdoor_search_files.txt" ]]; then
+        local td_indicator
+        for td_indicator in \
+            "P-2024-001" \
+            "cargo-build-helper-2026" \
+            "Universal AI Agent Extraction Framework" \
+            "ddjidd564.github.io/defi-security-best-practices" \
+            "defi-security-best-practices/config.json"
+        do
+            fast_grep_files_fixed "$td_indicator" < "$TEMP_DIR/_trapdoor_search_files.txt" | \
+                while IFS= read -r file; do
+                    echo "$file:TrapDoor campaign indicator ($td_indicator)" >> "$TEMP_DIR/trapdoor_indicators.txt"
+                done
+        done
+    fi
+    rm -f "$TEMP_DIR/_trapdoor_search_files.txt"
+
+    # IOC 3: Payload + C2-hosted framework docs anywhere in the tree.
+    local in_tree_td
+    while IFS= read -r in_tree_td; do
+        if [[ -f "$in_tree_td" ]]; then
+            local td_base
+            td_base=$(basename "$in_tree_td")
+            echo "$in_tree_td:TrapDoor payload/framework artifact ($td_base)" >> "$TEMP_DIR/trapdoor_indicators.txt"
+        fi
+    done < <(grep -E "/(trap-core\.js|AUDIT-MATRIX\.md|BYPASS\.md|PAYLOAD\.md|SWARM\.md)$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null || true)
+
+    if [[ -s "$TEMP_DIR/trapdoor_indicators.txt" ]]; then
+        sort -u "$TEMP_DIR/trapdoor_indicators.txt" -o "$TEMP_DIR/trapdoor_indicators.txt"
+    fi
+}
+
+# Function: check_laravel_lang_indicators
+# Purpose: Detect the May 22, 2026 Laravel-Lang Composer compromise. An attacker with
+#          push access force-rewrote 700+ git tags across four community packages so
+#          that EVERY version resolves to a malicious commit (RCE fires on Composer
+#          autoload). Version pinning is defeated, so the authoritative signal is a
+#          *name* match against composer dependencies (version-agnostic). We also match
+#          the DebugElevator / DebugChromium payload strings, the flipboxstudio.info C2,
+#          and the known malicious commit SHAs.
+# Args: $1 = scan_dir
+# Modifies: $TEMP_DIR/laravel_lang_indicators.txt
+check_laravel_lang_indicators() {
+    local scan_dir=$1
+    print_status "$BLUE" "   Checking for Laravel-Lang Composer tag-rewrite IOCs (May 22, 2026)..."
+
+    # IOC 1: Any dependency on the four compromised packages (all tags malicious).
+    if [[ -s "$TEMP_DIR/composer_all_deps.txt" ]]; then
+        local ll_name
+        for ll_name in \
+            "laravel-lang/lang" "laravel-lang/http-statuses" \
+            "laravel-lang/attributes" "laravel-lang/actions"
+        do
+            { grep -F "|$ll_name:" "$TEMP_DIR/composer_all_deps.txt" || true; } | cut -d'|' -f1 | sort -u | \
+                while IFS= read -r file; do
+                    [[ -n "$file" ]] && echo "$file:Laravel-Lang compromised package dependency ($ll_name — ALL tags backdoored; pin to a verified-clean commit SHA, not a tag)" >> "$TEMP_DIR/laravel_lang_indicators.txt"
+                done
+        done
+    fi
+
+    # IOC 2: Content literals. The PHP payload lives in script_files (*.php); the
+    # malicious commit SHAs live in composer.lock "reference" fields, so search the
+    # Composer manifests/lockfiles too.
+    : > "$TEMP_DIR/_laravel_search_files.txt"
+    [[ -s "$TEMP_DIR/code_files.txt" ]] && cat "$TEMP_DIR/code_files.txt" >> "$TEMP_DIR/_laravel_search_files.txt"
+    [[ -s "$TEMP_DIR/script_files.txt" ]] && cat "$TEMP_DIR/script_files.txt" >> "$TEMP_DIR/_laravel_search_files.txt"
+    [[ -s "$TEMP_DIR/yaml_files.txt" ]] && cat "$TEMP_DIR/yaml_files.txt" >> "$TEMP_DIR/_laravel_search_files.txt"
+    [[ -s "$TEMP_DIR/composer_manifests.txt" ]] && cat "$TEMP_DIR/composer_manifests.txt" >> "$TEMP_DIR/_laravel_search_files.txt"
+    [[ -s "$TEMP_DIR/composer_lockfiles.txt" ]] && cat "$TEMP_DIR/composer_lockfiles.txt" >> "$TEMP_DIR/_laravel_search_files.txt"
+    if [[ -s "$TEMP_DIR/_laravel_search_files.txt" ]]; then
+        local ll_indicator
+        for ll_indicator in \
+            "flipboxstudio.info" \
+            "flipboxstudio[.]info" \
+            "DebugElevator" \
+            "DebugChromium" \
+            "Chromium-DebugElevator" \
+            "a5ea2e8fa92ccf29cdb1d2dadbeb27722b2bff37" \
+            "bba2e443dc7ff1f8704f52a5375383e3f4f643b8" \
+            "26c233e1a0d4fd2331e8e0f175e18f8eed904aa3"
+        do
+            fast_grep_files_fixed "$ll_indicator" < "$TEMP_DIR/_laravel_search_files.txt" | \
+                while IFS= read -r file; do
+                    echo "$file:Laravel-Lang campaign indicator ($ll_indicator)" >> "$TEMP_DIR/laravel_lang_indicators.txt"
+                done
+        done
+    fi
+    rm -f "$TEMP_DIR/_laravel_search_files.txt"
+
+    if [[ -s "$TEMP_DIR/laravel_lang_indicators.txt" ]]; then
+        sort -u "$TEMP_DIR/laravel_lang_indicators.txt" -o "$TEMP_DIR/laravel_lang_indicators.txt"
+    fi
+}
+
+# Function: check_node_ipc_indicators
+# Purpose: Detect the May 14, 2026 node-ipc backdoor (versions 9.1.6 / 9.2.3 / 12.0.1,
+#          published by the hijacked `atiertant` account). An obfuscated IIFE appended
+#          to node-ipc.cjs fires on every require('node-ipc'), harvests credential files
+#          and DNS-exfiltrates them to sh.azurestaticprovider.net. The three versions are
+#          caught by the standard package-version check; this adds the C2 / DNS / unique
+#          marker strings (and the node-ipc.cjs hash is in MALICIOUS_HASHLIST). Distinct
+#          from the unrelated 2022 node-ipc protestware (9.2.2 / 10.1.1 / 11.0.0).
+# Args: $1 = scan_dir
+# Modifies: $TEMP_DIR/node_ipc_indicators.txt
+check_node_ipc_indicators() {
+    local scan_dir=$1
+    print_status "$BLUE" "   Checking for node-ipc backdoor IOCs (May 14, 2026)..."
+
+    if [[ -s "$TEMP_DIR/code_files.txt" ]]; then
+        local ni_indicator
+        for ni_indicator in \
+            "sh.azurestaticprovider.net" \
+            "sh.azurestaticprovider[.]net" \
+            "azurestaticprovider.net" \
+            "qZ8pL3vNxR9wKmTyHbVcFgDsJaEoUi" \
+            "__ntRun" \
+            "37.16.75.69"
+        do
+            fast_grep_files_fixed "$ni_indicator" < "$TEMP_DIR/code_files.txt" | \
+                while IFS= read -r file; do
+                    echo "$file:node-ipc backdoor indicator ($ni_indicator)" >> "$TEMP_DIR/node_ipc_indicators.txt"
+                done
+        done
+    fi
+
+    if [[ -s "$TEMP_DIR/node_ipc_indicators.txt" ]]; then
+        sort -u "$TEMP_DIR/node_ipc_indicators.txt" -o "$TEMP_DIR/node_ipc_indicators.txt"
+    fi
+}
+
+# Function: check_bitwarden_indicators
+# Purpose: Detect the April 22, 2026 @bitwarden/cli@2026.4.0 compromise ("Shai-Hulud:
+#          The Third Coming"), a downstream effect of the Checkmarx ast-github-action
+#          breach. Malicious code in bw1.js steals GitHub/npm tokens, .ssh, .env, shell
+#          history and cloud secrets and exfiltrates them to audit.checkmarx.cx and as
+#          GitHub commits. The version is caught by the package-version check; this adds
+#          the payload filename, C2 host/IP, and the distinctive beacon strings.
+# Args: $1 = scan_dir
+# Modifies: $TEMP_DIR/bitwarden_indicators.txt
+check_bitwarden_indicators() {
+    local scan_dir=$1
+    print_status "$BLUE" "   Checking for Bitwarden CLI compromise IOCs (April 22, 2026)..."
+
+    if [[ -s "$TEMP_DIR/code_files.txt" ]]; then
+        local bw_indicator
+        for bw_indicator in \
+            "audit.checkmarx.cx" \
+            "audit.checkmarx[.]cx" \
+            "94.154.172.43" \
+            "Shai-Hulud: The Third Coming" \
+            "Would be executing butlerian jihad!" \
+            "LongLiveTheResistanceAgainstMachines"
+        do
+            fast_grep_files_fixed "$bw_indicator" < "$TEMP_DIR/code_files.txt" | \
+                while IFS= read -r file; do
+                    echo "$file:Bitwarden CLI compromise indicator ($bw_indicator)" >> "$TEMP_DIR/bitwarden_indicators.txt"
+                done
+        done
+    fi
+
+    # bw1.js payload filename anywhere in the tree.
+    local in_tree_bw
+    while IFS= read -r in_tree_bw; do
+        [[ -f "$in_tree_bw" ]] && echo "$in_tree_bw:Bitwarden CLI compromise payload filename (bw1.js)" >> "$TEMP_DIR/bitwarden_indicators.txt"
+    done < <(grep -E "/bw1\.js$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null || true)
+
+    if [[ -s "$TEMP_DIR/bitwarden_indicators.txt" ]]; then
+        sort -u "$TEMP_DIR/bitwarden_indicators.txt" -o "$TEMP_DIR/bitwarden_indicators.txt"
+    fi
+}
+
+# Function: check_nx_console_indicators
+# Purpose: Detect the May 18, 2026 Nx Console 18.95.0 VS Code extension compromise
+#          (TeamPCP — the GitHub-internal breach). The extension fetched a ~498KB
+#          payload from an orphan commit in the official nrwl/nx repo via
+#          `npx -y github:nrwl/nx#558b09d7`, then stole developer + cloud secrets and
+#          specifically targeted ~/.claude/settings.json. The payload hashes are in
+#          MALICIOUS_HASHLIST; its kitty-monitor / cat.py persistence overlaps with the
+#          May 19 Mini Shai-Hulud wave (caught by --check-host). This adds the orphan-
+#          commit SHA, the npx ref, and the unique daemon/C2 markers.
+# Args: $1 = scan_dir, $2 = check_host ("true"/"false")
+# Modifies: $TEMP_DIR/nx_console_indicators.txt
+check_nx_console_indicators() {
+    local scan_dir=$1
+    local check_host=${2:-false}
+    print_status "$BLUE" "   Checking for Nx Console 18.95.0 compromise IOCs (May 18, 2026)..."
+
+    : > "$TEMP_DIR/_nx_search_files.txt"
+    [[ -s "$TEMP_DIR/code_files.txt" ]] && cat "$TEMP_DIR/code_files.txt" >> "$TEMP_DIR/_nx_search_files.txt"
+    [[ -s "$TEMP_DIR/script_files.txt" ]] && cat "$TEMP_DIR/script_files.txt" >> "$TEMP_DIR/_nx_search_files.txt"
+    [[ -s "$TEMP_DIR/yaml_files.txt" ]] && cat "$TEMP_DIR/yaml_files.txt" >> "$TEMP_DIR/_nx_search_files.txt"
+    if [[ -s "$TEMP_DIR/_nx_search_files.txt" ]]; then
+        local nx_indicator
+        for nx_indicator in \
+            "558b09d7ad0d1660e2a0fb8a06da81a6f42e06d2" \
+            "ba642fe2c7c65e42dd7f6444b83023dc6827e08c" \
+            "github:nrwl/nx#558b09d7" \
+            "nxConsole.mcpExtensionInstalledSha" \
+            "install-mcp-extension" \
+            "__DAEMONIZED=1" \
+            "api.github.com/search/commits?q=firedalazer" \
+            "firedalazer"
+        do
+            fast_grep_files_fixed "$nx_indicator" < "$TEMP_DIR/_nx_search_files.txt" | \
+                while IFS= read -r file; do
+                    echo "$file:Nx Console 18.95.0 compromise indicator ($nx_indicator)" >> "$TEMP_DIR/nx_console_indicators.txt"
+                done
+        done
+    fi
+    rm -f "$TEMP_DIR/_nx_search_files.txt"
+
+    if [[ -s "$TEMP_DIR/nx_console_indicators.txt" ]]; then
+        sort -u "$TEMP_DIR/nx_console_indicators.txt" -o "$TEMP_DIR/nx_console_indicators.txt"
+    fi
+}
+
+# Function: check_ai_assistant_dropper
+# Purpose: Generic detection for the cross-cutting May 2026 theme of weaponising AI
+#          coding assistants. Covers (a) malicious AI-assistant config droppers
+#          (.cursorrules / CLAUDE.md / AGENTS.md carrying the TrapDoor extraction-
+#          framework markers, the P-2024-001 marker, or references to the C2-hosted
+#          framework docs) and (b) the mouse5212-super-formatter "Malware-Slop" npm
+#          package that abuses Claude's /mnt/user-data upload directory and ships the
+#          attacker's own hard-coded GitHub PAT (account unplowed3584). With
+#          --check-host it also inspects ~/.claude/settings.json for the Nx Console
+#          payload's markers.
+# Args: $1 = scan_dir, $2 = check_host ("true"/"false")
+# Modifies: $TEMP_DIR/ai_assistant_dropper.txt
+check_ai_assistant_dropper() {
+    local scan_dir=$1
+    local check_host=${2:-false}
+    print_status "$BLUE" "   Checking for malicious AI-assistant config droppers / Claude-dir abuse..."
+
+    # IOC 1: AI-assistant config files (.cursorrules / CLAUDE.md / AGENTS.md) that carry
+    # TrapDoor's hidden-instruction markers. Legitimate config files never contain these.
+    local ai_config
+    while IFS= read -r ai_config; do
+        [[ -f "$ai_config" ]] || continue
+        local ai_marker
+        for ai_marker in \
+            "P-2024-001" \
+            "Universal AI Agent Extraction Framework" \
+            "AUDIT-MATRIX.md" \
+            "ddjidd564.github.io"
+        do
+            if fast_grep_quiet "$ai_marker" "$ai_config"; then
+                echo "$ai_config:Malicious AI-assistant config dropper (contains '$ai_marker')" >> "$TEMP_DIR/ai_assistant_dropper.txt"
+            fi
+        done
+    done < <(grep -E "/(\.cursorrules|CLAUDE\.md|AGENTS\.md)$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null || true)
+
+    # IOC 2: mouse5212-super-formatter "Malware-Slop" indicators (npm postinstall that
+    # uploads /mnt/user-data to a GitHub repo using an embedded PAT). The attacker
+    # username and the hard-coded token prefix are unique, high-confidence signals.
+    if [[ -s "$TEMP_DIR/code_files.txt" ]]; then
+        local ms_indicator
+        for ms_indicator in \
+            "mouse5212-super-formatter" \
+            "unplowed3584" \
+            "github_pat_11CEVM5CA0SRA"
+        do
+            fast_grep_files_fixed "$ms_indicator" < "$TEMP_DIR/code_files.txt" | \
+                while IFS= read -r file; do
+                    echo "$file:Malware-Slop indicator ($ms_indicator)" >> "$TEMP_DIR/ai_assistant_dropper.txt"
+                done
+        done
+        # /mnt/user-data (Claude's upload dir) referenced from JS is a strong contextual
+        # signal — almost never legitimate inside a published npm package.
+        fast_grep_files_fixed "/mnt/user-data" < "$TEMP_DIR/code_files.txt" | \
+            while IFS= read -r file; do
+                echo "$file:References Claude upload directory /mnt/user-data (Malware-Slop exfil target)" >> "$TEMP_DIR/ai_assistant_dropper.txt"
+            done
+    fi
+
+    # IOC 3: With --check-host, inspect ~/.claude/settings.json for the Nx Console
+    # payload's markers (it writes itself there for persistence).
+    if [[ "$check_host" == "true" && -f "$HOME/.claude/settings.json" ]]; then
+        local claude_marker
+        for claude_marker in "firedalazer" "install-mcp-extension" "558b09d7ad0d1660e2a0fb8a06da81a6f42e06d2" "__DAEMONIZED"; do
+            if fast_grep_quiet "$claude_marker" "$HOME/.claude/settings.json"; then
+                echo "$HOME/.claude/settings.json:Suspicious hook in Claude settings (contains '$claude_marker' — Nx Console payload persistence)" >> "$TEMP_DIR/ai_assistant_dropper.txt"
+            fi
+        done
+    fi
+
+    if [[ -s "$TEMP_DIR/ai_assistant_dropper.txt" ]]; then
+        sort -u "$TEMP_DIR/ai_assistant_dropper.txt" -o "$TEMP_DIR/ai_assistant_dropper.txt"
+    fi
+}
+
 # Function: check_discussion_workflows
 # Purpose: Detect malicious GitHub Actions workflows with discussion triggers
 # Args: $1 = scan_dir (directory to scan)
@@ -2379,7 +2974,7 @@ check_file_hashes() {
     {
         # Priority 1: Known malicious file patterns (always check). Includes May 19 atool
         # wave indicators (cat.py — kitty-monitor dead-drop fetcher, index.js — preinstall payload).
-        grep -E "(setup_bun\.js|bun_environment\.js|actionsSecrets\.json|trufflehog|router_init\.js|tanstack_runner\.js|kitty-monitor\.sh|cat\.py|49554fde7424c31c\.js|rope\.pyz|template-web\.js|pgmonitor\.py)" "$TEMP_DIR/code_files.txt" 2>/dev/null || true
+        grep -E "(setup_bun\.js|bun_environment\.js|actionsSecrets\.json|trufflehog|router_init\.js|tanstack_runner\.js|kitty-monitor\.sh|cat\.py|49554fde7424c31c\.js|rope\.pyz|template-web\.js|pgmonitor\.py|node-ipc\.cjs|bw1\.js|trap-core\.js)" "$TEMP_DIR/code_files.txt" 2>/dev/null || true
 
         # Priority 2: Non-node_modules files (fast grep filter)
         grep -v "/node_modules/" "$TEMP_DIR/code_files.txt" 2>/dev/null || true
@@ -3747,6 +4342,12 @@ write_log_file() {
         [[ -s "$TEMP_DIR/sl4x0_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/sl4x0_indicators.txt" || true
         [[ -s "$TEMP_DIR/art_template_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/art_template_indicators.txt" || true
         [[ -s "$TEMP_DIR/durabletask_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/durabletask_indicators.txt" || true
+        [[ -s "$TEMP_DIR/trapdoor_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/trapdoor_indicators.txt" || true
+        [[ -s "$TEMP_DIR/laravel_lang_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/laravel_lang_indicators.txt" || true
+        [[ -s "$TEMP_DIR/node_ipc_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/node_ipc_indicators.txt" || true
+        [[ -s "$TEMP_DIR/bitwarden_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/bitwarden_indicators.txt" || true
+        [[ -s "$TEMP_DIR/nx_console_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/nx_console_indicators.txt" || true
+        [[ -s "$TEMP_DIR/ai_assistant_dropper.txt" ]] && cut -d: -f1 "$TEMP_DIR/ai_assistant_dropper.txt" || true
         [[ -s "$TEMP_DIR/github_runners.txt" ]] && cut -d: -f1 "$TEMP_DIR/github_runners.txt" || true
 
         # Destructive patterns (extract file path before colon)
@@ -4085,6 +4686,111 @@ generate_report() {
         print_status "$RED" "                         publisher, delete ~/.polybot/, and treat any crypto wallet"
         print_status "$RED" "                         whose keys you entered into the onboarding prompt as fully"
         print_status "$RED" "                         compromised — move funds to a fresh wallet immediately."
+    fi
+
+    if [[ -s "$TEMP_DIR/trapdoor_indicators.txt" ]]; then
+        print_status "$RED" "🚨 HIGH RISK: May 22-25, 2026 TrapDoor crypto-stealer indicators detected (TeamPCP / UNC6780):"
+        print_status "$RED" "    ⚠️  Multi-ecosystem (npm + PyPI + Crates) campaign. ALL versions of the 34 packages"
+        print_status "$RED" "        are malicious; steals SSH keys, Solana/Sui/Aptos wallets, AWS creds, GitHub"
+        print_status "$RED" "        tokens, browser DBs and env vars, and plants .cursorrules/CLAUDE.md droppers."
+        while IFS= read -r line; do
+            local file="${line%%:*}"
+            local reason="${line#*:}"
+            echo "   - $file"
+            echo "     Reason: $reason"
+            show_file_preview "$file" "HIGH RISK: TrapDoor crypto-stealer indicator"
+            high_risk=$((high_risk+1))
+        done < "$TEMP_DIR/trapdoor_indicators.txt"
+        print_status "$RED" "    📋 IMMEDIATE ACTION: Remove the package from every ecosystem (npm/pip/cargo), delete"
+        print_status "$RED" "                         any planted .cursorrules/CLAUDE.md, rotate SSH keys, wallet"
+        print_status "$RED" "                         seeds, AWS/GitHub credentials, and audit AI-assistant runs."
+    fi
+
+    if [[ -s "$TEMP_DIR/laravel_lang_indicators.txt" ]]; then
+        print_status "$RED" "🚨 HIGH RISK: May 22, 2026 Laravel-Lang Composer tag-rewrite indicators detected:"
+        print_status "$RED" "    ⚠️  700+ git tags force-rewritten across four packages — EVERY version resolves to a"
+        print_status "$RED" "        malicious commit (RCE on Composer autoload). Version pinning is defeated; the"
+        print_status "$RED" "        DebugElevator stealer exfiltrates cloud/CI/Vault/SCM secrets + crypto seeds."
+        while IFS= read -r line; do
+            local file="${line%%:*}"
+            local reason="${line#*:}"
+            echo "   - $file"
+            echo "     Reason: $reason"
+            show_file_preview "$file" "HIGH RISK: Laravel-Lang Composer tag-rewrite indicator"
+            high_risk=$((high_risk+1))
+        done < "$TEMP_DIR/laravel_lang_indicators.txt"
+        print_status "$RED" "    📋 IMMEDIATE ACTION: Pin laravel-lang/* to a verified-clean commit SHA (NOT a tag),"
+        print_status "$RED" "                         clear Composer caches, rebuild vendor/, and rotate AWS/GitHub/"
+        print_status "$RED" "                         Slack/Stripe/Vault/K8s credentials touched by the autoload RCE."
+    fi
+
+    if [[ -s "$TEMP_DIR/node_ipc_indicators.txt" ]]; then
+        print_status "$RED" "🚨 HIGH RISK: May 14, 2026 node-ipc backdoor indicators detected (9.1.6 / 9.2.3 / 12.0.1):"
+        print_status "$RED" "    ⚠️  Obfuscated IIFE appended to node-ipc.cjs fires on every require('node-ipc'),"
+        print_status "$RED" "        harvesting credential files and DNS-exfiltrating to sh.azurestaticprovider.net."
+        while IFS= read -r line; do
+            local file="${line%%:*}"
+            local reason="${line#*:}"
+            echo "   - $file"
+            echo "     Reason: $reason"
+            show_file_preview "$file" "HIGH RISK: node-ipc backdoor indicator"
+            high_risk=$((high_risk+1))
+        done < "$TEMP_DIR/node_ipc_indicators.txt"
+        print_status "$RED" "    📋 IMMEDIATE ACTION: Pin node-ipc to a clean version (9.2.1 / 12.0.0), rotate any"
+        print_status "$RED" "                         credentials present on build/dev hosts, and audit DNS egress."
+    fi
+
+    if [[ -s "$TEMP_DIR/bitwarden_indicators.txt" ]]; then
+        print_status "$RED" "🚨 HIGH RISK: April 22, 2026 @bitwarden/cli@2026.4.0 compromise indicators (Shai-Hulud: The Third Coming):"
+        print_status "$RED" "    ⚠️  Downstream of the Checkmarx ast-github-action breach. bw1.js steals GitHub/npm"
+        print_status "$RED" "        tokens, .ssh, .env, shell history and cloud secrets to audit.checkmarx.cx."
+        while IFS= read -r line; do
+            local file="${line%%:*}"
+            local reason="${line#*:}"
+            echo "   - $file"
+            echo "     Reason: $reason"
+            show_file_preview "$file" "HIGH RISK: Bitwarden CLI compromise indicator"
+            high_risk=$((high_risk+1))
+        done < "$TEMP_DIR/bitwarden_indicators.txt"
+        print_status "$RED" "    📋 IMMEDIATE ACTION: Reinstall @bitwarden/cli from a known-good version, rotate"
+        print_status "$RED" "                         GitHub/npm tokens, SSH keys, .env secrets and cloud credentials"
+        print_status "$RED" "                         if the CLI was installed via npm on April 22, 2026 (5:57-7:30p ET)."
+    fi
+
+    if [[ -s "$TEMP_DIR/nx_console_indicators.txt" ]]; then
+        print_status "$RED" "🚨 HIGH RISK: May 18, 2026 Nx Console 18.95.0 compromise indicators detected (TeamPCP):"
+        print_status "$RED" "    ⚠️  Trojan VS Code extension fetched a payload from an orphan commit in nrwl/nx,"
+        print_status "$RED" "        stole developer + cloud secrets, and targeted ~/.claude/settings.json. Shares"
+        print_status "$RED" "        kitty-monitor/cat.py persistence with the May 19 wave (run --check-host)."
+        while IFS= read -r line; do
+            local file="${line%%:*}"
+            local reason="${line#*:}"
+            echo "   - $file"
+            echo "     Reason: $reason"
+            show_file_preview "$file" "HIGH RISK: Nx Console 18.95.0 compromise indicator"
+            high_risk=$((high_risk+1))
+        done < "$TEMP_DIR/nx_console_indicators.txt"
+        print_status "$RED" "    📋 IMMEDIATE ACTION: Update Nx Console to >=18.100.0, rotate ALL GitHub/cloud tokens"
+        print_status "$RED" "                         and gh CLI credentials, inspect ~/.claude/settings.json, and"
+        print_status "$RED" "                         run --check-host for the kitty-monitor dead-man's-switch first."
+    fi
+
+    if [[ -s "$TEMP_DIR/ai_assistant_dropper.txt" ]]; then
+        print_status "$RED" "🚨 HIGH RISK: Malicious AI-assistant config dropper / Claude-directory abuse detected:"
+        print_status "$RED" "    ⚠️  Attackers weaponise AI coding assistants — planting hidden instructions in"
+        print_status "$RED" "        .cursorrules/CLAUDE.md, abusing Claude's /mnt/user-data upload dir, or writing"
+        print_status "$RED" "        persistence into ~/.claude/settings.json. Review these files before trusting them."
+        while IFS= read -r line; do
+            local file="${line%%:*}"
+            local reason="${line#*:}"
+            echo "   - $file"
+            echo "     Reason: $reason"
+            show_file_preview "$file" "HIGH RISK: AI-assistant config dropper / Claude-dir abuse"
+            high_risk=$((high_risk+1))
+        done < "$TEMP_DIR/ai_assistant_dropper.txt"
+        print_status "$RED" "    📋 IMMEDIATE ACTION: Delete the offending AI-config file or uninstall the package, do"
+        print_status "$RED" "                         NOT let an AI assistant act on it, and rotate any secret the"
+        print_status "$RED" "                         instructions could have caused the assistant to read/exfiltrate."
     fi
 
     if [[ -s "$TEMP_DIR/mini_shai_hulud_host_artifacts.txt" ]]; then
@@ -5436,7 +6142,7 @@ main() {
     print_stage_complete "Repository analysis"
 
     # Advanced pattern detection
-    print_status "$ORANGE" "[Stage 5/6] Advanced detection (discussions, sandworm, axios, mini-shai-hulud, megalodon, web3-mcp, runners, destructive)"
+    print_status "$ORANGE" "[Stage 5/6] Advanced detection (discussions, sandworm, axios, mini-shai-hulud, megalodon, web3-mcp, trapdoor, laravel-lang, node-ipc, bitwarden, nx-console, ai-droppers, runners, destructive)"
     check_discussion_workflows "$scan_dir"
     check_sandworm_mode_workflows "$scan_dir"
     check_axios_attack_indicators "$scan_dir"
@@ -5447,6 +6153,12 @@ main() {
     check_sl4x0_indicators "$scan_dir"
     check_art_template_indicators "$scan_dir"
     check_durabletask_indicators "$scan_dir"
+    check_trapdoor_indicators "$scan_dir"
+    check_laravel_lang_indicators "$scan_dir"
+    check_node_ipc_indicators "$scan_dir"
+    check_bitwarden_indicators "$scan_dir"
+    check_nx_console_indicators "$scan_dir" "$check_host"
+    check_ai_assistant_dropper "$scan_dir" "$check_host"
     check_github_runners "$scan_dir"
     check_destructive_patterns "$scan_dir"
     check_preinstall_bun_patterns "$scan_dir"

@@ -3,15 +3,15 @@
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Shell](https://img.shields.io/badge/shell-Bash%205.0%2B-blue)](#requirements)
 [![Status](https://img.shields.io/badge/status-Active-success)](../../)
-[![Tests](https://img.shields.io/badge/tests-122%20passing-brightgreen)](#testing)
-[![Packages](https://img.shields.io/badge/compromised%20packages-2%2C820%2B-red)](compromised-packages.txt)
+[![Tests](https://img.shields.io/badge/tests-169%20passing-brightgreen)](#testing)
+[![Packages](https://img.shields.io/badge/compromised%20packages-2%2C830%2B-red)](compromised-packages.txt)
 [![Type](https://img.shields.io/badge/type-Security%20Tool-red)](#what-it-catches)
 [![Contributions](https://img.shields.io/badge/contributions-Welcome-orange)](#contributing)
 [![Last Commit](https://img.shields.io/github/last-commit/Cobenian/shai-hulud-detect)](https://github.com/Cobenian/shai-hulud-detect/commits/main)
 
 <img src="shai_hulu_detector.jpg" alt="sshd" width="80%" />
 
-A Bash script that scans a project — or many projects at once — for known traces of the September 2025 → May 2026 npm and PyPI supply-chain attacks. Cross-checks 2,820+ confirmed bad package versions and a library of content-pattern IoCs (file hashes, C2 domains, dead-man's-switch artifacts, wipe-threat strings, etc.).
+A Bash script that scans a project — or many projects at once — for known traces of the September 2025 → May 2026 npm, PyPI, Composer, and Crates supply-chain attacks. Cross-checks 2,830+ confirmed bad package versions and a library of content-pattern IoCs (file hashes, C2 domains, dead-man's-switch artifacts, wipe-threat strings, AI-assistant config droppers, etc.).
 
 ## Quick Start
 
@@ -52,6 +52,12 @@ The detector looks for two kinds of evidence on disk:
 | Mini Shai-Hulud / AntV (atool) | 2026-05-19 | 643 versions, 323 packages | [CHANGELOG](CHANGELOG.md) |
 | Web3 / DeFi MCP-server typosquat | 2026-05-20 | 10 packages (`chain-key-validator`, `defi-threat-scanner`, …), exfiltrates SSH + wallet keys | [CHANGELOG](CHANGELOG.md) |
 | Polymarket wallet drainer | 2026-05-21 | 9 packages from `polymarketdev` (`polymarket-bot`, `polymarket-trader`, …), fake wallet-onboarding prompt captures private keys | [CHANGELOG](CHANGELOG.md) |
+| Bitwarden CLI ("Third Coming") | 2026-04-22 | `@bitwarden/cli@2026.4.0` via Checkmarx `ast-github-action` breach; `bw1.js` exfil to `audit.checkmarx.cx` | [CHANGELOG](CHANGELOG.md) |
+| node-ipc backdoor | 2026-05-14 | `node-ipc@9.1.6/9.2.3/12.0.1`; IIFE in `node-ipc.cjs`, DNS exfil to `sh.azurestaticprovider.net` | [CHANGELOG](CHANGELOG.md) |
+| Nx Console VS Code ext | 2026-05-18 | `nx-console@18.95.0`; payload from orphan commit `558b09d7` in `nrwl/nx`, targets `~/.claude/settings.json` (TeamPCP / GitHub breach) | [CHANGELOG](CHANGELOG.md) |
+| TrapDoor (TeamPCP) | 2026-05-22→25 | 34 packages / 384+ versions across **npm + PyPI + Crates**; plants `.cursorrules`/`CLAUDE.md` AI-assistant droppers | [CHANGELOG](CHANGELOG.md) |
+| Laravel-Lang tag-rewrite | 2026-05-22 | 700+ **Composer** tags force-rewritten (`laravel-lang/lang`, …); RCE on autoload, `DebugElevator` stealer | [CHANGELOG](CHANGELOG.md) |
+| mouse5212 "Malware-Slop" | 2026-05-26 | `mouse5212-super-formatter` exfils Claude's `/mnt/user-data` via embedded GitHub PAT (`unplowed3584`) | [CHANGELOG](CHANGELOG.md) |
 | art-template npm hijack | 2025-03 → 2026-05 | 4 versions (`art-template@4.13.3-4.13.6`), iOS browser exploit kit (UNC6691) | [CHANGELOG](CHANGELOG.md) |
 | sl4x0 dependency confusion | 2025-06 → 2026-03 | 92+ packages across 32 `*poc` accounts, DNS exfil to `oob.sl4x0.xyz` (likely security research) | [CHANGELOG](CHANGELOG.md) |
 | `durabletask` PyPI worm | 2026-05-19 | `pypi:durabletask:1.4.1-1.4.3`, multi-cloud credential stealer + AWS SSM / k8s lateral movement | [CHANGELOG](CHANGELOG.md) |
@@ -68,6 +74,8 @@ For per-wave IoC inventories, payload hashes, source advisories, and version-by-
 |---|---|---|
 | **npm** | `package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml` | Full support |
 | **PyPI** | `pyproject.toml`, `requirements*.txt`, `Pipfile`, `Pipfile.lock`, `poetry.lock`, `uv.lock`, `setup.py`, `setup.cfg` | Full support (pure-bash awk parsers, no Python required) |
+| **Composer** | `composer.json`, `composer.lock` | Full support (PHP / Packagist; added for the Laravel-Lang wave) |
+| **Crates** | `Cargo.toml`, `Cargo.lock` | Full support (Rust / crates.io; added for the TrapDoor wave) |
 
 Auto-detection looks for marker files in your tree, skipping `node_modules/`, `vendor/`, `.venv/`, `venv/`, `.tox/`, `site-packages/`, `dist/`, `build/`, and similar trees. **That exclusion only decides which checks to run** — content inside `node_modules/` is still fully scanned for compromised versions and malware indicators. Override auto-detection with `--ecosystem=npm`, `--ecosystem=pypi`, `--ecosystem=all`, or a comma-separated list.
 
@@ -149,7 +157,7 @@ Writes flagged file paths grouped by severity, in a format friendly to grep and 
 1. **Collect** the file inventory (one `find` pass, categorized by extension).
 2. **Detect** ecosystems from marker files, decide which package-level checks to run.
 3. **Match** every resolved package version against `compromised-packages.txt` via a sorted set-intersection (`comm -12`).
-4. **Hash** priority files (`bundle.js`, `setup_bun.js`, `router_init.js`, `tanstack_runner.js`, `cat.py`, etc.) and compare against 11 known-malicious SHA-256s.
+4. **Hash** priority files (`bundle.js`, `setup_bun.js`, `router_init.js`, `tanstack_runner.js`, `cat.py`, `node-ipc.cjs`, etc.) and compare against 20 known-malicious SHA-256s.
 5. **Grep** for content-pattern IoCs: C2 domains, threat-actor accounts, dead-man's-switch service names, wipe-threat strings, malicious commit SHAs, beacon strings, payload filenames, orphan-commit `optionalDependencies` patterns.
 6. **(Opt-in)** scan `$HOME` for persistence artifacts (`--check-host`); run typosquatting + network-exfil heuristics (`--paranoid`); flag latent semver-range risk (`--check-semver-ranges`).
 7. **Report** in three severity tiers (HIGH/MEDIUM/LOW), with remediation order for the safety-critical findings.
@@ -180,7 +188,7 @@ The script auto-selects the fastest available grep tool (`git grep` > `ripgrep` 
 
 ## Limitations
 
-- Hash detection only catches exact SHA-256 matches against the 11 known-malicious hashes.
+- Hash detection only catches exact SHA-256 matches against the 20 known-malicious hashes.
 - Compromised-package detection requires the version to be in `compromised-packages.txt` — new variants need a list update.
 - Paranoid-mode heuristics produce false positives on legitimate code.
 - The detector reads filesystem state; it doesn't query npm/PyPI registries for live data.
@@ -194,14 +202,18 @@ The script auto-selects the fastest available grep tool (`git grep` > `ripgrep` 
 axios:1.14.1                            # bare entry = npm (back-compat)
 npm:@tanstack/react-router:1.169.5      # explicit npm prefix
 pypi:mistralai:2.4.6                    # PyPI entry
+composer:laravel-lang/lang:15.29.5      # Composer / Packagist entry
+crates:sui-move-build-helper:0.1.0      # Crates.io / Cargo entry
 ```
+
+For campaigns where **every** version of a package is malicious (e.g. TrapDoor, Laravel-Lang's tag rewrite), per-version entries can't keep up — detection is done version-agnostically by a dedicated `check_*_indicators` function that name-matches the dependency in any manifest.
 
 To add new packages from a fresh advisory: append entries in that format, run `./run-tests.sh`, open a PR. Source the additions from a reputable security firm (Socket, StepSecurity, Aikido, Snyk, JFrog, Wiz, Semgrep, SafeDep, GitGuardian, OX Security) and cite them.
 
 ## Testing
 
 ```bash
-./run-tests.sh                          # full suite, 71 tests
+./run-tests.sh                          # full suite, 169 checks
 ./shai-hulud-detector.sh test-cases/<fixture-name>   # run one fixture manually
 ```
 

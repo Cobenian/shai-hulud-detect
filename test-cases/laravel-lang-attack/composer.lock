@@ -1,0 +1,29 @@
+{
+    "_readme": [
+        "TEST FIXTURE - composer.lock pinning the resolved malicious tags.",
+        "laravel-lang/lang 15.29.5 and laravel-lang/http-statuses 3.4.5 are concrete",
+        "malicious tags whose commit SHAs were disclosed; they are exact-matched against",
+        "the composer: entries in compromised-packages.txt."
+    ],
+    "packages": [
+        {
+            "name": "laravel-lang/lang",
+            "version": "15.29.5",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/Laravel-Lang/lang.git",
+                "reference": "a5ea2e8fa92ccf29cdb1d2dadbeb27722b2bff37"
+            }
+        },
+        {
+            "name": "laravel-lang/http-statuses",
+            "version": "3.4.5",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/Laravel-Lang/http-statuses.git",
+                "reference": "bba2e443dc7ff1f8704f52a5375383e3f4f643b8"
+            }
+        }
+    ],
+    "packages-dev": []
+}

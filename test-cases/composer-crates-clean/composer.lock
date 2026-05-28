@@ -1,0 +1,16 @@
+{
+    "_readme": ["TEST FIXTURE - clean resolved versions; none are on the compromised list."],
+    "packages": [
+        {
+            "name": "symfony/console",
+            "version": "v6.4.7",
+            "source": { "type": "git", "reference": "0000000000000000000000000000000000000000" }
+        },
+        {
+            "name": "monolog/monolog",
+            "version": "3.6.0",
+            "source": { "type": "git", "reference": "1111111111111111111111111111111111111111" }
+        }
+    ],
+    "packages-dev": []
+}

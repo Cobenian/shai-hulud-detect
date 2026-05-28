@@ -1,0 +1,12 @@
+# TEST FIXTURE - clean Cargo manifest. Exercises the crates parser; no malicious crates.
+[package]
+name = "composer-crates-clean"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = "1.0.200"
+tokio = { version = "1.37.0", features = ["full"] }
+
+[dev-dependencies]
+criterion = "0.5.1"

@@ -1,0 +1,9 @@
+{
+    "name": "test/laravel-lang-attack",
+    "description": "TEST FIXTURE - May 22 2026 Laravel-Lang Composer tag-rewrite attack. Every tag of the four laravel-lang/* packages was force-rewritten to a malicious commit, so any constraint resolves to a backdoor. Detected version-agnostically by check_laravel_lang_indicators.",
+    "require": {
+        "php": ">=8.1",
+        "laravel-lang/lang": "^15.0",
+        "laravel-lang/http-statuses": "^3.0"
+    }
+}

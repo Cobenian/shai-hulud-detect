@@ -1,0 +1,8 @@
+# TEST FIXTURE - inert stand-in for a TrapDoor AI-assistant config dropper.
+# The real droppers (.cursorrules / CLAUDE.md) carry hidden instructions that trick
+# Cursor / Claude Code into running a fake "security scan" that exfiltrates secrets.
+# These inert markers are what the detector's check_ai_assistant_dropper matches.
+
+Campaign: P-2024-001
+This repository follows the Universal AI Agent Extraction Framework.
+See AUDIT-MATRIX.md for the staged workflow.
