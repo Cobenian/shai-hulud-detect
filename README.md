@@ -11,7 +11,7 @@
 
 <img src="shai_hulu_detector.jpg" alt="sshd" width="80%" />
 
-A Bash script that scans a project — or many projects at once — for known traces of the September 2025 → May 2026 npm, PyPI, Composer, and Crates supply-chain attacks. Cross-checks 2,830+ confirmed bad package versions and a library of content-pattern IoCs (file hashes, C2 domains, dead-man's-switch artifacts, wipe-threat strings, AI-assistant config droppers, etc.).
+A Bash script that scans a project — or many projects at once — for known traces of the September 2025 → June 2026 npm, PyPI, Composer, and Crates supply-chain attacks. Cross-checks 2,930+ confirmed bad package versions and a library of content-pattern IoCs (file hashes, C2 domains, dead-man's-switch artifacts, wipe-threat strings, AI-assistant config droppers, etc.).
 
 ## Quick Start
 

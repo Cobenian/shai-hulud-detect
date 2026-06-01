@@ -1,7 +1,7 @@
 # Shai-Hulud Supply Chain Attack - Compromised Packages List
 #
-# This file contains 2,800+ confirmed compromised package versions from
-# multiple supply chain attacks between September 2025 and May 2026.
+# This file contains 2,900+ confirmed compromised package versions from
+# multiple supply chain attacks between September 2025 and June 2026.
 # The campaigns were self-replicating, so new compromised packages may still be discovered.
 #
 # Sources: StepSecurity, Wiz.io, Semgrep, JFrog security advisories and Socket.dev
@@ -13,7 +13,7 @@
 #         NOTE: campaigns where ALL versions of a package are malicious (TrapDoor,
 #         Laravel-Lang) are detected version-agnostically by their dedicated
 #         check_* functions in shai-hulud-detector.sh, not by per-version entries here.
-# Last updated: May 2026
+# Last updated: June 2026
 #
 # MAINTAINING THIS LIST:
 # - Add new compromised packages as they are discovered
@@ -3151,3 +3151,122 @@ pypi:eth-security-auditor:0.1.0
 composer:laravel-lang/lang:15.29.5
 composer:laravel-lang/http-statuses:3.4.5
 composer:laravel-lang/http-statuses:3.4.0
+
+# ========================================================================
+# JUNE 1, 2026 - MIASMA: @redhat-cloud-services npm scope compromise
+# Compromised Red Hat employee GitHub account injected malicious code into 31
+# packages under the @redhat-cloud-services npm scope via orphan commits
+# bypassing code review. Malicious GitHub Actions workflow triggered on branch
+# push, requesting OIDC token with id-token:write to publish backdoored versions
+# with valid SLSA provenance attestations. Payload: 4.2MB obfuscated index.js
+# executed via preinstall hook, using ROT-21 + AES-128-GCM + obfuscator.io + B5
+# cipher (PBKDF2 200k iterations). Multi-stage credential harvester targeting
+# GitHub/CI tokens, AWS/GCP/Azure creds, Kubernetes, Vault, npm/PyPI tokens,
+# SSH keys, Docker, GPG. Process memory extraction reads /proc/<pid>/mem targeting
+# Runner.Worker to steal live GitHub Actions secrets. Exfiltration via GitHub
+# Contents API dead-drop (base64-encoded data in victim repos). Persistence via
+# .claude/settings.json SessionStart hooks and .vscode/tasks.json folderOpen
+# tasks. Self-propagating worm: uses harvested npm tokens with bypass_2fa to
+# republish backdoored packages autonomously. Published via GitHub Actions OIDC
+# from RedHatInsights/javascript-clients. ~80,000 aggregate weekly downloads.
+# Wiz Research names this campaign "Miasma: The Spreading Blight".
+# Two waves: 10:53 UTC and 13:44-13:46 UTC on June 1, 2026.
+# Sources: https://www.wiz.io/blog/miasma-supply-chain-attack-targeting-redhat-npm-packages
+#          https://www.stepsecurity.io/blog/multiple-redhat-cloud-services-npm-packages-compromised
+#          https://github.com/RedHatInsights/javascript-clients/issues/492
+# ========================================================================
+@redhat-cloud-services/chrome:2.3.1
+@redhat-cloud-services/chrome:2.3.2
+@redhat-cloud-services/chrome:2.3.4
+@redhat-cloud-services/compliance-client:4.0.3
+@redhat-cloud-services/compliance-client:4.0.4
+@redhat-cloud-services/compliance-client:4.0.6
+@redhat-cloud-services/config-manager-client:5.0.4
+@redhat-cloud-services/config-manager-client:5.0.5
+@redhat-cloud-services/config-manager-client:5.0.7
+@redhat-cloud-services/entitlements-client:4.0.11
+@redhat-cloud-services/entitlements-client:4.0.12
+@redhat-cloud-services/entitlements-client:4.0.14
+@redhat-cloud-services/eslint-config-redhat-cloud-services:3.2.1
+@redhat-cloud-services/eslint-config-redhat-cloud-services:3.2.2
+@redhat-cloud-services/eslint-config-redhat-cloud-services:3.2.4
+@redhat-cloud-services/frontend-components:7.7.2
+@redhat-cloud-services/frontend-components:7.7.3
+@redhat-cloud-services/frontend-components:7.7.5
+@redhat-cloud-services/frontend-components-advisor-components:3.8.2
+@redhat-cloud-services/frontend-components-advisor-components:3.8.4
+@redhat-cloud-services/frontend-components-advisor-components:3.8.6
+@redhat-cloud-services/frontend-components-config:6.11.3
+@redhat-cloud-services/frontend-components-config:6.11.4
+@redhat-cloud-services/frontend-components-config:6.11.6
+@redhat-cloud-services/frontend-components-config-utilities:4.11.2
+@redhat-cloud-services/frontend-components-config-utilities:4.11.3
+@redhat-cloud-services/frontend-components-config-utilities:4.11.5
+@redhat-cloud-services/frontend-components-notifications:6.9.2
+@redhat-cloud-services/frontend-components-notifications:6.9.3
+@redhat-cloud-services/frontend-components-notifications:6.9.5
+@redhat-cloud-services/frontend-components-remediations:4.9.2
+@redhat-cloud-services/frontend-components-remediations:4.9.3
+@redhat-cloud-services/frontend-components-remediations:4.9.5
+@redhat-cloud-services/frontend-components-testing:1.2.1
+@redhat-cloud-services/frontend-components-testing:1.2.2
+@redhat-cloud-services/frontend-components-testing:1.2.4
+@redhat-cloud-services/frontend-components-translations:4.4.1
+@redhat-cloud-services/frontend-components-translations:4.4.2
+@redhat-cloud-services/frontend-components-translations:4.4.4
+@redhat-cloud-services/frontend-components-utilities:7.4.1
+@redhat-cloud-services/frontend-components-utilities:7.4.2
+@redhat-cloud-services/frontend-components-utilities:7.4.4
+@redhat-cloud-services/hcc-feo-mcp:0.3.1
+@redhat-cloud-services/hcc-feo-mcp:0.3.2
+@redhat-cloud-services/hcc-feo-mcp:0.3.4
+@redhat-cloud-services/hcc-kessel-mcp:0.3.1
+@redhat-cloud-services/hcc-kessel-mcp:0.3.2
+@redhat-cloud-services/hcc-kessel-mcp:0.3.4
+@redhat-cloud-services/hcc-pf-mcp:0.6.1
+@redhat-cloud-services/hcc-pf-mcp:0.6.2
+@redhat-cloud-services/hcc-pf-mcp:0.6.4
+@redhat-cloud-services/host-inventory-client:5.0.3
+@redhat-cloud-services/host-inventory-client:5.0.4
+@redhat-cloud-services/host-inventory-client:5.0.6
+@redhat-cloud-services/insights-client:4.0.4
+@redhat-cloud-services/insights-client:4.0.5
+@redhat-cloud-services/insights-client:4.0.7
+@redhat-cloud-services/integrations-client:6.0.4
+@redhat-cloud-services/integrations-client:6.0.5
+@redhat-cloud-services/integrations-client:6.0.7
+@redhat-cloud-services/javascript-clients-shared:2.0.8
+@redhat-cloud-services/javascript-clients-shared:2.0.9
+@redhat-cloud-services/javascript-clients-shared:2.0.11
+@redhat-cloud-services/notifications-client:6.1.4
+@redhat-cloud-services/notifications-client:6.1.5
+@redhat-cloud-services/notifications-client:6.1.7
+@redhat-cloud-services/patch-client:4.0.4
+@redhat-cloud-services/patch-client:4.0.5
+@redhat-cloud-services/patch-client:4.0.7
+@redhat-cloud-services/quickstarts-client:4.0.11
+@redhat-cloud-services/quickstarts-client:4.0.12
+@redhat-cloud-services/quickstarts-client:4.0.14
+@redhat-cloud-services/rbac-client:9.0.3
+@redhat-cloud-services/rbac-client:9.0.4
+@redhat-cloud-services/rbac-client:9.0.6
+@redhat-cloud-services/remediations-client:4.0.4
+@redhat-cloud-services/remediations-client:4.0.5
+@redhat-cloud-services/remediations-client:4.0.7
+@redhat-cloud-services/rule-components:4.7.2
+@redhat-cloud-services/rule-components:4.7.3
+@redhat-cloud-services/rule-components:4.7.5
+@redhat-cloud-services/sources-client:3.0.10
+@redhat-cloud-services/sources-client:3.0.11
+@redhat-cloud-services/sources-client:3.0.13
+@redhat-cloud-services/topological-inventory-client:3.0.10
+@redhat-cloud-services/topological-inventory-client:3.0.11
+@redhat-cloud-services/topological-inventory-client:3.0.13
+@redhat-cloud-services/tsc-transform-imports:1.2.2
+@redhat-cloud-services/tsc-transform-imports:1.2.4
+@redhat-cloud-services/tsc-transform-imports:1.2.6
+@redhat-cloud-services/types:3.6.1
+@redhat-cloud-services/types:3.6.2
+@redhat-cloud-services/types:3.6.4
+@redhat-cloud-services/vulnerabilities-client:2.1.9
+@redhat-cloud-services/vulnerabilities-client:2.1.11

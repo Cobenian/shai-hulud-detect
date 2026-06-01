@@ -1,0 +1,13 @@
+{
+  "name": "redhat-miasma-clean-test",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Clean fixture: last-known-good versions of packages targeted by the June 2026 Miasma @redhat-cloud-services attack. The detector must NOT flag these versions.",
+  "dependencies": {
+    "@redhat-cloud-services/rbac-client": "9.0.2",
+    "@redhat-cloud-services/frontend-components": "7.7.1",
+    "@redhat-cloud-services/chrome": "2.3.0",
+    "@redhat-cloud-services/types": "3.6.0",
+    "@redhat-cloud-services/notifications-client": "6.1.3"
+  }
+}
