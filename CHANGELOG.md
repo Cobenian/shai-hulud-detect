@@ -5,6 +5,21 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.6.0] - 2026-06-01
+
+### Added
+- **Miasma: @redhat-cloud-services npm scope compromise coverage**: Added 95 malicious version entries across 31 distinct npm packages published via the compromised `@redhat-cloud-services` scope on 2026-06-01. A compromised Red Hat employee GitHub account injected malicious code via orphan commits bypassing code review, then a malicious GitHub Actions workflow published backdoored versions with valid SLSA provenance attestations using OIDC `id-token:write`. The 4.2MB obfuscated `index.js` payload uses four layers of obfuscation (ROT-21 → AES-128-GCM → obfuscator.io → B5 cipher with PBKDF2 200k iterations) and operates as a multi-stage credential harvester targeting GitHub/CI tokens, AWS/GCP/Azure creds, Kubernetes, Vault, npm/PyPI tokens, SSH keys, Docker, and GPG. Novel technique: reads `/proc/<pid>/mem` targeting `Runner.Worker` process to extract live GitHub Actions secrets marked `isSecret: true`, bypassing log masking. Exfiltration via GitHub Contents API dead-drop (base64-encoded data written to victim-controlled repos). Persistence via `.claude/settings.json` `SessionStart` hooks and `.vscode/tasks.json` `folderOpen` tasks. Self-propagating worm capability uses harvested npm tokens with `bypass_2fa` to republish backdoored packages autonomously. Two waves at 10:53 UTC and 13:44-13:46 UTC. ~80,000 aggregate weekly downloads. Wiz Research names this campaign "Miasma: The Spreading Blight".
+  - Sources:
+    - https://www.wiz.io/blog/miasma-supply-chain-attack-targeting-redhat-npm-packages
+    - https://www.stepsecurity.io/blog/multiple-redhat-cloud-services-npm-packages-compromised
+    - https://github.com/RedHatInsights/javascript-clients/issues/492
+- **Test fixtures**: `test-cases/redhat-miasma-attack/` (HIGH-risk, 5 compromised versions) and `test-cases/redhat-miasma-clean/` (safe prior versions).
+
+### Changed
+- **`compromised-packages.txt`** header updated: 2,800+ → 2,900+, date range extended to June 2026.
+- **`README.md`** updated: version count 2,830+ → 2,930+, date range → June 2026.
+- **`run-tests.sh`**: registered `redhat-miasma-attack` (HIGH) and `redhat-miasma-clean` (clean) in the EXPECTED array.
+
 ## [3.5.0] - 2026-05-27
 
 ### Added
