@@ -11,7 +11,7 @@
 
 <img src="shai_hulu_detector.jpg" alt="sshd" width="80%" />
 
-A Bash script that scans a project — or many projects at once — for known traces of the September 2025 → June 2026 npm, PyPI, Composer, and Crates supply-chain attacks. Cross-checks 2,930+ confirmed bad package versions and a library of content-pattern IoCs (file hashes, C2 domains, dead-man's-switch artifacts, wipe-threat strings, AI-assistant config droppers, etc.).
+A Bash script that scans a project — or many projects at once — for known traces of the September 2025 → June 2026 npm, PyPI, Composer, and Crates supply-chain attacks. Cross-checks 3,200+ confirmed bad package versions and a library of content-pattern IoCs (file hashes, C2 domains, dead-man's-switch artifacts, wipe-threat strings, AI-assistant config droppers, etc.).
 
 ## Quick Start
 
@@ -36,7 +36,7 @@ chmod +x shai-hulud-detector.sh
 
 The detector looks for two kinds of evidence on disk:
 
-1. **Compromised package versions** — every `package.json`, lockfile, `pyproject.toml`, `requirements.txt`, `Pipfile`, `poetry.lock`, `uv.lock`, etc. is parsed and the resolved versions are checked against the 2,700+-entry list in [`compromised-packages.txt`](compromised-packages.txt). Transitive deps inside `node_modules/` are checked too, not skipped.
+1. **Compromised package versions** — every `package.json`, lockfile, `pyproject.toml`, `requirements.txt`, `Pipfile`, `poetry.lock`, `uv.lock`, etc. is parsed and the resolved versions are checked against the 3,200+-entry list in [`compromised-packages.txt`](compromised-packages.txt). Transitive deps inside `node_modules/` are checked too, not skipped.
 2. **Content-pattern IoCs** — known-malicious file hashes, payload filenames, C2 domains, dead-man's-switch artifacts, marker repo names, malicious workflow files, forged orphan-commit references, suspicious lifecycle hooks, and threat-actor publisher fingerprints. These don't depend on the package list and fire even if the bad package has been uninstalled but the dropper traces remain.
 
 | Wave | Date | Scope | More |
@@ -62,6 +62,7 @@ The detector looks for two kinds of evidence on disk:
 | sl4x0 dependency confusion | 2025-06 → 2026-03 | 92+ packages across 32 `*poc` accounts, DNS exfil to `oob.sl4x0.xyz` (likely security research) | [CHANGELOG](CHANGELOG.md) |
 | `durabletask` PyPI worm | 2026-05-19 | `pypi:durabletask:1.4.1-1.4.3`, multi-cloud credential stealer + AWS SSM / k8s lateral movement | [CHANGELOG](CHANGELOG.md) |
 | PyPI cross-spread (TeamPCP) | 2026-03 → 05 | `litellm`, `telnyx`, `xinference`, `lightning`, `mistralai`, `guardrails-ai` | [CHANGELOG](CHANGELOG.md) |
+| Miasma "Phantom Gyp" worm | 2026-06-03 | 57 packages / 286 versions (`@vapi-ai/server-sdk`, `ai-sdk-ollama`, `autotel-*`, `awaitly-*`, `executable-stories-*`); novel `binding.gyp` command-substitution trigger bypasses preinstall-script monitors | [CHANGELOG](CHANGELOG.md) |
 
 For per-wave IoC inventories, payload hashes, source advisories, and version-by-version lists, see [`CHANGELOG.md`](CHANGELOG.md).
 

@@ -1,0 +1,12 @@
+{
+  "name": "miasma-binding-gyp-clean-test",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Clean fixture: last-known-good versions of packages targeted by the June 3, 2026 Miasma Phantom Gyp wave. The detector must NOT flag these versions.",
+  "dependencies": {
+    "@vapi-ai/server-sdk": "1.2.0",
+    "ai-sdk-ollama": "3.8.4",
+    "autotel-mcp": "28.0.2",
+    "wrangler-deploy": "1.5.4"
+  }
+}
