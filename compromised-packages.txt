@@ -1,6 +1,6 @@
 # Shai-Hulud Supply Chain Attack - Compromised Packages List
 #
-# This file contains 2,900+ confirmed compromised package versions from
+# This file contains 3,200+ confirmed compromised package versions from
 # multiple supply chain attacks between September 2025 and June 2026.
 # The campaigns were self-replicating, so new compromised packages may still be discovered.
 #
@@ -3270,3 +3270,356 @@ composer:laravel-lang/http-statuses:3.4.0
 @redhat-cloud-services/types:3.6.4
 @redhat-cloud-services/vulnerabilities-client:2.1.9
 @redhat-cloud-services/vulnerabilities-client:2.1.11
+
+# ========================================================================
+# JUNE 3, 2026 - MIASMA: Phantom Gyp self-spreading worm wave (57 npm packages)
+# Two days after the June 1 Miasma @redhat-cloud-services compromise, the
+# same "Miasma: The Spreading Blight" campaign published 286 malicious
+# versions across 57 packages in a rolling 2-hour burst. First victim:
+# @vapi-ai/server-sdk (408K dl/mo) at 23:30 UTC; within an hour, ~50
+# packages in the jagreehal ecosystem (autotel-*, awaitly-*,
+# executable-stories-*, node-env-resolver-*) plus ai-sdk-ollama
+# (120K dl/mo) were republished by the compromised maintainer accounts.
+# Cross-ecosystem: also injects into RubyGems via extconf.rb.
+#
+# Novel delivery ("Phantom Gyp"): a 157-byte binding.gyp file with
+# command-substitution syntax
+#     <!(node index.js > /dev/null 2>&1 && echo stub.c)
+# triggers code execution during `npm install`'s node-gyp rebuild step
+# WITHOUT declaring any preinstall/postinstall script in package.json —
+# bypassing every install-script monitor that only watches the
+# package.json scripts block. This is the first observed in-the-wild
+# abuse of binding.gyp for supply-chain execution.
+#
+# Payload hashes (SHA-256):
+#   ef641e956f91d501b748085996303c96a64d67f63bfeef0dda175e5aa19cca90 (binding.gyp, 157 B)
+#   5926b86b642e00672252953eb30d8f75cfb7797fe3118bd6fa2cfbee92905d61 (index.js root loader, 4.5 MB)
+#   da39146ef451d1b174a24d00b1e2a45cd38d54e849737f8f35333dcb22175707 (decrypted main, 668 KB)
+#
+# Obfuscation stack: ROT-9..ROT-20 Caesar + eval, AES-128-GCM self-
+# decrypting blobs with embedded keys/IVs, a 907-byte Bun runtime loader
+# that fetches bun-v1.3.13 from oven-sh/bun releases, and obfuscator.io
+# wrapping a 2,306-entry encrypted string table on the main payload.
+#
+# Credential targets (20+ types): GitHub PATs and Actions secrets via
+# /proc/<pid>/mem reads of Runner.Worker, AWS (env + IMDSv2 + ECS),
+# GCP (GOOGLE_APPLICATION_CREDENTIALS, service account keys), Azure
+# (managed identity / IMDS), Kubernetes service accounts, HashiCorp
+# Vault tokens, CircleCI, npm tokens, SSH keys, Docker socket creds
+# (with host-socket container-escape attempt), 1Password, gopass, pass,
+# and DB connection strings.
+#
+# Self-propagation: validates each stolen npm token against the keyword
+# "IfYouInvalidateThisTokenItWillNukeTheComputerOfTheOwner", enumerates
+# the victim's packages, injects the binding.gyp + index.js payload into
+# fresh tarballs, and republishes — with Sigstore provenance forgery in
+# CI environments. C2 beacon for channel checks: GitHub commit search
+# for "thebeautifulmarchoftime" (unauthenticated). User-Agent spoofed as
+# python-requests/2.31.0 despite Bun runtime execution.
+#
+# Persistence (AI-assistant + editor poisoning via stolen GitHub tokens):
+# .claude/setup.mjs, .cursor/rules/setup.mdc, .vscode/tasks.json with
+# runOn:folderOpen, .github/setup.js workflow injector.
+#
+# Exfiltration: HTTPS POST to GitHub Contents API
+# repos/liuende501/{repo}/contents/results/results-{timestamp}.json
+# with RSA-encrypted JSON envelopes; repos under github.com/liuende501
+# (236 at StepSecurity disclosure, 321+ at Snyk follow-up) named after
+# Dune (atreides/fedaykin/sardaukar) and mythology (nemean/hydra/
+# cerberus/chimera) terms. 34 repo descriptions are tagged
+# "Miasma - The Spreading Blight"; 195 carry the reversed beacon
+# "niagA oG eW ereH :duluH-iahS".
+#
+# Sources:
+# - https://www.stepsecurity.io/blog/binding-gyp-npm-supply-chain-attack-spreads-like-worm
+# - https://snyk.io/blog/node-gyp-supply-chain-compromise-self-propagating-npm-worm-binding-gyp/
+# - https://security.snyk.io/node-gyp-supply-chain-compromise-june-2026
+# - https://securityboulevard.com/2026/06/new-shai-hulud-miasma-wave-hits-hundreds-of-npm-packages/
+# - https://cybersecuritytimes.com/binding-gyp-attack/
+# ========================================================================
+@evolvconsulting/evolv-coder-lite:1.2.0
+@jagreehal/workflow:1.16.1
+@vapi-ai/server-sdk:0.11.1
+@vapi-ai/server-sdk:0.11.2
+@vapi-ai/server-sdk:1.2.1
+@vapi-ai/server-sdk:1.2.2
+ai-sdk-ollama:0.13.1
+ai-sdk-ollama:1.1.1
+ai-sdk-ollama:2.2.1
+ai-sdk-ollama:3.8.5
+autotel:2.26.4
+autotel:3.4.3
+autotel-adapters:0.3.5
+autotel-audit:0.1.15
+autotel-aws:0.13.10
+autotel-backends:2.12.26
+autotel-cli:0.8.14
+autotel-cloudflare:2.18.16
+autotel-devtools:0.1.1
+autotel-devtools:1.0.4
+autotel-devtools:2.1.1
+autotel-devtools:3.0.2
+autotel-devtools:4.0.1
+autotel-devtools:5.1.1
+autotel-devtools:6.1.2
+autotel-drizzle:0.0.27
+autotel-edge:3.16.13
+autotel-eventcatalog:1.0.1
+autotel-eventcatalog:2.0.1
+autotel-eventcatalog:3.0.1
+autotel-eventcatalog:4.0.2
+autotel-eventcatalog:5.0.1
+autotel-hono:0.4.26
+autotel-mcp:0.1.14
+autotel-mcp:2.0.1
+autotel-mcp:3.0.1
+autotel-mcp:4.0.1
+autotel-mcp:5.0.1
+autotel-mcp:6.0.1
+autotel-mcp:7.0.1
+autotel-mcp:8.0.1
+autotel-mcp:9.0.1
+autotel-mcp:10.0.1
+autotel-mcp:11.0.1
+autotel-mcp:13.0.1
+autotel-mcp:14.0.1
+autotel-mcp:15.0.2
+autotel-mcp:16.0.1
+autotel-mcp:17.0.2
+autotel-mcp:18.0.1
+autotel-mcp:19.0.1
+autotel-mcp:20.0.1
+autotel-mcp:21.1.1
+autotel-mcp:22.0.1
+autotel-mcp:23.0.1
+autotel-mcp:24.0.1
+autotel-mcp:25.0.1
+autotel-mcp:26.0.2
+autotel-mcp:27.0.1
+autotel-mcp:28.0.3
+autotel-mcp-instrumentation:29.0.2
+autotel-mcp-instrumentation:30.0.5
+autotel-mcp-instrumentation:31.0.1
+autotel-mcp-instrumentation:32.0.1
+autotel-mcp-instrumentation:33.0.2
+autotel-mcp-instrumentation:34.0.1
+autotel-mongoose:0.0.3
+autotel-mongoose:1.0.2
+autotel-mongoose:2.0.5
+autotel-mongoose:3.0.1
+autotel-mongoose:4.0.1
+autotel-mongoose:5.0.2
+autotel-mongoose:6.0.1
+autotel-pact:0.2.2
+autotel-pact:1.0.3
+autotel-playwright:0.4.32
+autotel-plugins:0.19.26
+autotel-sentry:0.5.13
+autotel-subscribers:4.1.1
+autotel-subscribers:5.0.1
+autotel-subscribers:6.0.1
+autotel-subscribers:7.0.1
+autotel-subscribers:8.0.1
+autotel-subscribers:9.0.1
+autotel-subscribers:10.0.1
+autotel-subscribers:11.0.1
+autotel-subscribers:12.0.1
+autotel-subscribers:13.0.1
+autotel-subscribers:14.1.1
+autotel-subscribers:15.0.1
+autotel-subscribers:16.0.2
+autotel-subscribers:17.0.1
+autotel-subscribers:18.0.3
+autotel-subscribers:19.0.1
+autotel-subscribers:20.0.1
+autotel-subscribers:21.0.1
+autotel-subscribers:22.0.2
+autotel-subscribers:23.0.2
+autotel-subscribers:24.0.1
+autotel-subscribers:25.0.1
+autotel-subscribers:26.0.1
+autotel-subscribers:27.0.2
+autotel-subscribers:28.0.2
+autotel-subscribers:29.0.6
+autotel-subscribers:30.0.4
+autotel-subscribers:31.1.4
+autotel-tanstack:1.13.27
+autotel-terminal:2.1.1
+autotel-terminal:3.0.1
+autotel-terminal:4.0.2
+autotel-terminal:5.0.1
+autotel-terminal:6.0.3
+autotel-terminal:7.0.1
+autotel-terminal:8.0.1
+autotel-terminal:9.0.1
+autotel-terminal:10.0.2
+autotel-terminal:11.0.1
+autotel-terminal:12.0.1
+autotel-terminal:13.0.1
+autotel-terminal:14.0.1
+autotel-terminal:15.0.2
+autotel-terminal:16.0.2
+autotel-terminal:17.0.10
+autotel-terminal:18.0.4
+autotel-terminal:19.0.8
+autotel-terminal:20.0.2
+autotel-terminal:21.0.1
+autotel-terminal:22.0.2
+autotel-terminal:23.0.3
+autotel-vitest:0.4.26
+autotel-web:1.12.2
+awaitly:1.33.3
+awaitly-analyze:0.24.2
+awaitly-analyze:1.1.1
+awaitly-analyze:2.0.1
+awaitly-analyze:3.0.1
+awaitly-analyze:4.0.1
+awaitly-analyze:5.0.1
+awaitly-analyze:6.0.1
+awaitly-analyze:7.0.1
+awaitly-analyze:8.0.1
+awaitly-libsql:0.1.1
+awaitly-libsql:1.0.1
+awaitly-libsql:2.0.1
+awaitly-libsql:3.0.1
+awaitly-libsql:4.0.1
+awaitly-libsql:5.0.1
+awaitly-libsql:6.0.1
+awaitly-libsql:7.0.1
+awaitly-libsql:8.0.1
+awaitly-libsql:9.0.1
+awaitly-libsql:10.0.1
+awaitly-libsql:11.0.1
+awaitly-libsql:12.0.1
+awaitly-libsql:13.0.1
+awaitly-libsql:14.0.1
+awaitly-libsql:15.0.1
+awaitly-libsql:16.0.1
+awaitly-libsql:17.0.1
+awaitly-libsql:18.1.1
+awaitly-libsql:19.0.1
+awaitly-libsql:20.0.1
+awaitly-libsql:21.0.1
+awaitly-libsql:22.0.1
+awaitly-mongo:0.1.1
+awaitly-mongo:1.0.1
+awaitly-mongo:2.0.1
+awaitly-mongo:3.0.1
+awaitly-mongo:4.0.1
+awaitly-mongo:5.0.1
+awaitly-mongo:6.0.1
+awaitly-mongo:7.0.1
+awaitly-mongo:8.0.1
+awaitly-mongo:9.1.1
+awaitly-mongo:10.0.1
+awaitly-mongo:11.0.1
+awaitly-mongo:12.0.1
+awaitly-mongo:13.0.1
+awaitly-mongo:14.0.1
+awaitly-mongo:15.0.1
+awaitly-mongo:16.0.1
+awaitly-mongo:17.0.1
+awaitly-mongo:18.0.1
+awaitly-mongo:19.1.1
+awaitly-mongo:20.0.1
+awaitly-mongo:21.0.1
+awaitly-mongo:22.0.1
+awaitly-mongo:23.0.1
+awaitly-postgres:0.1.1
+awaitly-postgres:1.0.1
+awaitly-postgres:2.0.1
+awaitly-postgres:3.0.2
+awaitly-postgres:4.0.1
+awaitly-postgres:5.0.1
+awaitly-postgres:6.0.1
+awaitly-postgres:7.0.1
+awaitly-postgres:8.0.1
+awaitly-postgres:9.0.1
+awaitly-postgres:10.0.1
+awaitly-postgres:11.0.1
+awaitly-postgres:12.0.1
+awaitly-postgres:13.0.1
+awaitly-postgres:14.0.1
+awaitly-postgres:15.0.1
+awaitly-postgres:16.0.1
+awaitly-postgres:17.0.1
+awaitly-postgres:18.0.1
+awaitly-postgres:19.1.1
+awaitly-postgres:20.0.1
+awaitly-postgres:21.0.1
+awaitly-postgres:22.0.1
+awaitly-postgres:23.0.1
+awaitly-visualizer:1.0.1
+awaitly-visualizer:2.0.2
+awaitly-visualizer:3.0.1
+awaitly-visualizer:4.0.1
+awaitly-visualizer:5.0.1
+awaitly-visualizer:6.0.1
+awaitly-visualizer:7.0.1
+awaitly-visualizer:8.0.1
+awaitly-visualizer:9.0.1
+awaitly-visualizer:10.0.1
+awaitly-visualizer:11.0.1
+awaitly-visualizer:12.0.1
+awaitly-visualizer:13.0.1
+awaitly-visualizer:14.0.1
+awaitly-visualizer:15.0.1
+awaitly-visualizer:16.0.1
+awaitly-visualizer:17.0.1
+awaitly-visualizer:18.1.1
+awaitly-visualizer:19.0.1
+awaitly-visualizer:20.0.2
+awaitly-visualizer:21.0.1
+awaitly-visualizer:22.0.2
+effect-analyzer:0.3.1
+eslint-plugin-awaitly:0.17.1
+eslint-plugin-awaitly:1.0.1
+eslint-plugin-executable-stories-jest:1.2.1
+eslint-plugin-executable-stories-jest:2.1.8
+eslint-plugin-executable-stories-playwright:1.2.1
+eslint-plugin-executable-stories-playwright:2.1.8
+eslint-plugin-executable-stories-vitest:1.2.1
+eslint-plugin-executable-stories-vitest:2.1.8
+executable-stories-cypress:3.1.1
+executable-stories-cypress:4.0.1
+executable-stories-cypress:5.0.1
+executable-stories-cypress:6.1.1
+executable-stories-cypress:7.0.3
+executable-stories-cypress:8.3.2
+executable-stories-demo:0.1.11
+executable-stories-formatters:0.11.2
+executable-stories-init:0.1.2
+executable-stories-jest:3.1.1
+executable-stories-jest:4.0.1
+executable-stories-jest:5.0.1
+executable-stories-jest:6.1.1
+executable-stories-jest:7.0.3
+executable-stories-jest:8.3.2
+executable-stories-mcp:0.3.3
+executable-stories-playwright:3.1.1
+executable-stories-playwright:4.0.1
+executable-stories-playwright:5.0.1
+executable-stories-playwright:6.1.1
+executable-stories-playwright:7.0.3
+executable-stories-playwright:8.4.3
+executable-stories-react:0.1.7
+executable-stories-vitest:2.0.1
+executable-stories-vitest:3.1.1
+executable-stories-vitest:4.0.1
+executable-stories-vitest:5.0.1
+executable-stories-vitest:6.1.1
+executable-stories-vitest:7.0.3
+executable-stories-vitest:8.3.3
+http-uploader-dev:1.0.7
+mountly:0.2.2
+mountly-tailwind:0.1.3
+node-env-resolver:6.5.1
+node-env-resolver-aws:9.1.2
+node-env-resolver-aws:10.0.1
+node-env-resolver-aws:11.0.1
+node-env-resolver-aws:12.0.1
+node-env-resolver-dotenvx:1.0.1
+node-env-resolver-dotenvx:2.0.1
+node-env-resolver-nextjs:7.4.2
+node-env-resolver-vite:2.4.2
+wrangler-deploy:1.5.5

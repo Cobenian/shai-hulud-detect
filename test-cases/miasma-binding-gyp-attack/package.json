@@ -1,0 +1,13 @@
+{
+  "name": "miasma-binding-gyp-attack-test",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Test fixture for June 3, 2026 Miasma Phantom Gyp wave (57 packages, 286 versions). Novel delivery: a 157-byte binding.gyp file with command-substitution syntax `<!(node index.js > /dev/null 2>&1 && echo stub.c)` triggers code execution during npm install's node-gyp rebuild step WITHOUT any preinstall/postinstall script in package.json. Payload SHA-256 ef641e956f91d501b748085996303c96a64d67f63bfeef0dda175e5aa19cca90 (binding.gyp), 5926b86b642e00672252953eb30d8f75cfb7797fe3118bd6fa2cfbee92905d61 (4.5MB index.js). Exfil to github.com/liuende501 repos.",
+  "dependencies": {
+    "@vapi-ai/server-sdk": "1.2.2",
+    "ai-sdk-ollama": "3.8.5",
+    "autotel-mcp": "28.0.3",
+    "awaitly-postgres": "23.0.1",
+    "wrangler-deploy": "1.5.5"
+  }
+}

@@ -5,6 +5,29 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.0] - 2026-06-03
+
+### Added
+- **Miasma: Phantom Gyp self-spreading worm wave coverage (June 3, 2026)**: Added 286 malicious version entries across 57 distinct npm packages published in a rolling 2-hour burst by the same "Miasma: The Spreading Blight" campaign that hit `@redhat-cloud-services` two days earlier. First victim was `@vapi-ai/server-sdk` (408K downloads/month) at 23:30 UTC; within an hour ~50 packages in the `jagreehal` ecosystem (`autotel-*`, `awaitly-*`, `executable-stories-*`, `node-env-resolver-*`) plus `ai-sdk-ollama` (120K downloads/month) were republished by the compromised maintainer accounts. Cross-ecosystem: the worm also injects into RubyGems via `extconf.rb`.
+  - **Novel delivery mechanism — "Phantom Gyp"**: a 157-byte `binding.gyp` file with the GYP command-substitution syntax `<!(node index.js > /dev/null 2>&1 && echo stub.c)` triggers code execution during `npm install`'s `node-gyp rebuild` step **without** declaring any `preinstall`/`postinstall` script in `package.json`. This bypasses every install-script monitor that only watches the `package.json` scripts block. First observed in-the-wild abuse of `binding.gyp` for supply-chain execution. Detection in this PR is version-pinned via the `compromised-packages.txt` list; a future scanner enhancement may add a `binding.gyp` content-pattern check for the `<!(node ...)` invocation.
+  - **Payload hashes (SHA-256)**: `ef641e956f91d501b748085996303c96a64d67f63bfeef0dda175e5aa19cca90` (binding.gyp, 157 bytes), `5926b86b642e00672252953eb30d8f75cfb7797fe3118bd6fa2cfbee92905d61` (4.5MB obfuscated index.js root loader), `da39146ef451d1b174a24d00b1e2a45cd38d54e849737f8f35333dcb22175707` (668KB decrypted main payload). Obfuscation stack: ROT-9 through ROT-20 Caesar + `eval`, AES-128-GCM self-decrypting blobs with embedded keys/IVs, a 907-byte Bun runtime loader that fetches `bun-v1.3.13` from `oven-sh/bun` releases, and obfuscator.io wrapping a 2,306-entry encrypted string table on the main payload.
+  - **Credential targets (20+ types)**: GitHub PATs and Actions secrets via `/proc/<pid>/mem` reads of `Runner.Worker`, AWS (env + IMDSv2 + ECS), GCP (`GOOGLE_APPLICATION_CREDENTIALS`, service account keys), Azure (managed identity / IMDS), Kubernetes service accounts, HashiCorp Vault tokens, CircleCI, npm tokens, SSH keys, Docker socket creds (with host-socket container-escape attempt), 1Password, gopass, pass, and DB connection strings.
+  - **Self-propagation**: validates each stolen npm token against the keyword `IfYouInvalidateThisTokenItWillNukeTheComputerOfTheOwner`, enumerates the victim's packages, injects the `binding.gyp` + `index.js` payload into fresh tarballs, and republishes — with Sigstore provenance forgery in CI environments. C2 beacon for channel checks: GitHub commit search for `thebeautifulmarchoftime` (unauthenticated). User-Agent spoofed as `python-requests/2.31.0` despite Bun runtime execution.
+  - **Persistence (AI-assistant + editor poisoning via stolen GitHub tokens)**: `.claude/setup.mjs` (Anthropic Claude), `.cursor/rules/setup.mdc` (Cursor AI), `.vscode/tasks.json` with `runOn: folderOpen`, and `.github/setup.js` GitHub Actions workflow injector.
+  - **Exfiltration**: HTTPS POST to GitHub Contents API `repos/liuende501/{repo}/contents/results/results-{timestamp}.json` with RSA-encrypted JSON envelopes. Repos under `github.com/liuende501` (236 at StepSecurity disclosure, 321+ at Snyk follow-up) are named after Dune (`atreides`/`fedaykin`/`sardaukar`) and mythology (`nemean`/`hydra`/`cerberus`/`chimera`) terms; 34 repo descriptions are tagged `Miasma - The Spreading Blight`; 195 carry the reversed beacon `niagA oG eW ereH :duluH-iahS`.
+  - Sources:
+    - https://www.stepsecurity.io/blog/binding-gyp-npm-supply-chain-attack-spreads-like-worm
+    - https://snyk.io/blog/node-gyp-supply-chain-compromise-self-propagating-npm-worm-binding-gyp/
+    - https://security.snyk.io/node-gyp-supply-chain-compromise-june-2026
+    - https://securityboulevard.com/2026/06/new-shai-hulud-miasma-wave-hits-hundreds-of-npm-packages/
+    - https://cybersecuritytimes.com/binding-gyp-attack/
+- **Test fixtures**: `test-cases/miasma-binding-gyp-attack/` (HIGH-risk, 5 compromised versions spanning `@vapi-ai/server-sdk@1.2.2`, `ai-sdk-ollama@3.8.5`, `autotel-mcp@28.0.3`, `awaitly-postgres@23.0.1`, `wrangler-deploy@1.5.5`) and `test-cases/miasma-binding-gyp-clean/` (last-known-good versions of the same package families, verified absent from `compromised-packages.txt`).
+
+### Changed
+- **`compromised-packages.txt`** header counter: 2,900+ → 3,200+ (file now contains 3,219 entries; 286 new + 2,933 prior).
+- **`README.md`** counter: 2,930+ → 3,200+ on the lead-paragraph and detection-coverage descriptions.
+- **`run-tests.sh`**: registered `miasma-binding-gyp-attack` (HIGH) and `miasma-binding-gyp-clean` (clean) in the `EXPECTED` array.
+
 ## [3.6.0] - 2026-06-01
 
 ### Added
