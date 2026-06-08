@@ -1,0 +1,13 @@
+{
+  "name": "ironworm-attack-test",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Test fixture for the June 3, 2026 IronWorm campaign (JFrog) — a Rust infostealer distributed via 37 npm packages from the asteroiddao account, delivered through a preinstall './tools/setup' ELF hook. Pins confirmed compromised versions so the standard npm package-version check fires HIGH.",
+  "dependencies": {
+    "weavedb-sdk": "0.45.3",
+    "arnext": "0.1.5",
+    "zkjson": "0.8.5",
+    "wao": "0.41.2",
+    "cwao": "0.5.6"
+  }
+}

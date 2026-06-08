@@ -1,0 +1,12 @@
+# TEST FIXTURE — June 7, 2026 Miasma "Hades" PyPI wave (Socket disclosure).
+# DO NOT `pip install` this file. It pins KNOWN-MALICIOUS package versions
+# purely as inert text so the detector's PyPI version check fires. The
+# packages themselves are not present in this fixture and nothing here runs.
+#
+# 19 packages / 37 versions are listed in compromised-packages.txt; this
+# fixture exercises a representative subset.
+bramin==0.0.2
+magique-ai==0.4.5
+pantheon-agents==0.6.2
+ufish==0.1.3
+uprobe==0.1.4

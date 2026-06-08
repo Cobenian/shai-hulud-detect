@@ -1,0 +1,9 @@
+# TEST FIXTURE — last-known-good versions of packages targeted by the
+# June 7, 2026 Miasma "Hades" PyPI wave. Each pin is one release BELOW the
+# lowest compromised version, so the detector must produce NO findings.
+# Contains no marker strings and no payload.
+bramin==0.0.1
+magique-ai==0.4.3
+pantheon-agents==0.6.0
+ufish==0.1.1
+uprobe==0.1.2

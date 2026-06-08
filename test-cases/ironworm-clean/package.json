@@ -1,0 +1,11 @@
+{
+  "name": "ironworm-clean-test",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Clean fixture: non-compromised versions of IronWorm-targeted package names. The detector must NOT flag these.",
+  "dependencies": {
+    "weavedb-sdk": "0.45.2",
+    "arnext": "0.1.4",
+    "wao": "0.41.1"
+  }
+}

@@ -1,6 +1,6 @@
 # Shai-Hulud Supply Chain Attack - Compromised Packages List
 #
-# This file contains 3,200+ confirmed compromised package versions from
+# This file contains 3,290+ confirmed compromised package versions from
 # multiple supply chain attacks between September 2025 and June 2026.
 # The campaigns were self-replicating, so new compromised packages may still be discovered.
 #
@@ -3268,6 +3268,7 @@ composer:laravel-lang/http-statuses:3.4.0
 @redhat-cloud-services/types:3.6.1
 @redhat-cloud-services/types:3.6.2
 @redhat-cloud-services/types:3.6.4
+@redhat-cloud-services/vulnerabilities-client:2.1.8
 @redhat-cloud-services/vulnerabilities-client:2.1.9
 @redhat-cloud-services/vulnerabilities-client:2.1.11
 
@@ -3397,6 +3398,7 @@ autotel-mcp:25.0.1
 autotel-mcp:26.0.2
 autotel-mcp:27.0.1
 autotel-mcp:28.0.3
+autotel-mcp:29.0.1
 autotel-mcp-instrumentation:29.0.2
 autotel-mcp-instrumentation:30.0.5
 autotel-mcp-instrumentation:31.0.1
@@ -3623,3 +3625,133 @@ node-env-resolver-dotenvx:2.0.1
 node-env-resolver-nextjs:7.4.2
 node-env-resolver-vite:2.4.2
 wrangler-deploy:1.5.5
+
+# ========================================================================
+# JUNE 7, 2026 - MIASMA "HADES": PyPI branch of the self-spreading worm
+# (37 PyPI wheels across 19 packages)
+# Socket disclosed a single coordinated wave of 448 malicious artifacts
+# (411 npm + 37 PyPI) from the same "Miasma: The Spreading Blight"
+# campaign. The PyPI branch is tracked as "Hades - The End for the Damned".
+#
+# Novel PyPI delivery: each wheel ships a tiny "<name>-setup.pth" Python
+# startup hook. Python auto-executes lines in a .pth file that begin with
+# "import", so the hook execs an obfuscated _index.js loader at interpreter
+# startup — triggering during plain `import`, with NO setup.py / build
+# step and NO preinstall/postinstall hook to monitor.
+#
+# Payload hashes (SHA-256) — wired into MALICIOUS_HASHLIST:
+#   c539766062555d47716f8432e73adbe3a0c0c954a0b6c4005017a668975e275c (setup.pth hook, identical across all wheels)
+#   dc48b09b2a5954f7ff79ab8a2fd80202bd3b59c08c7cdbc6025aa923cb4c0efe (_index.js loader, 4.8 MB / 17 packages)
+#   e1342a80d4b5e83d2c7c22e1e0aaa95f2d88e3dbf0d853a4994b180c93a4b17d (_index.js loader variant, 4.7 MB / 2 packages)
+#
+# Credential targets (20+ types) and self-propagation mirror the June 1/3
+# npm Miasma waves. Dead-man's-switch token-nuke marker:
+# "IfYouYankThisTokenItWillNukeTheComputerOfTheOwnerFully". C2 camouflage:
+# exfiltrates over a path under the legitimate api.anthropic.com host
+# (.../v1/api, which is NOT a real Anthropic endpoint). Exfil repos under
+# github.com/<generated> use Greek-underworld names (stygian, tartarean,
+# cerberus, charon, styx, lethe, thanatos, persephone); descriptions are
+# tagged "Hades - The End for the Damned". Persistence via gh-token-monitor
+# daemon, ~/.local/share/updater/update.py, .claude/setup.mjs, and a
+# .github/workflows/codeql.yml workflow injector ("Run Copilot").
+#
+# Sources:
+# - https://socket.dev/blog/shai-hulud-descends-to-hades-miasma-pypi-wave
+# ========================================================================
+pypi:bramin:0.0.2
+pypi:bramin:0.0.3
+pypi:bramin:0.0.4
+pypi:cmd2func:0.2.2
+pypi:cmd2func:0.2.3
+pypi:coolbox:0.4.1
+pypi:coolbox:0.4.2
+pypi:dynamo-release:1.5.4
+pypi:executor-engine:0.3.4
+pypi:executor-engine:0.3.5
+pypi:executor-http:0.1.3
+pypi:executor-http:0.1.4
+pypi:funcdesc:0.2.2
+pypi:funcdesc:0.2.3
+pypi:magique:0.6.8
+pypi:magique:0.6.9
+pypi:magique-ai:0.4.4
+pypi:magique-ai:0.4.5
+pypi:mrbios:0.1.1
+pypi:mrbios:0.1.2
+pypi:napari-ufish:0.0.2
+pypi:napari-ufish:0.0.3
+pypi:nucbox:0.1.2
+pypi:nucbox:0.1.3
+pypi:okite:0.0.7
+pypi:okite:0.0.8
+pypi:pantheon-agents:0.6.1
+pypi:pantheon-agents:0.6.2
+pypi:pantheon-toolsets:0.5.5
+pypi:pantheon-toolsets:0.5.6
+pypi:spateo-release:1.1.2
+pypi:synago:0.1.1
+pypi:synago:0.1.2
+pypi:ufish:0.1.2
+pypi:ufish:0.1.3
+pypi:uprobe:0.1.3
+pypi:uprobe:0.1.4
+
+# ========================================================================
+# JUNE 3, 2026 - IRONWORM ("Shai-Hulud's rustier cousin") - 37 npm packages
+# A DISTINCT campaign from Miasma/Shai-Hulud (JFrog disclosure): a Rust-based
+# infostealer pushed through 37 npm packages, all published by the npm account
+# "asteroiddao" (operator "ocrybit"), spanning the weavedb / arnext / cwao /
+# wdb Arweave-Web3 ecosystem. Delivery is a classic preinstall hook
+# ("preinstall": "./tools/setup") that runs a ~976 KB Linux ELF stealer; it
+# also rewrites existing GitHub Actions workflows for persistence and embeds an
+# eBPF rootkit (q2.bpf.c) for process/network hiding.
+#
+# Targets crypto/Web3 developers: hooks the Exodus wallet Electron app
+# (localhost:8738) to steal seed phrases, harvests 86+ env vars, 20+ credential
+# files, AI/ML API keys, and Kubernetes/Vault secrets. C2 over Tor (/api/agent)
+# with temp.sh as fallback exfil. Forged commit author
+# "claude <claude@users.noreply.github.com>" across 57 backdated commits in 9
+# GitHub orgs. The operator leaked their own Ethereum address
+# 0x7e28D9889f414B06c19a22A9Bd316f0AC279a4d6 (hardcoded BIP-39 seed in the
+# exfil skip-list) — now flagged by the known-attacker-wallet check.
+#
+# Source:
+# - https://research.jfrog.com/post/iron-worm-shai-hulud-rustier-cousin/
+# ========================================================================
+weavedb-sdk:0.45.3
+weavedb-lite:0.1.1
+weavedb-sdk-base:0.21.1
+test-weavedb-sdk:1.1.1
+weavedb-warp-contracts-plugin-deploy:1.0.11
+arnext-arkb:0.0.2
+weavedb-console:0.2.1
+arnext:0.1.5
+roidjs:0.1.7
+weavedb-exm-sdk:0.7.4
+create-arnext-app:0.0.10
+weavedb-tools:0.45.3
+wdb-core:0.1.2
+cwao-tools:0.3.1
+test-ajs:0.1.19
+monade:0.0.7
+weavedb-exm-sdk-web:0.7.4
+testnpmnmp:1.0.21
+warp-contracts-plugin-deploy-test:3.0.1
+wdb-cli:0.1.1
+ai3:0.3.5
+cwao-units:0.8.3
+atomic-notes:0.5.3
+cwao:0.5.6
+weavedb-client:0.45.3
+wdb-sdk:0.1.2
+weavedb-offchain:0.45.4
+fpjson-lang:0.1.7
+weavedb-contracts:0.45.2
+weavedb-node-client:0.45.3
+arjson:0.1.4
+hbsig:0.3.2
+zkjson:0.8.5
+aonote:0.11.1
+weavedb-base:0.45.3
+weavedb-sdk-node:0.45.3
+wao:0.41.2

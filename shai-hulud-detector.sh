@@ -117,6 +117,7 @@ create_temp_dir() {
     touch "$TEMP_DIR/sl4x0_indicators.txt"
     touch "$TEMP_DIR/art_template_indicators.txt"
     touch "$TEMP_DIR/durabletask_indicators.txt"
+    touch "$TEMP_DIR/hades_miasma_indicators.txt"
     touch "$TEMP_DIR/trapdoor_indicators.txt"
     touch "$TEMP_DIR/laravel_lang_indicators.txt"
     touch "$TEMP_DIR/node_ipc_indicators.txt"
@@ -229,6 +230,9 @@ MALICIOUS_HASHLIST=(
     "e7347d90653efc565f03733a95e9209d78f9cfa81e31ff2b2dd9d48d75a4b8b1" # May 18, 2026 Nx Console 18.95.0: obfuscated index.js payload (Ox Security IOC)
     "b0cefb66b953e5184b6adb3035e9e267335ac5eabfe1848e07834777b9397b74" # May 18, 2026 Nx Console 18.95.0: malicious main.js payload (Ox Security IOC)
     "1a4afce34918bdc74ae3f31edaffffaa0ee074d83618f53edfd88137927340b8" # May 18, 2026 Nx Console 18.95.0: malicious VSIX bundle (Ox Security IOC)
+    "c539766062555d47716f8432e73adbe3a0c0c954a0b6c4005017a668975e275c" # June 7, 2026 Hades/Miasma PyPI wave: setup.pth startup hook (Socket IOC)
+    "dc48b09b2a5954f7ff79ab8a2fd80202bd3b59c08c7cdbc6025aa923cb4c0efe" # June 7, 2026 Hades/Miasma PyPI wave: _index.js loader, 4.8MB / 17 packages (Socket IOC)
+    "e1342a80d4b5e83d2c7c22e1e0aaa95f2d88e3dbf0d853a4994b180c93a4b17d" # June 7, 2026 Hades/Miasma PyPI wave: _index.js loader variant, 4.7MB / 2 packages (Socket IOC)
 )
 
 PARALLELISM=4
@@ -466,8 +470,10 @@ load_compromised_packages() {
                 COMPROMISED_PACKAGES_MAP["$key"]=1
                 ((crates_count++)) || true
                 ((count++)) || true
-            elif [[ "$line" =~ ^[@a-zA-Z][^:]+:[0-9]+\.[0-9]+\.[0-9]+ ]]; then
-                # Bare entry -> npm
+            elif [[ "$line" =~ ^[@a-zA-Z0-9][^:]+:[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+                # Bare entry -> npm. npm package names may start with a digit
+                # (e.g. "02-echo"); only a leading "." or "_" is disallowed, so the
+                # first-character class includes 0-9 to avoid silently dropping them.
                 pkg_name="${line%:*}"
                 pkg_version="${line#*:}"
                 key="npm:$pkg_name:$pkg_version"
@@ -864,6 +870,27 @@ count_files() {
     (find "$@" 2>/dev/null || true) | wc -l | tr -d ' '
 }
 
+# Self-exclusion state (issue #146). Set by collect_all_files when the detector's
+# OWN installation directory lives inside the scan tree; consumed by
+# path_under_detector to keep the tool from flagging its own test fixtures and docs.
+DETECTOR_SELF_DIR=""   # physical path of the detector dir, only when it is under the scan root
+SCAN_ROOT_REAL=""      # physical path of the scan root
+
+# Function: path_under_detector
+# Purpose: True when a find-emitted path resolves to (or under) the detector's own
+#          installation directory, so callers can skip it. No-op unless the detector
+#          actually lives inside the scan tree.
+# Args: $1 = path as emitted by `find "$scan_dir" ...`; $2 = the scan_dir argument used
+path_under_detector() {
+    [[ -z "$DETECTOR_SELF_DIR" ]] && return 1
+    local p="$1" scan_arg="$2" rel abs
+    rel="${p#"$scan_arg"}"   # strip the find-argument prefix
+    rel="${rel#/}"           # and any separator left behind
+    abs="$SCAN_ROOT_REAL/$rel"
+    abs="${abs%/}"
+    [[ "$abs" == "$DETECTOR_SELF_DIR" || "$abs" == "$DETECTOR_SELF_DIR"/* ]]
+}
+
 # Function: collect_all_files
 # Purpose: Single comprehensive file collection to replace 20+ separate find operations
 # Args: $1 = scan_dir (directory to scan)
@@ -921,6 +948,39 @@ collect_all_files() {
     {
         find "$scan_dir" -type d \( -name ".dev-env" -o -name "*shai*hulud*" \) 2>/dev/null || true
     } > "$TEMP_DIR/suspicious_dirs.txt"
+
+    # Self-exclusion (issue #146): never treat the detector's OWN installation
+    # directory as scan input. Its test-cases/ are deliberately-malicious fixtures
+    # (real attacker wallet addresses, fake Bun installers, malicious workflows)
+    # and its source / CHANGELOG / compromised-packages.txt carry IoC literals as
+    # data. When the detector is cloned inside the scanned tree this otherwise
+    # produces a flood of guaranteed false positives. We prune these paths ONLY
+    # when the detector actually lives under the scan root, so scanning an
+    # individual test-case (as the test suite does) is unaffected.
+    local self_real scan_real
+    self_real=$(cd "$SCRIPT_DIR" 2>/dev/null && pwd -P || true)
+    scan_real=$(cd "$scan_dir" 2>/dev/null && pwd -P || true)
+    if [[ -n "$self_real" && -n "$scan_real" && ( "$self_real" == "$scan_real" || "$self_real" == "$scan_real"/* ) ]]; then
+        # Publish the physical paths so path_under_detector() can also guard the
+        # handful of checks that run their own find over $scan_dir. Comparing
+        # physical paths keeps this correct across symlinks (e.g. macOS /tmp ->
+        # /private/tmp), where a logical $PWD would never match pwd -P output.
+        DETECTOR_SELF_DIR="$self_real"
+        SCAN_ROOT_REAL="$scan_real"
+        local inventory_name src line
+        for inventory_name in all_files_raw git_repos suspicious_dirs; do
+            src="$TEMP_DIR/$inventory_name.txt"
+            [[ -s "$src" ]] || continue
+            : > "$src.self_filtered"
+            while IFS= read -r line; do
+                [[ -z "$line" ]] && continue
+                path_under_detector "$line" "$scan_dir" && continue
+                printf '%s\n' "$line" >> "$src.self_filtered"
+            done < "$src"
+            mv "$src.self_filtered" "$src"
+        done
+        print_status "$YELLOW" "   Note: excluded the detector's own directory from scan results to avoid self-detection ($self_real)."
+    fi
 
     # Categorize files for specific functions using grep (much faster than separate finds)
     grep "package\.json$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/package_files.txt" 2>/dev/null || touch "$TEMP_DIR/package_files.txt"
@@ -2367,6 +2427,73 @@ check_durabletask_indicators() {
     fi
 }
 
+# Function: check_hades_miasma_indicators
+# Purpose: Detect the June 7, 2026 "Hades" PyPI branch of the Miasma campaign
+#          (Socket disclosure: 448 artifacts across npm + PyPI; 37 PyPI wheels
+#          over 19 packages). The PyPI side ships its payload via a Python
+#          startup hook (`*-setup.pth`) that execs an obfuscated `_index.js`
+#          loader — the exact payload/hook files are pinned by SHA-256 in
+#          MALICIOUS_HASHLIST. This function adds the campaign's near-zero-FP
+#          string markers, and also BACKFILLS the June 1/3 Miasma markers that
+#          were previously only documented, never actively matched.
+#          Version-pinned package detection lives in compromised-packages.txt.
+# Args: $1 = scan_dir
+# Modifies: $TEMP_DIR/hades_miasma_indicators.txt
+check_hades_miasma_indicators() {
+    local scan_dir=$1
+    print_status "$BLUE" "   Checking for Hades/Miasma IOCs (June 2026 Shai-Hulud waves)..."
+
+    # The payload lives in Python (.pth/.py) and JavaScript files, so search the
+    # code/script/yaml buckets together (same approach as the durabletask check).
+    : > "$TEMP_DIR/_hades_search_files.txt"
+    [[ -s "$TEMP_DIR/code_files.txt" ]] && cat "$TEMP_DIR/code_files.txt" >> "$TEMP_DIR/_hades_search_files.txt"
+    [[ -s "$TEMP_DIR/script_files.txt" ]] && cat "$TEMP_DIR/script_files.txt" >> "$TEMP_DIR/_hades_search_files.txt"
+    [[ -s "$TEMP_DIR/yaml_files.txt" ]] && cat "$TEMP_DIR/yaml_files.txt" >> "$TEMP_DIR/_hades_search_files.txt"
+
+    if [[ -s "$TEMP_DIR/_hades_search_files.txt" ]]; then
+        # IOC 1: Dead-man's-switch token-nuke marker strings. Each wave uses its own
+        # variant; the May-wave "IfYouRevoke...Wipe" string is handled separately in
+        # check_mini_shai_hulud_indicators. These are unique enough for a literal match.
+        local hm_marker
+        for hm_marker in \
+            "IfYouYankThisTokenItWillNukeTheComputerOfTheOwnerFully" \
+            "IfYouInvalidateThisTokenItWillNukeTheComputerOfTheOwner"
+        do
+            fast_grep_files_fixed "$hm_marker" < "$TEMP_DIR/_hades_search_files.txt" | \
+                while IFS= read -r file; do
+                    echo "$file:Hades/Miasma dead-man's-switch token-nuke marker ($hm_marker)" >> "$TEMP_DIR/hades_miasma_indicators.txt"
+                done
+        done
+
+        # IOC 2: Exfil-repo description / beacon strings stamped on attacker-created
+        # GitHub repos (the git-config form is also matched by malicious_descriptions).
+        local hm_beacon
+        for hm_beacon in \
+            "Hades - The End for the Damned" \
+            "Miasma - The Spreading Blight"
+        do
+            fast_grep_files_fixed "$hm_beacon" < "$TEMP_DIR/_hades_search_files.txt" | \
+                while IFS= read -r file; do
+                    echo "$file:Hades/Miasma exfil-repo beacon string ($hm_beacon)" >> "$TEMP_DIR/hades_miasma_indicators.txt"
+                done
+        done
+
+        # IOC 3: C2 camouflage path. The Hades loader exfiltrates via a path under the
+        # legitimate Anthropic API host. Real clients use api.anthropic.com/v1/messages;
+        # /v1/api is not a real endpoint, so this literal match is low-FP.
+        fast_grep_files_fixed "api.anthropic.com/v1/api" < "$TEMP_DIR/_hades_search_files.txt" | \
+            while IFS= read -r file; do
+                echo "$file:Hades C2 camouflage path (api.anthropic.com/v1/api)" >> "$TEMP_DIR/hades_miasma_indicators.txt"
+            done
+    fi
+    rm -f "$TEMP_DIR/_hades_search_files.txt"
+
+    # Deduplicate
+    if [[ -s "$TEMP_DIR/hades_miasma_indicators.txt" ]]; then
+        sort -u "$TEMP_DIR/hades_miasma_indicators.txt" -o "$TEMP_DIR/hades_miasma_indicators.txt"
+    fi
+}
+
 # Function: check_trapdoor_indicators
 # Purpose: Detect the May 22-25, 2026 TrapDoor crypto-stealer campaign (TeamPCP /
 #          UNC6780) — 34 packages / 384+ versions across npm + PyPI + Crates.io.
@@ -2782,6 +2909,8 @@ check_github_runners() {
             -name "_work" \
         \) 2>/dev/null || true
     } | sort | uniq | while IFS= read -r dir; do
+        # Skip the detector's own tree (issue #146) when it lives inside the scan root.
+        path_under_detector "$dir" "$scan_dir" && continue
         if [[ -d "$dir" ]]; then
             # Check for runner configuration files
             if [[ -f "$dir/.runner" ]] || [[ -f "$dir/.credentials" ]] || [[ -f "$dir/config.sh" ]]; then
@@ -2928,6 +3057,8 @@ check_malicious_repo_descriptions() {
     local malicious_descriptions=(
         "Sha1-Hulud: The Second Coming"
         "Goldox-T3chs: Only Happy Girl"
+        "Miasma - The Spreading Blight"
+        "Hades - The End for the Damned"
     )
 
     # Check git repositories with malicious descriptions
@@ -3218,7 +3349,7 @@ check_packages() {
         /^[[:space:]]*#/ || NF < 2 { next }
         $1 == "npm" && NF >= 3 { print $2":"$3; next }
         $1 == "pypi" { next }
-        /^[@a-zA-Z]/ { print $1":"$2 }
+        /^[@a-zA-Z0-9]/ { print $1":"$2 }
     ' "$SCRIPT_DIR/compromised-packages.txt" | LC_ALL=C sort > "$TEMP_DIR/compromised_lookup.txt"
 
     # Extract all dependencies from all package.json files using parallel xargs + awk
@@ -3407,7 +3538,9 @@ check_crypto_theft_patterns() {
         done
 
     # Check for known attacker wallets (high priority)
-    fast_grep_files "0xFc4a4858bafef54D1b1d7697bfb5c52F4c166976|1H13VnQJKtT4HjD5ZFKaaiZEetMbG7nDHx|TB9emsCq6fQw6wRk4HBxxNnU6Hwt1DnV67" < "$TEMP_DIR/code_files.txt" | \
+    # 0x7e28...a4d6: IronWorm (June 3, 2026) operator's own Ethereum address, leaked because
+    # they hardcoded their BIP-39 seed into the malware's exfiltration skip-list (JFrog disclosure).
+    fast_grep_files "0xFc4a4858bafef54D1b1d7697bfb5c52F4c166976|1H13VnQJKtT4HjD5ZFKaaiZEetMbG7nDHx|TB9emsCq6fQw6wRk4HBxxNnU6Hwt1DnV67|0x7e28D9889f414B06c19a22A9Bd316f0AC279a4d6" < "$TEMP_DIR/code_files.txt" | \
         while read -r file; do
             [[ -n "$file" ]] && echo "$file:Known attacker wallet address detected - HIGH RISK" >> "$TEMP_DIR/crypto_patterns.txt"
         done
@@ -4342,6 +4475,7 @@ write_log_file() {
         [[ -s "$TEMP_DIR/sl4x0_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/sl4x0_indicators.txt" || true
         [[ -s "$TEMP_DIR/art_template_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/art_template_indicators.txt" || true
         [[ -s "$TEMP_DIR/durabletask_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/durabletask_indicators.txt" || true
+        [[ -s "$TEMP_DIR/hades_miasma_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/hades_miasma_indicators.txt" || true
         [[ -s "$TEMP_DIR/trapdoor_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/trapdoor_indicators.txt" || true
         [[ -s "$TEMP_DIR/laravel_lang_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/laravel_lang_indicators.txt" || true
         [[ -s "$TEMP_DIR/node_ipc_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/node_ipc_indicators.txt" || true
@@ -4668,6 +4802,27 @@ generate_report() {
         print_status "$RED" "                         delete /usr/bin/pgmonitor.py and ~/.cache/.sys-update-check*,"
         print_status "$RED" "                         rotate AWS/GCP/Azure/Kubernetes/Vault/GitHub credentials, and"
         print_status "$RED" "                         audit AWS SSM + kubectl exec history for lateral movement."
+    fi
+
+    if [[ -s "$TEMP_DIR/hades_miasma_indicators.txt" ]]; then
+        print_status "$RED" "🚨 HIGH RISK: June 2026 Hades/Miasma Shai-Hulud campaign indicators detected:"
+        print_status "$RED" "    ⚠️  Self-spreading worm (npm + PyPI). The PyPI \"Hades\" branch delivers its"
+        print_status "$RED" "        payload via a *-setup.pth Python startup hook that execs an obfuscated"
+        print_status "$RED" "        _index.js loader during import — no preinstall/postinstall script needed."
+        print_status "$RED" "        Steals 20+ credential types and exfiltrates via a path under the"
+        print_status "$RED" "        legitimate Anthropic API host as camouflage."
+        while IFS= read -r line; do
+            local file="${line%%:*}"
+            local reason="${line#*:}"
+            echo "   - $file"
+            echo "     Reason: $reason"
+            show_file_preview "$file" "HIGH RISK: Hades/Miasma campaign indicator"
+            high_risk=$((high_risk+1))
+        done < "$TEMP_DIR/hades_miasma_indicators.txt"
+        print_status "$RED" "    📋 IMMEDIATE ACTION: Remove the offending package, delete any *-setup.pth hook"
+        print_status "$RED" "                         and _index.js loader, rotate ALL credentials (npm/PyPI/GitHub"
+        print_status "$RED" "                         tokens, AWS/GCP/Azure/Kubernetes/Vault, SSH keys), and audit"
+        print_status "$RED" "                         ~/.local/share/updater/ and .github/workflows/ for persistence."
     fi
 
     if [[ -s "$TEMP_DIR/polymarket_indicators.txt" ]]; then
@@ -6153,6 +6308,7 @@ main() {
     check_sl4x0_indicators "$scan_dir"
     check_art_template_indicators "$scan_dir"
     check_durabletask_indicators "$scan_dir"
+    check_hades_miasma_indicators "$scan_dir"
     check_trapdoor_indicators "$scan_dir"
     check_laravel_lang_indicators "$scan_dir"
     check_node_ipc_indicators "$scan_dir"
