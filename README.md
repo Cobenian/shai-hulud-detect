@@ -11,7 +11,7 @@
 
 <img src="shai_hulu_detector.jpg" alt="sshd" width="80%" />
 
-A Bash script that scans a project — or many projects at once — for known traces of the September 2025 → June 2026 npm, PyPI, Composer, and Crates supply-chain attacks. Cross-checks 3,200+ confirmed bad package versions and a library of content-pattern IoCs (file hashes, C2 domains, dead-man's-switch artifacts, wipe-threat strings, AI-assistant config droppers, etc.).
+A Bash script that scans a project — or many projects at once — for known traces of the September 2025 → June 2026 npm, PyPI, Composer, and Crates supply-chain attacks. Cross-checks 3,290+ confirmed bad package versions and a library of content-pattern IoCs (file hashes, C2 domains, dead-man's-switch artifacts, wipe-threat strings, AI-assistant config droppers, etc.).
 
 ## Quick Start
 
@@ -36,33 +36,35 @@ chmod +x shai-hulud-detector.sh
 
 The detector looks for two kinds of evidence on disk:
 
-1. **Compromised package versions** — every `package.json`, lockfile, `pyproject.toml`, `requirements.txt`, `Pipfile`, `poetry.lock`, `uv.lock`, etc. is parsed and the resolved versions are checked against the 3,200+-entry list in [`compromised-packages.txt`](compromised-packages.txt). Transitive deps inside `node_modules/` are checked too, not skipped.
+1. **Compromised package versions** — every `package.json`, lockfile, `pyproject.toml`, `requirements.txt`, `Pipfile`, `poetry.lock`, `uv.lock`, etc. is parsed and the resolved versions are checked against the 3,290+-entry list in [`compromised-packages.txt`](compromised-packages.txt). Transitive deps inside `node_modules/` are checked too, not skipped.
 2. **Content-pattern IoCs** — known-malicious file hashes, payload filenames, C2 domains, dead-man's-switch artifacts, marker repo names, malicious workflow files, forged orphan-commit references, suspicious lifecycle hooks, and threat-actor publisher fingerprints. These don't depend on the package list and fire even if the bad package has been uninstalled but the dropper traces remain.
 
-| Wave | Date | Scope | More |
-|---|---|---|---|
-| Chalk/Debug crypto theft | 2025-09-08 | 18+ packages, ~2B weekly downloads | [CHANGELOG](CHANGELOG.md) |
-| Shai-Hulud worm | 2025-09-14 | 517+ packages (@ctrl, @crowdstrike, …) | [CHANGELOG](CHANGELOG.md) |
-| Shai-Hulud "Second Coming" (fake Bun) | 2025-11-24 | 1,100+ packages | [CHANGELOG](CHANGELOG.md) |
-| Golden Path variant | 2025-12-28 | renamed Bun-attack files | [CHANGELOG](CHANGELOG.md) |
-| SANDWORM_MODE workflow poisoning | 2026-02-17 | 19 packages + GitHub Action | [CHANGELOG](CHANGELOG.md) |
-| Axios RAT compromise | 2026-03-31 | `axios@1.14.1`/`0.30.4` + `plain-crypto-js` | [CHANGELOG](CHANGELOG.md) |
-| Mini Shai-Hulud / TanStack | 2026-05-11 | 400+ versions, dead-man's-switch | [CHANGELOG](CHANGELOG.md) |
-| Megalodon (GitHub-repo backdooring) | 2026-05-18 | 5,561 repos via stolen PATs; `@tiledesk/tiledesk-server@2.18.6-2.18.12` as npm fallout | [CHANGELOG](CHANGELOG.md) |
-| Mini Shai-Hulud / AntV (atool) | 2026-05-19 | 643 versions, 323 packages | [CHANGELOG](CHANGELOG.md) |
-| Web3 / DeFi MCP-server typosquat | 2026-05-20 | 10 packages (`chain-key-validator`, `defi-threat-scanner`, …), exfiltrates SSH + wallet keys | [CHANGELOG](CHANGELOG.md) |
-| Polymarket wallet drainer | 2026-05-21 | 9 packages from `polymarketdev` (`polymarket-bot`, `polymarket-trader`, …), fake wallet-onboarding prompt captures private keys | [CHANGELOG](CHANGELOG.md) |
-| Bitwarden CLI ("Third Coming") | 2026-04-22 | `@bitwarden/cli@2026.4.0` via Checkmarx `ast-github-action` breach; `bw1.js` exfil to `audit.checkmarx.cx` | [CHANGELOG](CHANGELOG.md) |
-| node-ipc backdoor | 2026-05-14 | `node-ipc@9.1.6/9.2.3/12.0.1`; IIFE in `node-ipc.cjs`, DNS exfil to `sh.azurestaticprovider.net` | [CHANGELOG](CHANGELOG.md) |
-| Nx Console VS Code ext | 2026-05-18 | `nx-console@18.95.0`; payload from orphan commit `558b09d7` in `nrwl/nx`, targets `~/.claude/settings.json` (TeamPCP / GitHub breach) | [CHANGELOG](CHANGELOG.md) |
-| TrapDoor (TeamPCP) | 2026-05-22→25 | 34 packages / 384+ versions across **npm + PyPI + Crates**; plants `.cursorrules`/`CLAUDE.md` AI-assistant droppers | [CHANGELOG](CHANGELOG.md) |
-| Laravel-Lang tag-rewrite | 2026-05-22 | 700+ **Composer** tags force-rewritten (`laravel-lang/lang`, …); RCE on autoload, `DebugElevator` stealer | [CHANGELOG](CHANGELOG.md) |
-| mouse5212 "Malware-Slop" | 2026-05-26 | `mouse5212-super-formatter` exfils Claude's `/mnt/user-data` via embedded GitHub PAT (`unplowed3584`) | [CHANGELOG](CHANGELOG.md) |
-| art-template npm hijack | 2025-03 → 2026-05 | 4 versions (`art-template@4.13.3-4.13.6`), iOS browser exploit kit (UNC6691) | [CHANGELOG](CHANGELOG.md) |
-| sl4x0 dependency confusion | 2025-06 → 2026-03 | 92+ packages across 32 `*poc` accounts, DNS exfil to `oob.sl4x0.xyz` (likely security research) | [CHANGELOG](CHANGELOG.md) |
-| `durabletask` PyPI worm | 2026-05-19 | `pypi:durabletask:1.4.1-1.4.3`, multi-cloud credential stealer + AWS SSM / k8s lateral movement | [CHANGELOG](CHANGELOG.md) |
-| PyPI cross-spread (TeamPCP) | 2026-03 → 05 | `litellm`, `telnyx`, `xinference`, `lightning`, `mistralai`, `guardrails-ai` | [CHANGELOG](CHANGELOG.md) |
-| Miasma "Phantom Gyp" worm | 2026-06-03 | 57 packages / 286 versions (`@vapi-ai/server-sdk`, `ai-sdk-ollama`, `autotel-*`, `awaitly-*`, `executable-stories-*`); novel `binding.gyp` command-substitution trigger bypasses preinstall-script monitors | [CHANGELOG](CHANGELOG.md) |
+| Wave | Date | Scope |
+|---|---|---|
+| Chalk/Debug crypto theft | 2025-09-08 | 18+ packages, ~2B weekly downloads |
+| Shai-Hulud worm | 2025-09-14 | 517+ packages (@ctrl, @crowdstrike, …) |
+| Shai-Hulud "Second Coming" (fake Bun) | 2025-11-24 | 1,100+ packages |
+| Golden Path variant | 2025-12-28 | renamed Bun-attack files |
+| SANDWORM_MODE workflow poisoning | 2026-02-17 | 19 packages + GitHub Action |
+| Axios RAT compromise | 2026-03-31 | `axios@1.14.1`/`0.30.4` + `plain-crypto-js` |
+| Mini Shai-Hulud / TanStack | 2026-05-11 | 400+ versions, dead-man's-switch |
+| Megalodon (GitHub-repo backdooring) | 2026-05-18 | 5,561 repos via stolen PATs; `@tiledesk/tiledesk-server@2.18.6-2.18.12` as npm fallout |
+| Mini Shai-Hulud / AntV (atool) | 2026-05-19 | 643 versions, 323 packages |
+| Web3 / DeFi MCP-server typosquat | 2026-05-20 | 10 packages (`chain-key-validator`, `defi-threat-scanner`, …), exfiltrates SSH + wallet keys |
+| Polymarket wallet drainer | 2026-05-21 | 9 packages from `polymarketdev` (`polymarket-bot`, `polymarket-trader`, …), fake wallet-onboarding prompt captures private keys |
+| Bitwarden CLI ("Third Coming") | 2026-04-22 | `@bitwarden/cli@2026.4.0` via Checkmarx `ast-github-action` breach; `bw1.js` exfil to `audit.checkmarx.cx` |
+| node-ipc backdoor | 2026-05-14 | `node-ipc@9.1.6/9.2.3/12.0.1`; IIFE in `node-ipc.cjs`, DNS exfil to `sh.azurestaticprovider.net` |
+| Nx Console VS Code ext | 2026-05-18 | `nx-console@18.95.0`; payload from orphan commit `558b09d7` in `nrwl/nx`, targets `~/.claude/settings.json` (TeamPCP / GitHub breach) |
+| TrapDoor (TeamPCP) | 2026-05-22→25 | 34 packages / 384+ versions across **npm + PyPI + Crates**; plants `.cursorrules`/`CLAUDE.md` AI-assistant droppers |
+| Laravel-Lang tag-rewrite | 2026-05-22 | 700+ **Composer** tags force-rewritten (`laravel-lang/lang`, …); RCE on autoload, `DebugElevator` stealer |
+| mouse5212 "Malware-Slop" | 2026-05-26 | `mouse5212-super-formatter` exfils Claude's `/mnt/user-data` via embedded GitHub PAT (`unplowed3584`) |
+| art-template npm hijack | 2025-03 → 2026-05 | 4 versions (`art-template@4.13.3-4.13.6`), iOS browser exploit kit (UNC6691) |
+| sl4x0 dependency confusion | 2025-06 → 2026-03 | 92+ packages across 32 `*poc` accounts, DNS exfil to `oob.sl4x0.xyz` (likely security research) |
+| `durabletask` PyPI worm | 2026-05-19 | `pypi:durabletask:1.4.1-1.4.3`, multi-cloud credential stealer + AWS SSM / k8s lateral movement |
+| PyPI cross-spread (TeamPCP) | 2026-03 → 05 | `litellm`, `telnyx`, `xinference`, `lightning`, `mistralai`, `guardrails-ai` |
+| Miasma "Phantom Gyp" worm | 2026-06-03 | 57 packages / 286 versions (`@vapi-ai/server-sdk`, `ai-sdk-ollama`, `autotel-*`, `awaitly-*`, `executable-stories-*`); novel `binding.gyp` command-substitution trigger bypasses preinstall-script monitors |
+| Miasma "Hades" PyPI wave | 2026-06-07 | 19 PyPI packages / 37 versions (`bramin`, `magique-ai`, `pantheon-agents`, `executor-engine`, `ufish`); novel `*-setup.pth` Python startup-hook execs an `_index.js` loader on plain `import`, no install hook needed; C2 camouflaged under `api.anthropic.com` |
+| IronWorm ("rustier cousin") | 2026-06-03 | 37 npm packages from the `asteroiddao` account (`weavedb-*`, `arnext`, `cwao`, `wao`, `zkjson`); Rust infostealer + eBPF rootkit via `preinstall` ELF hook, Exodus-wallet theft, leaked operator wallet `0x7e28…a4d6` |
 
 For per-wave IoC inventories, payload hashes, source advisories, and version-by-version lists, see [`CHANGELOG.md`](CHANGELOG.md).
 

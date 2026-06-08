@@ -1,0 +1,9 @@
+{
+  "name": "digit-name-package-attack-test",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Regression fixture: npm package names may start with a digit (e.g. 02-echo). The compromised-list loader and the package.json lookup table must NOT silently drop digit-leading names. 02-echo@0.0.7 is a confirmed compromised entry in compromised-packages.txt.",
+  "dependencies": {
+    "02-echo": "0.0.7"
+  }
+}

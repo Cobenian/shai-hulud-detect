@@ -91,6 +91,11 @@ declare -A EXPECTED=(
     ["redhat-miasma-clean"]="0|no|no|no"       # Clean: last-known-good versions of @redhat-cloud-services packages
     ["miasma-binding-gyp-attack"]="1|yes|no|no" # HIGH: June 3, 2026 Miasma Phantom Gyp worm wave (@vapi-ai/server-sdk@1.2.2, ai-sdk-ollama@3.8.5, autotel-mcp@28.0.3, awaitly-postgres@23.0.1, wrangler-deploy@1.5.5) — 57 packages / 286 versions, binding.gyp command-substitution trigger bypasses preinstall hook monitors
     ["miasma-binding-gyp-clean"]="0|no|no|no"  # Clean: last-known-good versions of Phantom-Gyp-wave-targeted packages
+    ["hades-miasma-pypi-attack"]="1|yes|no|no" # HIGH: June 7, 2026 Miasma "Hades" PyPI wave (pypi:bramin@0.0.2, magique-ai@0.4.5, pantheon-agents@0.6.2, ufish@0.1.3, uprobe@0.1.4) — 19 packages / 37 versions; inert markers exercise token-nuke + Hades beacon + api.anthropic.com/v1/api C2 content checks
+    ["hades-miasma-pypi-clean"]="0|no|no|no"   # Clean: last-known-good (one release below compromised) versions of Hades-wave PyPI packages
+    ["digit-name-package-attack"]="1|yes|no|no" # HIGH: regression — npm names may start with a digit (02-echo@0.0.7). Loader regex + package.json lookup table must not silently drop digit-leading names
+    ["ironworm-attack"]="1|yes|no|no"          # HIGH: June 3, 2026 IronWorm (JFrog) — Rust infostealer via 37 asteroiddao npm packages (weavedb-sdk@0.45.3, arnext@0.1.5, zkjson@0.8.5, wao@0.41.2, cwao@0.5.6) + leaked operator wallet 0x7e28...a4d6
+    ["ironworm-clean"]="0|no|no|no"            # Clean: non-compromised versions of IronWorm-targeted package names
     ["composer-crates-clean"]="0|no|no|no"     # Clean: exercises the new Composer + Crates ecosystem detection/parsers with safe versions (symfony/console, monolog, serde, tokio) — must produce NO findings
     ["paranoid-confusable-fp"]="0|no|no|no"    # Clean: without --paranoid the typosquatting check is disabled. The paranoid-mode behavior (cornrnander flagged, yarn/intern/return/modern skipped) is asserted in the dedicated assertion block further down.
     ["semver-matching"]="0|no|no|yes"          # LOW: semver edge cases
@@ -333,6 +338,80 @@ do
         ((failed++))
     fi
 done
+
+# ============================================================
+#  June 7 Hades/Miasma PyPI wave content-IoC assertions
+# ============================================================
+# Lock in the near-zero-FP string markers added for the June 7 Hades PyPI
+# wave (and the backfilled June 1/3 Miasma token-nuke marker). The fixture's
+# inert .py file carries ONLY these strings as comments — no payload.
+HADES_OUT=$("$BASH_CMD" "$DETECTOR" "$SCRIPT_DIR/test-cases/hades-miasma-pypi-attack" 2>&1)
+for hades_check in \
+    "Hades compromised PyPI version|bramin@0.0.2" \
+    "Hades token-nuke marker|IfYouYankThisTokenItWillNukeTheComputerOfTheOwnerFully" \
+    "Hades exfil-repo beacon|Hades - The End for the Damned" \
+    "Hades C2 camouflage path|api.anthropic.com/v1/api"
+do
+    label="${hades_check%|*}"
+    pattern="${hades_check#*|}"
+    ((total++))
+    if grep -qF "$pattern" <<< "$HADES_OUT"; then
+        echo -e "${GREEN}PASS${NC}: hades-miasma-pypi-attack fires IoC: $label"
+        ((passed++))
+    else
+        echo -e "${RED}FAIL${NC}: hades-miasma-pypi-attack did NOT fire: $label (looked for: '$pattern')"
+        ((failed++))
+    fi
+done
+
+# ============================================================
+#  June 3 IronWorm content-IoC assertions
+# ============================================================
+# Lock in the IronWorm package-version detection and the leaked operator
+# wallet address (high-confidence known-attacker-wallet IoC).
+IRONWORM_OUT=$("$BASH_CMD" "$DETECTOR" "$SCRIPT_DIR/test-cases/ironworm-attack" 2>&1)
+for iw_check in \
+    "IronWorm compromised npm version|weavedb-sdk@0.45.3" \
+    "IronWorm leaked operator wallet|ioc_inert.js:Known attacker wallet address detected"
+do
+    label="${iw_check%|*}"
+    pattern="${iw_check#*|}"
+    ((total++))
+    if grep -qF "$pattern" <<< "$IRONWORM_OUT"; then
+        echo -e "${GREEN}PASS${NC}: ironworm-attack fires IoC: $label"
+        ((passed++))
+    else
+        echo -e "${RED}FAIL${NC}: ironworm-attack did NOT fire: $label (looked for: '$pattern')"
+        ((failed++))
+    fi
+done
+
+# ============================================================
+#  Issue #146: detector must not flag its OWN installation dir
+# ============================================================
+# When the detector is vendored/cloned inside the tree being scanned, its
+# test-cases/ fixtures (real attacker wallet addresses, fake Bun installers,
+# malicious workflows) and its source/CHANGELOG used to self-trigger a flood
+# of false positives. Build a project that contains a working copy of the
+# detector, point that in-tree copy at the project, and assert it stays clean.
+SELF_FP_TMP=$(mktemp -d)
+mkdir -p "$SELF_FP_TMP/project/vendored/test-cases/x"
+echo '<?php echo "ok";' > "$SELF_FP_TMP/project/app.php"
+cp "$DETECTOR" "$SELF_FP_TMP/project/vendored/shai-hulud-detector.sh"
+cp "$SCRIPT_DIR/compromised-packages.txt" "$SELF_FP_TMP/project/vendored/compromised-packages.txt"
+# A file that WOULD trip crypto detection if the detector scanned its own tree.
+echo 'const w="0xFc4a4858bafef54D1b1d7697bfb5c52F4c166976"; // wallet' > "$SELF_FP_TMP/project/vendored/test-cases/x/bad.js"
+SELF_OUT=$("$BASH_CMD" "$SELF_FP_TMP/project/vendored/shai-hulud-detector.sh" "$SELF_FP_TMP/project" 2>&1)
+((total++))
+if grep -qiE "No indicators of Shai-Hulud compromise detected" <<< "$SELF_OUT" \
+   && ! grep -qF "0xFc4a4858bafef54D1b1d7697bfb5c52F4c166976" <<< "$SELF_OUT"; then
+    echo -e "${GREEN}PASS${NC}: issue #146 - detector excludes its own in-tree directory (no self-detection)"
+    ((passed++))
+else
+    echo -e "${RED}FAIL${NC}: issue #146 - detector self-flagged its own vendored copy"
+    ((failed++))
+fi
+rm -rf "$SELF_FP_TMP"
 
 # ============================================================
 #  Paranoid-mode confusable-substring regression
