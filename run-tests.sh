@@ -414,6 +414,48 @@ fi
 rm -rf "$SELF_FP_TMP"
 
 # ============================================================
+#  Issue #148: empty file list must not fall through to a CWD scan
+# ============================================================
+# When a scan target has no files of a given category, the three fast_grep_files*
+# helpers used to pipe an EMPTY list into `xargs -0 <tool>`. GNU xargs runs the
+# command once on empty input (with no path args), so git grep/rg recursively
+# scan the current working directory instead of nothing — producing false
+# positives whose paths point at the CWD (test-cases/, /tmp junk, bulk reports).
+#
+# The bug is invisible on macOS (BSD xargs does not run on empty input), so this
+# test does not rely on real xargs semantics. Instead it shadows `xargs` with a
+# stub that emits a sentinel whenever invoked, sources the real helper functions
+# straight out of the detector, and asserts that empty input never reaches xargs
+# (i.e. the early-return guard fired). This fails on the unpatched code on every
+# platform, macOS included.
+XARGS_TMP=$(mktemp -d)
+mkdir -p "$XARGS_TMP/bin"
+printf '#!/bin/sh\necho STUB_XARGS_CALLED\n' > "$XARGS_TMP/bin/xargs"
+chmod +x "$XARGS_TMP/bin/xargs"
+# Pull the three contiguous helpers (fast_grep_files .. fast_grep_files_fixed)
+# out of the detector so we exercise the real function bodies, not a copy.
+HELPERS_SRC="$XARGS_TMP/helpers.sh"
+awk '/^fast_grep_files\(\) \{/{f=1} f{print} f&&/^\}/{c++} c==3{exit}' "$DETECTOR" > "$HELPERS_SRC"
+for helper in fast_grep_files fast_grep_files_i fast_grep_files_fixed; do
+    ((total++))
+    # git-grep is the auto-selected tool whose empty-input branch triggers the
+    # real-world CWD scan; the guard runs before the tool branch either way.
+    XARGS_OUT=$(PATH="$XARGS_TMP/bin:$PATH" GREP_TOOL=git-grep "$BASH_CMD" -c '
+        set -eo pipefail
+        source "$1"
+        printf "" | "$2" "SOME_PATTERN"
+    ' _ "$HELPERS_SRC" "$helper" 2>&1)
+    if [[ -z "$XARGS_OUT" ]]; then
+        echo -e "${GREEN}PASS${NC}: issue #148 - $helper returns early on empty input (no CWD scan)"
+        ((passed++))
+    else
+        echo -e "${RED}FAIL${NC}: issue #148 - $helper ran the grep tool on empty input (would scan CWD): $XARGS_OUT"
+        ((failed++))
+    fi
+done
+rm -rf "$XARGS_TMP"
+
+# ============================================================
 #  Paranoid-mode confusable-substring regression
 # ============================================================
 # Lock in the fix for the bare-substring false positive (yarn/intern/return/modern

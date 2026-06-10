@@ -754,18 +754,23 @@ print_status() {
 # Output: Matching filenames to stdout
 # Note: Uses null-delimited input to handle filenames with spaces (issue #92)
 fast_grep_files() {
-    local pattern="$1"
+    local pattern="$1" input
+    # Read the whole file list first; if empty, return without running the grep
+    # tool. GNU xargs runs the command once on empty input (with no path args),
+    # which makes git grep/rg fall through to scanning the CWD (issue #148).
+    input="$(cat)"
+    [[ -z "$input" ]] && return 0
     case "$GREP_TOOL" in
         git-grep)
             # git grep uses DFA-based regex (no backtracking) - safe for complex patterns
             # --no-index allows searching files not managed by git
-            tr '\n' '\0' | xargs -0 git grep -l --no-index -E "$pattern" -- 2>/dev/null || true
+            printf '%s\n' "$input" | tr '\n' '\0' | xargs -0 git grep -l --no-index -E "$pattern" -- 2>/dev/null || true
             ;;
         ripgrep)
-            tr '\n' '\0' | xargs -0 rg -l --no-messages -e "$pattern" 2>/dev/null || true
+            printf '%s\n' "$input" | tr '\n' '\0' | xargs -0 rg -l --no-messages -e "$pattern" 2>/dev/null || true
             ;;
         grep)
-            tr '\n' '\0' | xargs -0 grep -lE "$pattern" 2>/dev/null || true
+            printf '%s\n' "$input" | tr '\n' '\0' | xargs -0 grep -lE "$pattern" 2>/dev/null || true
             ;;
     esac
 }
@@ -776,16 +781,19 @@ fast_grep_files() {
 # Output: Matching filenames to stdout
 # Note: Uses null-delimited input to handle filenames with spaces (issue #92)
 fast_grep_files_i() {
-    local pattern="$1"
+    local pattern="$1" input
+    # See fast_grep_files() — empty input must not fall through to a CWD scan (issue #148).
+    input="$(cat)"
+    [[ -z "$input" ]] && return 0
     case "$GREP_TOOL" in
         git-grep)
-            tr '\n' '\0' | xargs -0 git grep -li --no-index -E "$pattern" -- 2>/dev/null || true
+            printf '%s\n' "$input" | tr '\n' '\0' | xargs -0 git grep -li --no-index -E "$pattern" -- 2>/dev/null || true
             ;;
         ripgrep)
-            tr '\n' '\0' | xargs -0 rg -li --no-messages -e "$pattern" 2>/dev/null || true
+            printf '%s\n' "$input" | tr '\n' '\0' | xargs -0 rg -li --no-messages -e "$pattern" 2>/dev/null || true
             ;;
         grep)
-            tr '\n' '\0' | xargs -0 grep -liE "$pattern" 2>/dev/null || true
+            printf '%s\n' "$input" | tr '\n' '\0' | xargs -0 grep -liE "$pattern" 2>/dev/null || true
             ;;
     esac
 }
@@ -796,16 +804,19 @@ fast_grep_files_i() {
 # Output: Matching filenames to stdout
 # Note: Uses null-delimited input to handle filenames with spaces (issue #92)
 fast_grep_files_fixed() {
-    local pattern="$1"
+    local pattern="$1" input
+    # See fast_grep_files() — empty input must not fall through to a CWD scan (issue #148).
+    input="$(cat)"
+    [[ -z "$input" ]] && return 0
     case "$GREP_TOOL" in
         git-grep)
-            tr '\n' '\0' | xargs -0 git grep -l --no-index -F "$pattern" -- 2>/dev/null || true
+            printf '%s\n' "$input" | tr '\n' '\0' | xargs -0 git grep -l --no-index -F "$pattern" -- 2>/dev/null || true
             ;;
         ripgrep)
-            tr '\n' '\0' | xargs -0 rg -l --no-messages --fixed-strings "$pattern" 2>/dev/null || true
+            printf '%s\n' "$input" | tr '\n' '\0' | xargs -0 rg -l --no-messages --fixed-strings "$pattern" 2>/dev/null || true
             ;;
         grep)
-            tr '\n' '\0' | xargs -0 grep -lF "$pattern" 2>/dev/null || true
+            printf '%s\n' "$input" | tr '\n' '\0' | xargs -0 grep -lF "$pattern" 2>/dev/null || true
             ;;
     esac
 }

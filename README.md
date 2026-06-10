@@ -216,7 +216,7 @@ To add new packages from a fresh advisory: append entries in that format, run `.
 ## Testing
 
 ```bash
-./run-tests.sh                          # full suite, 169 checks
+./run-tests.sh                          # full suite, 188 checks
 ./shai-hulud-detector.sh test-cases/<fixture-name>   # run one fixture manually
 ```
 
