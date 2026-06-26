@@ -5,6 +5,27 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.9.0] - 2026-06-26
+
+### Added
+- **`--json FILE` structured output mode**: a new machine-readable output for CI gates and downstream tooling (e.g. a hosted scanning service) that needs findings as data rather than parsed console text. It mirrors the exact HIGH/MEDIUM/LOW severity mapping of `--save-log`, but **preserves the per-finding reason** that `--save-log` discards (the latter keeps only file paths via `cut -d: -f1`). Schema (`schema_version` 1.0):
+  ```json
+  {
+    "schema_version": "1.0", "tool": "shai-hulud-detector", "tool_version": "3.9.0",
+    "generated_at": "2026-06-26T00:00:00Z", "scan_path": "/path/to/project",
+    "summary": { "high": 7, "medium": 0, "low": 0 }, "risk_level": "high",
+    "findings": [ { "severity": "HIGH", "file": "package.json", "line": 6, "message": "axios@1.14.1" } ]
+  }
+  ```
+  - **Best-effort `line` number** for package-shaped findings (`name@version`, `@scope/name@version`): the manifest is grepped for the package name, preferring the quoted name (`"axios"` matches the dependency line, not `"axios-attack-test"`) and falling back to the bare name for non-JSON manifests (`requirements.txt`, `Cargo.toml`, …). `line` is `null` for prose findings or when no match is found. This lets a consumer place inline annotations (e.g. GitHub Checks API) on the offending dependency line.
+  - **Correct escaping by construction**: findings are normalized to `severity<TAB>file<TAB>line<TAB>message` records and rendered through a single `jq` pass — JSON is never hand-concatenated in shell, so quotes/backslashes/Unicode in IoC strings cannot corrupt the output.
+  - **Dependency boundary preserved**: `--json` is the only mode that requires `jq`; it fails fast with a clear message if `jq` is absent. The default offline text output keeps its zero-runtime-dependency guarantee. The exit-code contract (`0`/`1`/`2`) is unchanged and remains the authoritative CI signal; `--json` and `--save-log` can be used together.
+
+### Changed
+- **`shai-hulud-detector.sh`**: added a `SCRIPT_VERSION` constant (`3.9.0`, surfaced as `tool_version` in `--json`); added `write_json_file` plus the `_jf_emit` / `_jf_path` / `_jf_pathmsg` / `_jf_pathmsg_stdin` helpers (all reached only under `--json`, so the normal scan path is unaffected); wired the `--json` flag into argument parsing, `--help`, and the main scan flow.
+- **`README.md`**: documented `--json` in the flags table and added a "Machine-readable JSON output" section.
+- **`run-tests.sh`**: added a `--json` test block (6 assertions: well-formed JSON, `risk_level`/`summary` on an infected fixture, per-finding message preservation, line-number accuracy, `--save-log`/`--json` path-set parity, and clean-project emptiness; skipped with a notice when `jq` is unavailable). Suite: 188 → 194 checks.
+
 ## [3.8.0] - 2026-06-08
 
 ### Added

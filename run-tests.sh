@@ -769,6 +769,94 @@ fi
 # Cleanup
 rm -f "$LOG_FILE"
 
+# Test --json feature
+echo ""
+echo "========================================"
+echo "  Testing --json feature"
+echo "========================================"
+
+if ! command -v jq >/dev/null 2>&1; then
+    echo -e "${YELLOW:-}SKIP${NC}: jq not installed; --json tests skipped"
+else
+    JSON_FILE="/tmp/shai-hulud-test-json-$$.json"
+
+    # Test 1: infected project -> valid JSON, risk_level high, HIGH findings present
+    "$BASH_CMD" "$DETECTOR" --json "$JSON_FILE" "$SCRIPT_DIR/test-cases/infected-project" >/dev/null 2>&1
+    if [[ -f "$JSON_FILE" ]] && jq -e . "$JSON_FILE" >/dev/null 2>&1; then
+        echo -e "${GREEN}PASS${NC}: --json produces well-formed JSON"
+        ((passed++))
+    else
+        echo -e "${RED}FAIL${NC}: --json did not produce valid JSON"
+        ((failed++))
+    fi
+    ((total++))
+
+    risk=$(jq -r '.risk_level' "$JSON_FILE" 2>/dev/null)
+    high_n=$(jq -r '.summary.high' "$JSON_FILE" 2>/dev/null)
+    if [[ "$risk" == "high" && "${high_n:-0}" -gt 0 ]]; then
+        echo -e "${GREEN}PASS${NC}: --json reports risk_level=high with $high_n HIGH findings"
+        ((passed++))
+    else
+        echo -e "${RED}FAIL${NC}: --json risk_level/summary wrong (risk=$risk high=$high_n)"
+        ((failed++))
+    fi
+    ((total++))
+
+    # Test 2: findings preserve the per-finding message (which --save-log discards)
+    msg_n=$(jq -r '[.findings[] | select(.message != "")] | length' "$JSON_FILE" 2>/dev/null)
+    if [[ "${msg_n:-0}" -gt 0 ]]; then
+        echo -e "${GREEN}PASS${NC}: --json preserves finding messages ($msg_n with reasons)"
+        ((passed++))
+    else
+        echo -e "${RED}FAIL${NC}: --json findings have no messages"
+        ((failed++))
+    fi
+    ((total++))
+
+    # Test 2b: package findings carry a best-effort line number pointing at the
+    # actual dependency line in the manifest (axios-attack: axios on line 6).
+    "$BASH_CMD" "$DETECTOR" --json "$JSON_FILE" "$SCRIPT_DIR/test-cases/axios-attack" >/dev/null 2>&1
+    axios_line=$(jq -r '.findings[] | select(.message == "axios@1.14.1") | .line' "$JSON_FILE" 2>/dev/null)
+    truth_line=$(grep -nF '"axios"' "$SCRIPT_DIR/test-cases/axios-attack/package.json" | head -1 | cut -d: -f1)
+    if [[ -n "$axios_line" && "$axios_line" == "$truth_line" ]]; then
+        echo -e "${GREEN}PASS${NC}: --json package finding line number is accurate (axios -> line $axios_line)"
+        ((passed++))
+    else
+        echo -e "${RED}FAIL${NC}: --json line number wrong (got $axios_line, expected $truth_line)"
+        ((failed++))
+    fi
+    ((total++))
+
+    # Test 3: JSON path set matches the --save-log path set (parity)
+    PARITY_LOG="/tmp/shai-hulud-test-parity-$$.log"
+    "$BASH_CMD" "$DETECTOR" --save-log "$PARITY_LOG" --json "$JSON_FILE" "$SCRIPT_DIR/test-cases/infected-project" >/dev/null 2>&1
+    grep -vE '^#|^$' "$PARITY_LOG" 2>/dev/null | LC_ALL=C sort -u > "/tmp/shai-hulud-parity-log-$$.txt"
+    jq -r '.findings[].file' "$JSON_FILE" 2>/dev/null | LC_ALL=C sort -u > "/tmp/shai-hulud-parity-json-$$.txt"
+    if diff -q "/tmp/shai-hulud-parity-log-$$.txt" "/tmp/shai-hulud-parity-json-$$.txt" >/dev/null 2>&1; then
+        echo -e "${GREEN}PASS${NC}: --json path set matches --save-log path set"
+        ((passed++))
+    else
+        echo -e "${RED}FAIL${NC}: --json path set differs from --save-log"
+        ((failed++))
+    fi
+    ((total++))
+
+    # Test 4: clean project -> risk_level none, zero findings
+    "$BASH_CMD" "$DETECTOR" --json "$JSON_FILE" "$SCRIPT_DIR/test-cases/clean-project" >/dev/null 2>&1
+    clean_risk=$(jq -r '.risk_level' "$JSON_FILE" 2>/dev/null)
+    clean_n=$(jq -r '.findings | length' "$JSON_FILE" 2>/dev/null)
+    if [[ "$clean_risk" == "none" && "${clean_n:-1}" -eq 0 ]]; then
+        echo -e "${GREEN}PASS${NC}: --json clean project has risk_level=none, no findings"
+        ((passed++))
+    else
+        echo -e "${RED}FAIL${NC}: --json clean project wrong (risk=$clean_risk n=$clean_n)"
+        ((failed++))
+    fi
+    ((total++))
+
+    rm -f "$JSON_FILE" "$PARITY_LOG" "/tmp/shai-hulud-parity-log-$$.txt" "/tmp/shai-hulud-parity-json-$$.txt"
+fi
+
 # ============================================================
 #  Testing --bulk mode (project discovery + aggregate report)
 # ============================================================
