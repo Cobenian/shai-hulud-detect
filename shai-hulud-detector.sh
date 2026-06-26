@@ -409,7 +409,14 @@ declare -A COMPROMISED_VERSIONS_BY_NAME # "package_name" -> "version1 version2 .
 # Modifies: COMPROMISED_PACKAGES_MAP, COMPROMISED_VERSIONS_BY_NAME (global associative arrays)
 # Returns: Populates COMPROMISED_PACKAGES_MAP for O(1) lookups, COMPROMISED_VERSIONS_BY_NAME for semver range checking
 load_compromised_packages() {
+    # Default to the list shipped alongside the script. SHAI_HULUD_PACKAGES_FILE
+    # lets a caller (e.g. a service syncing a live feed) point at a managed copy
+    # instead, without overwriting the script's own directory. Falls back to the
+    # default if the override is set but missing.
     local packages_file="$SCRIPT_DIR/compromised-packages.txt"
+    if [[ -n "${SHAI_HULUD_PACKAGES_FILE:-}" && -f "$SHAI_HULUD_PACKAGES_FILE" ]]; then
+        packages_file="$SHAI_HULUD_PACKAGES_FILE"
+    fi
     local count=0
 
     # Entries may be ecosystem-prefixed ("pypi:name:version", "npm:name:version")
