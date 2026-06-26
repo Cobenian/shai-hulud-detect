@@ -23,6 +23,9 @@ set -eo pipefail
 # Script directory for locating companion files (compromised-packages.txt)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Tool version (surfaced in --json output for downstream consumers)
+SCRIPT_VERSION="3.9.0"
+
 # Global temp directory for file-based storage
 TEMP_DIR=""
 
@@ -693,6 +696,9 @@ usage() {
     echo "  --parallelism N    Set the number of threads to use for parallelized steps (current: ${PARALLELISM})"
     echo "  --save-log FILE    Save all detected file paths to FILE, grouped by severity"
     echo "                     Output format: # HIGH / # MEDIUM / # LOW headers with file paths"
+    echo "  --json FILE        Write findings as structured JSON to FILE (requires jq)."
+    echo "                     Schema: {schema_version,tool,tool_version,generated_at,scan_path,"
+    echo "                     summary:{high,medium,low},risk_level,findings:[{severity,file,message}]}"
     echo ""
     echo "BULK MODE (scan many projects in one run):"
     echo "  --bulk             Treat the positional argument(s) as PARENT directories and scan"
@@ -4574,6 +4580,199 @@ write_log_file() {
     print_status "$GREEN" "Log saved to: $log_file"
 }
 
+# =============================================================================
+# JSON output (--json FILE)
+# =============================================================================
+# Emits a structured findings document for downstream consumers (CI gates, the
+# commercial GitHub App server, future SARIF conversion). This mirrors the EXACT
+# severity mapping of write_log_file() above, but preserves the per-finding
+# "reason" (which --save-log discards via `cut -d: -f1`).
+#
+# Schema (schema_version 1.0):
+#   { schema_version, tool, tool_version, generated_at, scan_path,
+#     summary: { high, medium, low }, risk_level, findings: [ {severity,file,message} ] }
+#
+# Implementation note: findings are normalized to severity<TAB>file<TAB>message
+# TSV records, then a single jq pass converts TSV->JSON so that all escaping
+# (quotes, backslashes, unicode in IoC strings) is handled correctly. We never
+# hand-concatenate JSON in bash. Requires jq; the caller validates that up front.
+
+# _jf_emit SEVERITY FILE MESSAGE  -> emit one severity<TAB>file<TAB>line<TAB>message
+# record. Best-effort line number: only for package-shaped messages
+# ("name@version" / "@scope/name@version"), grep the manifest for the package
+# name and take the first match. Empty when not derivable/found (most prose
+# findings). This lookup runs ONLY here, i.e. only under --json.
+_jf_emit() {
+    local sev="$1" path="$2" msg="$3" line="" token
+    if [[ -n "$path" && -f "$path" && "$msg" =~ ^@?[A-Za-z0-9._/-]+@[0-9] ]]; then
+        token="${msg%@*}"   # strip trailing @version (works for @scope/name too)
+        # Prefer the quoted name (matches `"axios": "1.14.1"` in JSON manifests,
+        # not `"axios-attack-test"`); fall back to the bare name for non-JSON
+        # manifests (requirements.txt, Cargo.toml, ...). Best-effort either way.
+        line=$(grep -nF -m1 -- "\"$token\"" "$path" 2>/dev/null | cut -d: -f1) || true
+        [[ -z "$line" ]] && { line=$(grep -nF -m1 -- "$token" "$path" 2>/dev/null | cut -d: -f1) || true; }
+    fi
+    printf '%s\t%s\t%s\t%s\n' "$sev" "$path" "$line" "$msg"
+}
+
+# _jf_path SEVERITY LABEL FILE  -> each non-empty line is a bare path; message = LABEL.
+# (Mirrors the temp files write_log_file() `cat`s rather than `cut`s.)
+_jf_path() {
+    local sev="$1" label="$2" f="$3" line
+    [[ -s "$f" ]] || return 0
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        _jf_emit "$sev" "$line" "$label"
+    done < "$f"
+    return 0
+}
+
+# _jf_pathmsg SEVERITY FILE  -> each line is "path:reason"; split on FIRST colon
+# (mirrors `cut -d: -f1` for the path, but keeps the reason as the message).
+_jf_pathmsg() {
+    local sev="$1" f="$2" line path msg
+    [[ -s "$f" ]] || return 0
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        if [[ "$line" == *:* ]]; then
+            path="${line%%:*}"; msg="${line#*:}"
+        else
+            path="$line"; msg=""
+        fi
+        _jf_emit "$sev" "$path" "$msg"
+    done < "$f"
+    return 0
+}
+
+# _jf_pathmsg_stdin SEVERITY  -> same as _jf_pathmsg but reads pre-filtered lines
+# from stdin (used for crypto_patterns.txt, which write_log_file() greps by tier).
+_jf_pathmsg_stdin() {
+    local sev="$1" line path msg
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        if [[ "$line" == *:* ]]; then
+            path="${line%%:*}"; msg="${line#*:}"
+        else
+            path="$line"; msg=""
+        fi
+        _jf_emit "$sev" "$path" "$msg"
+    done
+    return 0
+}
+
+write_json_file() {
+    local json_file="$1"
+    local scan_path="${2:-}"
+    local tsv="$TEMP_DIR/json_findings.tsv"
+    local generated_at line nsp
+
+    generated_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+    {
+        # ---- HIGH (mirrors write_log_file's HIGH section, sources in order) ----
+        _jf_path    HIGH "Known malicious GitHub workflow file"            "$TEMP_DIR/workflow_files.txt"
+        _jf_pathmsg HIGH "$TEMP_DIR/malicious_hashes.txt"
+        _jf_path    HIGH "Bun 'Second Coming' setup payload (setup_bun.js)" "$TEMP_DIR/bun_setup_files.txt"
+        _jf_path    HIGH "Bun environment payload (bun_environment.js)"     "$TEMP_DIR/bun_environment_files.txt"
+        _jf_path    HIGH "Suspicious new GitHub workflow file"             "$TEMP_DIR/new_workflow_files.txt"
+        _jf_path    HIGH "Workflow accessing/exfiltrating Actions secrets" "$TEMP_DIR/actions_secrets_files.txt"
+        _jf_pathmsg HIGH "$TEMP_DIR/discussion_workflows.txt"
+        _jf_pathmsg HIGH "$TEMP_DIR/sandworm_mode_workflows.txt"
+        _jf_pathmsg HIGH "$TEMP_DIR/axios_attack_indicators.txt"
+        _jf_pathmsg HIGH "$TEMP_DIR/mini_shai_hulud_indicators.txt"
+        _jf_pathmsg HIGH "$TEMP_DIR/mini_shai_hulud_host_artifacts.txt"
+        _jf_pathmsg HIGH "$TEMP_DIR/megalodon_indicators.txt"
+        _jf_pathmsg HIGH "$TEMP_DIR/web3_mcp_indicators.txt"
+        _jf_pathmsg HIGH "$TEMP_DIR/polymarket_indicators.txt"
+        _jf_pathmsg HIGH "$TEMP_DIR/sl4x0_indicators.txt"
+        _jf_pathmsg HIGH "$TEMP_DIR/art_template_indicators.txt"
+        _jf_pathmsg HIGH "$TEMP_DIR/durabletask_indicators.txt"
+        _jf_pathmsg HIGH "$TEMP_DIR/hades_miasma_indicators.txt"
+        _jf_pathmsg HIGH "$TEMP_DIR/trapdoor_indicators.txt"
+        _jf_pathmsg HIGH "$TEMP_DIR/laravel_lang_indicators.txt"
+        _jf_pathmsg HIGH "$TEMP_DIR/node_ipc_indicators.txt"
+        _jf_pathmsg HIGH "$TEMP_DIR/bitwarden_indicators.txt"
+        _jf_pathmsg HIGH "$TEMP_DIR/nx_console_indicators.txt"
+        _jf_pathmsg HIGH "$TEMP_DIR/ai_assistant_dropper.txt"
+        _jf_pathmsg HIGH "$TEMP_DIR/github_runners.txt"
+        _jf_pathmsg HIGH "$TEMP_DIR/destructive_patterns.txt"
+        _jf_path    HIGH "Preinstall hook fetching/executing Bun payload"  "$TEMP_DIR/preinstall_bun_patterns.txt"
+        _jf_path    HIGH "Shai-Hulud runner reference"                     "$TEMP_DIR/github_sha1hulud_runners.txt"
+        _jf_path    HIGH "Known malicious repository description marker"    "$TEMP_DIR/malicious_repo_descriptions.txt"
+        _jf_pathmsg HIGH "$TEMP_DIR/compromised_found.txt"
+        _jf_pathmsg HIGH "$TEMP_DIR/trufflehog_activity.txt"
+        _jf_path    HIGH "Shai-Hulud marker repository"                    "$TEMP_DIR/shai_hulud_repos.txt"
+        [[ -s "$TEMP_DIR/crypto_patterns.txt" ]] && \
+            grep -E "(HIGH RISK|Known attacker wallet)" "$TEMP_DIR/crypto_patterns.txt" 2>/dev/null | _jf_pathmsg_stdin HIGH || true
+
+        # ---- MEDIUM ----
+        _jf_pathmsg MEDIUM "$TEMP_DIR/suspicious_found.txt"
+        _jf_pathmsg MEDIUM "$TEMP_DIR/suspicious_content.txt"
+        _jf_pathmsg MEDIUM "$TEMP_DIR/git_branches.txt"
+        _jf_path    MEDIUM "Suspicious postinstall lifecycle hook"         "$TEMP_DIR/postinstall_hooks.txt"
+        _jf_pathmsg MEDIUM "$TEMP_DIR/integrity_issues.txt"
+        _jf_pathmsg MEDIUM "$TEMP_DIR/typosquatting_warnings.txt"
+        _jf_pathmsg MEDIUM "$TEMP_DIR/network_exfiltration_warnings.txt"
+        [[ -s "$TEMP_DIR/crypto_patterns.txt" ]] && \
+            grep -vE "(HIGH RISK|Known attacker wallet|LOW RISK)" "$TEMP_DIR/crypto_patterns.txt" 2>/dev/null | _jf_pathmsg_stdin MEDIUM || true
+        # namespace warnings (MEDIUM tier): path is the "found in (FILE)" target,
+        # mirroring write_log_file's sed extraction; message keeps the full notice.
+        if [[ -s "$TEMP_DIR/namespace_warnings.txt" ]]; then
+            while IFS= read -r line; do
+                [[ -z "$line" ]] && continue
+                nsp=$(printf '%s\n' "$line" | sed -n 's/.*found in \([^)]*\)).*/\1/p')
+                [[ -z "$nsp" ]] && continue
+                _jf_emit MEDIUM "$nsp" "$line"
+            done < "$TEMP_DIR/namespace_warnings.txt"
+        fi
+
+        # ---- LOW ----
+        _jf_pathmsg LOW "$TEMP_DIR/lockfile_safe_versions.txt"
+        [[ -s "$TEMP_DIR/crypto_patterns.txt" ]] && \
+            grep "LOW RISK" "$TEMP_DIR/crypto_patterns.txt" 2>/dev/null | _jf_pathmsg_stdin LOW || true
+        _jf_pathmsg LOW "$TEMP_DIR/namespace_warnings.txt"
+    } > "$tsv"
+
+    jq -R -n \
+        --arg schema "1.0" \
+        --arg tool "shai-hulud-detector" \
+        --arg tool_version "$SCRIPT_VERSION" \
+        --arg generated_at "$generated_at" \
+        --arg scan_path "$scan_path" \
+        '
+        [ inputs
+          | select(length > 0)
+          | split("\t")
+          | { severity: .[0],
+              file: .[1],
+              line: (if (.[2] // "") == "" then null else (.[2] | tonumber) end),
+              message: (.[3] // "") }
+        ]
+        | unique
+        | {
+            schema_version: $schema,
+            tool: $tool,
+            tool_version: $tool_version,
+            generated_at: $generated_at,
+            scan_path: $scan_path,
+            summary: {
+              high:   (map(select(.severity == "HIGH"))   | length),
+              medium: (map(select(.severity == "MEDIUM")) | length),
+              low:    (map(select(.severity == "LOW"))    | length)
+            },
+            risk_level: (
+              if   any(.[]; .severity == "HIGH")   then "high"
+              elif any(.[]; .severity == "MEDIUM") then "medium"
+              elif any(.[]; .severity == "LOW")    then "low"
+              else "none" end
+            ),
+            findings: .
+          }
+        ' < "$tsv" > "$json_file"
+
+    print_status "$GREEN" "JSON report saved to: $json_file"
+}
+
 # Function: generate_report
 # Purpose: Generate comprehensive security report with risk stratification and findings
 # Args: $1 = paranoid_mode ("true" or "false" for extended checks)
@@ -6086,6 +6285,7 @@ main() {
     local check_host=false
     local scan_dir=""
     local save_log=""
+    local json_out=""
 
     # Load compromised packages from external file
     load_compromised_packages
@@ -6141,6 +6341,18 @@ main() {
                     usage
                 fi
                 save_log="$2"
+                shift
+                ;;
+            --json)
+                if [[ -z "$2" || "$2" == -* ]]; then
+                    echo "${RED}error: --json requires a file path${NC}" >&2;
+                    usage
+                fi
+                if ! command -v jq >/dev/null 2>&1; then
+                    echo "${RED}error: --json requires 'jq' to be installed (the default text output has no such dependency)${NC}" >&2
+                    exit 1
+                fi
+                json_out="$2"
                 shift
                 ;;
             --bulk)
@@ -6352,6 +6564,11 @@ main() {
     # Write log file if requested
     if [[ -n "$save_log" ]]; then
         write_log_file "$save_log"
+    fi
+
+    # Write JSON report if requested
+    if [[ -n "$json_out" ]]; then
+        write_json_file "$json_out" "$scan_dir"
     fi
 
     print_stage_complete "Total scan time"

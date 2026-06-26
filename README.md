@@ -3,7 +3,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Shell](https://img.shields.io/badge/shell-Bash%205.0%2B-blue)](#requirements)
 [![Status](https://img.shields.io/badge/status-Active-success)](../../)
-[![Tests](https://img.shields.io/badge/tests-169%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-194%20passing-brightgreen)](#testing)
 [![Packages](https://img.shields.io/badge/compromised%20packages-2%2C830%2B-red)](compromised-packages.txt)
 [![Type](https://img.shields.io/badge/type-Security%20Tool-red)](#what-it-catches)
 [![Contributions](https://img.shields.io/badge/contributions-Welcome-orange)](#contributing)
@@ -143,10 +143,38 @@ Writes flagged file paths grouped by severity, in a format friendly to grep and 
 /path/to/namespace-warning.json
 ```
 
+### Machine-readable JSON output (`--json FILE`)
+
+For CI gates and tooling that consume findings as data (rather than parsing console text), `--json` writes a structured report. It uses the same severity tiers as `--save-log` but **keeps the reason for each finding** (which `--save-log` drops):
+
+```bash
+./shai-hulud-detector.sh --json report.json /path/to/project
+```
+
+```json
+{
+  "schema_version": "1.0",
+  "tool": "shai-hulud-detector",
+  "tool_version": "3.9.0",
+  "generated_at": "2026-06-26T00:00:00Z",
+  "scan_path": "/path/to/project",
+  "summary": { "high": 7, "medium": 0, "low": 0 },
+  "risk_level": "high",
+  "findings": [
+    { "severity": "HIGH", "file": "package.json", "line": 6, "message": "axios@1.14.1" }
+  ]
+}
+```
+
+`line` is a best-effort pointer at the dependency line in the manifest for package-shaped findings (`name@version`, `@scope/name@version`); it is `null` for prose findings or when no match is found. The exit-code contract (`0`/`1`/`2`) is unchanged and remains the authoritative CI signal — `--json` and `--save-log` can be combined.
+
+> `--json` is the only mode that requires [`jq`](https://jqlang.github.io/jq/); it fails fast with a clear message if `jq` is missing. The default text output keeps the tool's zero-runtime-dependency guarantee.
+
 ### Other flags
 
 | Flag | Effect |
 |---|---|
+| `--json FILE` | Write findings as structured JSON (severity/file/line/message + summary). Requires `jq`. |
 | `--check-semver-ranges` | Flag `^`/`~` ranges that could resolve to compromised versions (informational, LOW risk). |
 | `--ecosystem LIST` | Restrict checks to `npm`, `pypi`, `all`, or a comma-separated list. Default: auto-detect. |
 | `--parallelism N` | Threads for parallelisable steps. Defaults to your CPU count. |
@@ -216,7 +244,7 @@ To add new packages from a fresh advisory: append entries in that format, run `.
 ## Testing
 
 ```bash
-./run-tests.sh                          # full suite, 188 checks
+./run-tests.sh                          # full suite, 194 checks
 ./shai-hulud-detector.sh test-cases/<fixture-name>   # run one fixture manually
 ```
 
