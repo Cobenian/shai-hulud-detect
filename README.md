@@ -3,15 +3,15 @@
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Shell](https://img.shields.io/badge/shell-Bash%205.0%2B-blue)](#requirements)
 [![Status](https://img.shields.io/badge/status-Active-success)](../../)
-[![Tests](https://img.shields.io/badge/tests-194%20passing-brightgreen)](#testing)
-[![Packages](https://img.shields.io/badge/compromised%20packages-2%2C830%2B-red)](compromised-packages.txt)
+[![Tests](https://img.shields.io/badge/tests-207%20passing-brightgreen)](#testing)
+[![Packages](https://img.shields.io/badge/compromised%20packages-3%2C460%2B-red)](compromised-packages.txt)
 [![Type](https://img.shields.io/badge/type-Security%20Tool-red)](#what-it-catches)
 [![Contributions](https://img.shields.io/badge/contributions-Welcome-orange)](#contributing)
 [![Last Commit](https://img.shields.io/github/last-commit/Cobenian/shai-hulud-detect)](https://github.com/Cobenian/shai-hulud-detect/commits/main)
 
 <img src="shai_hulu_detector.jpg" alt="sshd" width="80%" />
 
-A Bash script that scans a project — or many projects at once — for known traces of the September 2025 → June 2026 npm, PyPI, Composer, and Crates supply-chain attacks. Cross-checks 3,290+ confirmed bad package versions and a library of content-pattern IoCs (file hashes, C2 domains, dead-man's-switch artifacts, wipe-threat strings, AI-assistant config droppers, etc.).
+A Bash script that scans a project — or many projects at once — for known traces of the September 2025 → June 2026 npm, PyPI, Composer, and Crates supply-chain attacks. Cross-checks 3,460+ confirmed bad package versions and a library of content-pattern IoCs (file hashes, C2 domains, dead-man's-switch artifacts, wipe-threat strings, AI-assistant config droppers, etc.).
 
 ## Quick Start
 
@@ -36,7 +36,7 @@ chmod +x shai-hulud-detector.sh
 
 The detector looks for two kinds of evidence on disk:
 
-1. **Compromised package versions** — every `package.json`, lockfile, `pyproject.toml`, `requirements.txt`, `Pipfile`, `poetry.lock`, `uv.lock`, etc. is parsed and the resolved versions are checked against the 3,290+-entry list in [`compromised-packages.txt`](compromised-packages.txt). Transitive deps inside `node_modules/` are checked too, not skipped.
+1. **Compromised package versions** — every `package.json`, lockfile, `pyproject.toml`, `requirements.txt`, `Pipfile`, `poetry.lock`, `uv.lock`, etc. is parsed and the resolved versions are checked against the 3,460+-entry list in [`compromised-packages.txt`](compromised-packages.txt). Transitive deps inside `node_modules/` are checked too, not skipped.
 2. **Content-pattern IoCs** — known-malicious file hashes, payload filenames, C2 domains, dead-man's-switch artifacts, marker repo names, malicious workflow files, forged orphan-commit references, suspicious lifecycle hooks, and threat-actor publisher fingerprints. These don't depend on the package list and fire even if the bad package has been uninstalled but the dropper traces remain.
 
 | Wave | Date | Scope |
@@ -65,6 +65,8 @@ The detector looks for two kinds of evidence on disk:
 | Miasma "Phantom Gyp" worm | 2026-06-03 | 57 packages / 286 versions (`@vapi-ai/server-sdk`, `ai-sdk-ollama`, `autotel-*`, `awaitly-*`, `executable-stories-*`); novel `binding.gyp` command-substitution trigger bypasses preinstall-script monitors |
 | Miasma "Hades" PyPI wave | 2026-06-07 | 19 PyPI packages / 37 versions (`bramin`, `magique-ai`, `pantheon-agents`, `executor-engine`, `ufish`); novel `*-setup.pth` Python startup-hook execs an `_index.js` loader on plain `import`, no install hook needed; C2 camouflaged under `api.anthropic.com` |
 | IronWorm ("rustier cousin") | 2026-06-03 | 37 npm packages from the `asteroiddao` account (`weavedb-*`, `arnext`, `cwao`, `wao`, `zkjson`); Rust infostealer + eBPF rootkit via `preinstall` ELF hook, Exodus-wallet theft, leaked operator wallet `0x7e28…a4d6` |
+| easy-day-js / Mastra AI | 2026-06-17 | 141 `@mastra/*` packages + `mastra`/`create-mastra` republished with an injected `easy-day-js` (dayjs typosquat) dependency; `postinstall` dropper disables TLS, pulls a cross-platform infostealer from C2 `23.254.164.92`/`.123`; North-Korea-attributed (Sapphire Sleet / BlueNoroff) |
+| Miasma LeoPlatform / RStreams | 2026-06-25 | 23 npm packages (`leo-*`, `rstreams-*`, `serverless-leo`, …); Miasma worm reaches the AWS data-streaming ecosystem via the `binding.gyp` trigger + editor/CI auto-run hooks; new markers `RevokeAndItGoesKaboom`, `thebeautifulmarchoftime` |
 
 For per-wave IoC inventories, payload hashes, source advisories, and version-by-version lists, see [`CHANGELOG.md`](CHANGELOG.md).
 
@@ -244,7 +246,7 @@ To add new packages from a fresh advisory: append entries in that format, run `.
 ## Testing
 
 ```bash
-./run-tests.sh                          # full suite, 194 checks
+./run-tests.sh                          # full suite, 207 checks
 ./shai-hulud-detector.sh test-cases/<fixture-name>   # run one fixture manually
 ```
 
@@ -276,6 +278,27 @@ For per-wave source advisories with IoC enumerations, see the `### Security` sec
 - [JFrog — Largest npm attack in history](https://jfrog.com/blog/new-compromised-packages-in-largest-npm-attack-in-history/)
 - [Aikido — npm debug and chalk packages compromised](https://www.aikido.dev/blog/npm-debug-and-chalk-packages-compromised)
 - [Semgrep — Secret-scanning-tool credential theft](https://semgrep.dev/blog/2025/security-advisory-npm-packages-using-secret-scanning-tools-to-steal-credentials/)
+
+### Sources we monitor for new waves
+
+When a new wave lands, check these first. **Primary research teams** publish the
+per-package version lists, file hashes, and C2 IoCs we add to this repo — always
+source additions from one of these and cite it in the PR. **News aggregators** are
+where a wave usually surfaces first; use them to learn a wave exists, then pull the
+actual IoCs from a primary source.
+
+Primary threat-research teams (IoC enumerations):
+
+- [Socket — blog](https://socket.dev/blog) · [JFrog Security Research](https://research.jfrog.com) · [StepSecurity — blog](https://www.stepsecurity.io/blog)
+- [Aikido — blog](https://www.aikido.dev/blog) · [Snyk — blog](https://snyk.io/blog/) · [Wiz — blog](https://www.wiz.io/blog)
+- [Microsoft Security (MSTIC)](https://www.microsoft.com/en-us/security/blog/) · [Datadog Security Labs](https://securitylabs.datadoghq.com/) · [Unit 42 (Palo Alto)](https://unit42.paloaltonetworks.com/)
+- [SafeDep](https://safedep.io/) · [OX Security — blog](https://www.ox.security/blog/) · [Orca Security — blog](https://orca.security/resources/blog/) · [Semgrep — blog](https://semgrep.dev/blog/) · [GitGuardian — blog](https://blog.gitguardian.com/)
+- [GitHub Advisory Database](https://github.com/advisories) (filter by ecosystem)
+
+News aggregators (early awareness):
+
+- [BleepingComputer — supply-chain attack tag](https://www.bleepingcomputer.com/tag/supply-chain-attack/)
+- [The Hacker News](https://thehackernews.com/) · [SecurityWeek](https://www.securityweek.com/) · [Dark Reading — App Security](https://www.darkreading.com/application-security)
 
 ## License
 

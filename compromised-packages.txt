@@ -1,6 +1,6 @@
 # Shai-Hulud Supply Chain Attack - Compromised Packages List
 #
-# This file contains 3,290+ confirmed compromised package versions from
+# This file contains 3,460+ confirmed compromised package versions from
 # multiple supply chain attacks between September 2025 and June 2026.
 # The campaigns were self-replicating, so new compromised packages may still be discovered.
 #
@@ -3755,3 +3755,210 @@ aonote:0.11.1
 weavedb-base:0.45.3
 weavedb-sdk-node:0.45.3
 wao:0.41.2
+
+# ========================================================================
+# JUNE 17, 2026 - MASTRA AI / "easy-day-js" - 141 @mastra packages + 2 deps
+# A DISTINCT campaign from Miasma/Shai-Hulud (Microsoft attribution: North
+# Korea's Sapphire Sleet / BlueNoroff). In an 88-minute automated window
+# (01:12-02:39 UTC) the attacker republished the entire @mastra/* npm scope
+# plus the top-level mastra/create-mastra packages, each with a single injected
+# dependency: easy-day-js, a typosquat of dayjs. easy-day-js@1.11.22 carries an
+# obfuscated postinstall dropper (setup.cjs) that disables TLS verification
+# (NODE_TLS_REJECT_UNAUTHORIZED=0), pulls a cross-platform infostealer from
+# 23.254.164.92:8000/update/49890878 (stage-2 beacon to 23.254.164.123:443),
+# and runs it as a detached hidden process. The stealer harvests host info,
+# browser history, and 166 crypto-wallet browser extensions, then self-deletes.
+# easy-day-js@1.11.21 is the clean "bait" version published for credibility.
+# Content IoCs (C2 IPs, payload path, marker files) are flagged by
+# check_easy_day_js_indicators.
+#
+# Sources:
+# - https://research.jfrog.com/post/easy-day-js/
+# - https://www.stepsecurity.io/blog/mastra-npm-packages-compromised-using-easy-day-js
+# - https://orca.security/resources/blog/mastra-npm-supply-chain-attack/
+# ========================================================================
+easy-day-js:1.11.21
+easy-day-js:1.11.22
+mastra:1.13.1
+create-mastra:1.13.1
+@mastra/acp:0.2.2
+@mastra/agent-browser:0.3.2
+@mastra/agent-builder:1.0.42
+@mastra/agentcore:0.2.2
+@mastra/agentfs:0.1.1
+@mastra/ai-sdk:1.4.6
+@mastra/arize:1.2.3
+@mastra/arthur:0.3.3
+@mastra/astra:1.0.2
+@mastra/auth:1.0.3
+@mastra/auth-auth0:1.0.2
+@mastra/auth-better-auth:1.0.4
+@mastra/auth-clerk:1.0.3
+@mastra/auth-cloud:1.1.4
+@mastra/auth-firebase:1.0.1
+@mastra/auth-okta:0.0.5
+@mastra/auth-studio:1.2.4
+@mastra/auth-supabase:1.0.2
+@mastra/auth-workos:1.5.3
+@mastra/azure:0.2.3
+@mastra/blaxel:0.4.2
+@mastra/braintrust:1.1.4
+@mastra/brightdata:0.2.2
+@mastra/browser-firecrawl:0.1.1
+@mastra/browser-viewer:0.1.3
+@mastra/chroma:1.0.2
+@mastra/claude:1.0.3
+@mastra/clickhouse:1.10.1
+@mastra/client-js:1.24.1
+@mastra/cloud:0.1.24
+@mastra/cloudflare:1.4.2
+@mastra/cloudflare-d1:1.0.7
+@mastra/codemod:1.0.4
+@mastra/convex:1.2.2
+@mastra/core:1.42.1
+@mastra/couchbase:1.0.4
+@mastra/cursor:0.2.1
+@mastra/dane:1.0.2
+@mastra/datadog:1.2.5
+@mastra/daytona:0.4.2
+@mastra/deployer:1.42.1
+@mastra/deployer-cloud:1.42.1
+@mastra/deployer-cloudflare:1.1.44
+@mastra/deployer-netlify:1.1.20
+@mastra/deployer-vercel:1.1.38
+@mastra/docker:0.3.1
+@mastra/dsql:1.0.3
+@mastra/duckdb:1.4.3
+@mastra/dynamodb:1.0.9
+@mastra/e2b:0.3.4
+@mastra/editor:0.11.3
+@mastra/elasticsearch:1.2.1
+@mastra/engine:0.1.1
+@mastra/evals:1.3.1
+@mastra/express:1.3.31
+@mastra/fastembed:1.1.3
+@mastra/fastify:1.3.31
+@mastra/files-sdk:0.2.1
+@mastra/gcs:0.2.3
+@mastra/github-signals:0.1.2
+@mastra/google-cloud-pubsub:1.0.6
+@mastra/google-drive:0.1.1
+@mastra/hono:1.4.26
+@mastra/inngest:1.5.2
+@mastra/koa:1.5.14
+@mastra/laminar:1.2.3
+@mastra/lance:1.0.7
+@mastra/langfuse:1.3.6
+@mastra/langsmith:1.2.4
+@mastra/libsql:1.13.1
+@mastra/loggers:1.1.3
+@mastra/longmemeval:1.0.50
+@mastra/mcp:1.10.1
+@mastra/mcp-docs-server:1.1.47
+@mastra/mcp-registry-registry:1.0.2
+@mastra/mem0:0.1.14
+@mastra/memory:1.20.4
+@mastra/modal:0.2.2
+@mastra/mongodb:1.9.3
+@mastra/mssql:1.3.2
+@mastra/mysql:0.1.1
+@mastra/nestjs:0.1.15
+@mastra/node-audio:0.1.8
+@mastra/node-speaker:0.1.1
+@mastra/observability:1.14.2
+@mastra/openai:1.0.2
+@mastra/opencode:0.0.47
+@mastra/opensearch:1.0.3
+@mastra/otel-bridge:1.2.3
+@mastra/otel-exporter:1.2.3
+@mastra/perplexity:0.1.1
+@mastra/pg:1.13.1
+@mastra/pinecone:1.0.2
+@mastra/playground-ui:33.0.1
+@mastra/posthog:1.0.29
+@mastra/qdrant:1.0.3
+@mastra/rag:2.2.2
+@mastra/railway:0.1.1
+@mastra/react:1.0.1
+@mastra/redis:1.1.3
+@mastra/redis-streams:0.0.4
+@mastra/s3:0.5.3
+@mastra/s3vectors:1.0.7
+@mastra/schema-compat:1.2.12
+@mastra/sentry:1.1.4
+@mastra/server:2.1.1
+@mastra/slack:1.3.1
+@mastra/spanner:1.1.2
+@mastra/speech-azure:0.2.1
+@mastra/speech-elevenlabs:0.2.1
+@mastra/speech-google:0.2.1
+@mastra/speech-ibm:0.2.1
+@mastra/speech-murf:0.2.1
+@mastra/speech-openai:0.2.1
+@mastra/speech-replicate:0.2.1
+@mastra/speech-speechify:0.2.1
+@mastra/stagehand:0.2.5
+@mastra/tavily:1.0.3
+@mastra/temporal:0.1.14
+@mastra/turbopuffer:1.0.3
+@mastra/twilio:1.0.2
+@mastra/upstash:1.1.3
+@mastra/vectorize:1.0.3
+@mastra/vercel:1.0.1
+@mastra/voice-aws-nova-sonic:0.1.4
+@mastra/voice-azure:0.11.2
+@mastra/voice-cloudflare:0.12.3
+@mastra/voice-deepgram:0.12.2
+@mastra/voice-elevenlabs:0.12.2
+@mastra/voice-gladia:0.12.2
+@mastra/voice-google:0.12.3
+@mastra/voice-google-gemini-live:0.12.2
+@mastra/voice-inworld:0.3.1
+@mastra/voice-modelslab:0.1.2
+@mastra/voice-murf:0.12.3
+@mastra/voice-openai:0.12.3
+@mastra/voice-openai-realtime:0.12.6
+@mastra/voice-playai:0.12.2
+@mastra/voice-sarvam:1.0.2
+@mastra/voice-speechify:0.12.2
+@mastra/voice-xai-realtime:0.1.2
+
+# ========================================================================
+# JUNE 25, 2026 - MIASMA "Mini Shai-Hulud" - LeoPlatform / RStreams (23 npm)
+# Socket disclosure: the Miasma/Phantom-Gyp self-spreading worm reaches the
+# LeoPlatform and RStreams (AWS data-streaming) npm ecosystems, plus a handful
+# of unrelated packages and one Go module (github.com/verana-labs/
+# verana-blockchain@v0.10.1-dev.20, not matchable here). Delivery is the now
+# familiar binding.gyp install-time trigger plus editor/CI auto-run hooks
+# (.claude/, .vscode/, .github/ setup scripts) that launch a Bun-bootstrapped
+# _index.js payload. Payload/loader files are pinned by SHA-256 in
+# MALICIOUS_HASHLIST; the campaign marker strings (RevokeAndItGoesKaboom,
+# "Alright Lets See If This Works", thebeautifulmarchoftime) are matched by
+# check_hades_miasma_indicators.
+#
+# Source:
+# - https://socket.dev/blog/miasma-mini-shai-hulud-hits-leoplatform-npm-packages-go-ecosystem
+# ========================================================================
+leo-auth:4.0.6
+leo-aws:2.0.4
+leo-cache:1.0.2
+leo-cdk-lib:0.0.2
+leo-cli:3.0.3
+leo-config:1.1.1
+leo-connector-elasticsearch:2.0.6
+leo-connector-mongo:3.0.8
+leo-connector-mysql:3.0.3
+leo-connector-oracle:2.0.1
+leo-connector-redshift:3.0.6
+leo-cron:2.0.2
+leo-logger:1.0.8
+leo-sdk:6.0.19
+leo-streams:2.0.1
+rstreams-metrics:2.0.2
+rstreams-shard-util:1.0.1
+hexo-deployer-wrangler:1.0.4
+hexo-shoka-swiper:0.1.10
+prism-silq:1.0.1
+serverless-convention:2.0.4
+serverless-leo:3.0.14
+solo-nav:1.0.1

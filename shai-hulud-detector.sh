@@ -24,7 +24,7 @@ set -eo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Tool version (surfaced in --json output for downstream consumers)
-SCRIPT_VERSION="3.9.0"
+SCRIPT_VERSION="3.10.0"
 
 # Global temp directory for file-based storage
 TEMP_DIR=""
@@ -121,6 +121,7 @@ create_temp_dir() {
     touch "$TEMP_DIR/art_template_indicators.txt"
     touch "$TEMP_DIR/durabletask_indicators.txt"
     touch "$TEMP_DIR/hades_miasma_indicators.txt"
+    touch "$TEMP_DIR/easy_day_js_indicators.txt"
     touch "$TEMP_DIR/trapdoor_indicators.txt"
     touch "$TEMP_DIR/laravel_lang_indicators.txt"
     touch "$TEMP_DIR/node_ipc_indicators.txt"
@@ -236,6 +237,19 @@ MALICIOUS_HASHLIST=(
     "c539766062555d47716f8432e73adbe3a0c0c954a0b6c4005017a668975e275c" # June 7, 2026 Hades/Miasma PyPI wave: setup.pth startup hook (Socket IOC)
     "dc48b09b2a5954f7ff79ab8a2fd80202bd3b59c08c7cdbc6025aa923cb4c0efe" # June 7, 2026 Hades/Miasma PyPI wave: _index.js loader, 4.8MB / 17 packages (Socket IOC)
     "e1342a80d4b5e83d2c7c22e1e0aaa95f2d88e3dbf0d853a4994b180c93a4b17d" # June 7, 2026 Hades/Miasma PyPI wave: _index.js loader variant, 4.7MB / 2 packages (Socket IOC)
+    "32d1bc728d8e504952083a6adc488c309a401c7df4dc8f47b382ce32e4aebe21" # June 25, 2026 Miasma LeoPlatform wave: malicious binding.gyp install-time trigger (Socket IOC)
+    "57ba86f6f0caaa580c1dccdf4ed7873d1470e5ea2f8e9ca7a989dc04899f13c0" # June 25, 2026 Miasma LeoPlatform wave: leo-logger@1.0.8 index.js payload (Socket IOC)
+    "4a0aa78757958683155a7b9289427fb829abcad1bf5ee6399eb73e8409b0bc11" # June 25, 2026 Miasma LeoPlatform wave: leo-logger@1.0.8 package.json (Socket IOC)
+    "026588d39b7c650b5c0dfbba6c6fcc0e7ec8e3b72ba8639012e7f71c708f2c3b" # June 25, 2026 Miasma LeoPlatform wave: leo-sdk@6.0.19 index.js payload (Socket IOC)
+    "df9ea0c71574e11c93141ad2f018a63a5375cd6d69ca2f744732ad7814170657" # June 25, 2026 Miasma LeoPlatform wave: leo-auth@4.0.6 index.js payload (Socket IOC)
+    "1a3b9ed0b377f56f49b9a703612cf45e86ab7d100587e1e7a476d809fe337a8c" # June 25, 2026 Miasma LeoPlatform wave: leo-aws@2.0.4 index.js payload (Socket IOC)
+    "15b415ae41df72acf1f7e9e67569531d41dee62d089d34b4c0fab0c7fe5cc14f" # June 25, 2026 Miasma LeoPlatform wave: .claude/index.js obfuscated payload (Socket IOC)
+    "6cb3fc3650355973b8a1ed86619a3f412fb0700f29c1c3a736cada4c2c76a9f7" # June 25, 2026 Miasma LeoPlatform wave: .claude/.vscode setup.mjs Bun launcher (Socket IOC)
+    "6a861a479f45fe53f067091414332248bc027ffc396116811d12e57a6ff71250" # June 25, 2026 Miasma LeoPlatform wave: .claude/settings.json auto-run config (Socket IOC)
+    "927387d0cfac1118df4b383decc2ea6ba49c9d2f98b47098bcbcba1efc026e1f" # June 25, 2026 Miasma LeoPlatform wave: .vscode/tasks.json folder-open execution (Socket IOC)
+    "1a0e1daeaea87cab5610a3cc2aa72e7c6f1abfe55959a156368bcfa6585fa6ce" # June 25, 2026 Miasma LeoPlatform wave: decoded first-stage JavaScript (Socket IOC)
+    "ceff7c51d70832c3ec8dd2744b606a23b3c924ef664ae23439b9b742ea154108" # June 25, 2026 Miasma LeoPlatform wave: decrypted Bun bootstrap payload (Socket IOC)
+    "9f93d77d32833a515bc406c46da477142bb1ac2babeecb6aa42f98669a6db015" # June 25, 2026 Miasma LeoPlatform wave: decrypted main payload (Socket IOC)
 )
 
 PARALLELISM=4
@@ -2509,12 +2523,94 @@ check_hades_miasma_indicators() {
             while IFS= read -r file; do
                 echo "$file:Hades C2 camouflage path (api.anthropic.com/v1/api)" >> "$TEMP_DIR/hades_miasma_indicators.txt"
             done
+
+        # IOC 4: June 25 LeoPlatform / RStreams wave marker strings (Socket disclosure).
+        # The wave reuses the binding.gyp install trigger (hash-pinned in
+        # MALICIOUS_HASHLIST) but stamps these new near-zero-FP markers on its
+        # payloads / exfil repos. "TheBeautifulSandsOfTime" from the May TanStack
+        # wave is matched in check_mini_shai_hulud_indicators; these are the new variants.
+        local lp_marker
+        for lp_marker in \
+            "RevokeAndItGoesKaboom" \
+            "Alright Lets See If This Works" \
+            "thebeautifulmarchoftime" \
+            "thebeautifulsnadsoftime"
+        do
+            fast_grep_files_fixed "$lp_marker" < "$TEMP_DIR/_hades_search_files.txt" | \
+                while IFS= read -r file; do
+                    echo "$file:Miasma LeoPlatform/RStreams wave marker ($lp_marker)" >> "$TEMP_DIR/hades_miasma_indicators.txt"
+                done
+        done
     fi
     rm -f "$TEMP_DIR/_hades_search_files.txt"
 
     # Deduplicate
     if [[ -s "$TEMP_DIR/hades_miasma_indicators.txt" ]]; then
         sort -u "$TEMP_DIR/hades_miasma_indicators.txt" -o "$TEMP_DIR/hades_miasma_indicators.txt"
+    fi
+}
+
+# Function: check_easy_day_js_indicators
+# Purpose: Detect the June 17, 2026 "easy-day-js" / Mastra AI supply-chain wave.
+#          This is a DISTINCT campaign from Miasma/Shai-Hulud (Microsoft attributes
+#          it to North Korea's Sapphire Sleet / BlueNoroff): the entire @mastra/*
+#          npm scope was republished with a single injected dependency, easy-day-js
+#          (a dayjs typosquat), whose postinstall dropper (setup.cjs) disables TLS
+#          verification and pulls a cross-platform infostealer from a hardcoded C2.
+#          Version-pinned package detection lives in compromised-packages.txt; this
+#          function adds the near-zero-FP content IoCs (C2 IPs, payload path,
+#          dependency reference, postinstall hook).
+# Args: $1 = scan_dir
+# Modifies: $TEMP_DIR/easy_day_js_indicators.txt
+check_easy_day_js_indicators() {
+    local scan_dir=$1
+    print_status "$BLUE" "   Checking for easy-day-js / Mastra IOCs (June 17, 2026 BlueNoroff wave)..."
+
+    # The dropper and C2 references live in JS payloads and package manifests, so
+    # search the code/script buckets plus the package-file bucket together.
+    : > "$TEMP_DIR/_easy_day_js_search_files.txt"
+    [[ -s "$TEMP_DIR/code_files.txt" ]] && cat "$TEMP_DIR/code_files.txt" >> "$TEMP_DIR/_easy_day_js_search_files.txt"
+    [[ -s "$TEMP_DIR/script_files.txt" ]] && cat "$TEMP_DIR/script_files.txt" >> "$TEMP_DIR/_easy_day_js_search_files.txt"
+    [[ -s "$TEMP_DIR/package_files.txt" ]] && cat "$TEMP_DIR/package_files.txt" >> "$TEMP_DIR/_easy_day_js_search_files.txt"
+    sort -u "$TEMP_DIR/_easy_day_js_search_files.txt" -o "$TEMP_DIR/_easy_day_js_search_files.txt"
+
+    if [[ -s "$TEMP_DIR/_easy_day_js_search_files.txt" ]]; then
+        # IOC 1: the malicious injected dependency by name. "easy-day-js" is a
+        # dayjs typosquat published only for this campaign — literal match is low-FP.
+        fast_grep_files_fixed "easy-day-js" < "$TEMP_DIR/_easy_day_js_search_files.txt" | \
+            while IFS= read -r file; do
+                echo "$file:easy-day-js malicious dependency reference (dayjs typosquat)" >> "$TEMP_DIR/easy_day_js_indicators.txt"
+            done
+
+        # IOC 2: hardcoded C2 IP addresses (stage-1 payload host + stage-2 beacon host).
+        local edj_c2
+        for edj_c2 in \
+            "23.254.164.92" \
+            "23.254.164.123"
+        do
+            fast_grep_files_fixed "$edj_c2" < "$TEMP_DIR/_easy_day_js_search_files.txt" | \
+                while IFS= read -r file; do
+                    echo "$file:easy-day-js C2 IP address ($edj_c2)" >> "$TEMP_DIR/easy_day_js_indicators.txt"
+                done
+        done
+
+        # IOC 3: the campaign payload path used on both C2 hosts.
+        fast_grep_files_fixed "/update/49890878" < "$TEMP_DIR/_easy_day_js_search_files.txt" | \
+            while IFS= read -r file; do
+                echo "$file:easy-day-js C2 payload path (/update/49890878)" >> "$TEMP_DIR/easy_day_js_indicators.txt"
+            done
+
+        # IOC 4: the postinstall dropper invocation.
+        fast_grep_files_fixed "node setup.cjs --no-warnings" < "$TEMP_DIR/_easy_day_js_search_files.txt" | \
+            while IFS= read -r file; do
+                echo "$file:easy-day-js postinstall dropper hook (node setup.cjs --no-warnings)" >> "$TEMP_DIR/easy_day_js_indicators.txt"
+            done
+    fi
+    rm -f "$TEMP_DIR/_easy_day_js_search_files.txt"
+
+    # Deduplicate
+    if [[ -s "$TEMP_DIR/easy_day_js_indicators.txt" ]]; then
+        sort -u "$TEMP_DIR/easy_day_js_indicators.txt" -o "$TEMP_DIR/easy_day_js_indicators.txt"
     fi
 }
 
@@ -4500,6 +4596,7 @@ write_log_file() {
         [[ -s "$TEMP_DIR/art_template_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/art_template_indicators.txt" || true
         [[ -s "$TEMP_DIR/durabletask_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/durabletask_indicators.txt" || true
         [[ -s "$TEMP_DIR/hades_miasma_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/hades_miasma_indicators.txt" || true
+        [[ -s "$TEMP_DIR/easy_day_js_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/easy_day_js_indicators.txt" || true
         [[ -s "$TEMP_DIR/trapdoor_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/trapdoor_indicators.txt" || true
         [[ -s "$TEMP_DIR/laravel_lang_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/laravel_lang_indicators.txt" || true
         [[ -s "$TEMP_DIR/node_ipc_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/node_ipc_indicators.txt" || true
@@ -4695,6 +4792,7 @@ write_json_file() {
         _jf_pathmsg HIGH "$TEMP_DIR/art_template_indicators.txt"
         _jf_pathmsg HIGH "$TEMP_DIR/durabletask_indicators.txt"
         _jf_pathmsg HIGH "$TEMP_DIR/hades_miasma_indicators.txt"
+        _jf_pathmsg HIGH "$TEMP_DIR/easy_day_js_indicators.txt"
         _jf_pathmsg HIGH "$TEMP_DIR/trapdoor_indicators.txt"
         _jf_pathmsg HIGH "$TEMP_DIR/laravel_lang_indicators.txt"
         _jf_pathmsg HIGH "$TEMP_DIR/node_ipc_indicators.txt"
@@ -5040,6 +5138,26 @@ generate_report() {
         print_status "$RED" "                         and _index.js loader, rotate ALL credentials (npm/PyPI/GitHub"
         print_status "$RED" "                         tokens, AWS/GCP/Azure/Kubernetes/Vault, SSH keys), and audit"
         print_status "$RED" "                         ~/.local/share/updater/ and .github/workflows/ for persistence."
+    fi
+
+    if [[ -s "$TEMP_DIR/easy_day_js_indicators.txt" ]]; then
+        print_status "$RED" "🚨 HIGH RISK: June 17, 2026 easy-day-js / Mastra AI supply-chain indicators detected:"
+        print_status "$RED" "    ⚠️  North-Korea-attributed (Sapphire Sleet / BlueNoroff) wave: the @mastra/* npm"
+        print_status "$RED" "        scope was republished with an injected easy-day-js (dayjs typosquat) dependency"
+        print_status "$RED" "        whose postinstall dropper disables TLS verification, pulls a cross-platform"
+        print_status "$RED" "        infostealer from a hardcoded C2, and runs it as a detached hidden process."
+        while IFS= read -r line; do
+            local file="${line%%:*}"
+            local reason="${line#*:}"
+            echo "   - $file"
+            echo "     Reason: $reason"
+            show_file_preview "$file" "HIGH RISK: easy-day-js / Mastra campaign indicator"
+            high_risk=$((high_risk+1))
+        done < "$TEMP_DIR/easy_day_js_indicators.txt"
+        print_status "$RED" "    📋 IMMEDIATE ACTION: Remove easy-day-js and any @mastra/* package installed on/after"
+        print_status "$RED" "                         2026-06-17, delete setup.cjs and ~/.pkg_history / ~/.pkg_logs,"
+        print_status "$RED" "                         block C2 hosts 23.254.164.92 / 23.254.164.123, rotate developer"
+        print_status "$RED" "                         credentials, and check browser crypto-wallet extensions for theft."
     fi
 
     if [[ -s "$TEMP_DIR/polymarket_indicators.txt" ]]; then
@@ -6539,6 +6657,7 @@ main() {
     check_art_template_indicators "$scan_dir"
     check_durabletask_indicators "$scan_dir"
     check_hades_miasma_indicators "$scan_dir"
+    check_easy_day_js_indicators "$scan_dir"
     check_trapdoor_indicators "$scan_dir"
     check_laravel_lang_indicators "$scan_dir"
     check_node_ipc_indicators "$scan_dir"

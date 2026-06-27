@@ -1,0 +1,11 @@
+{
+  "name": "mastra-clean-test",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Clean fixture: non-compromised versions of Mastra-targeted package names plus the legitimate dayjs library (not the malicious typosquat). The detector must NOT flag these.",
+  "dependencies": {
+    "@mastra/core": "1.42.0",
+    "@mastra/memory": "1.20.3",
+    "dayjs": "1.11.13"
+  }
+}

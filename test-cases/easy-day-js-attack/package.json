@@ -1,0 +1,11 @@
+{
+  "name": "easy-day-js-attack-test",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Test fixture for the June 17, 2026 easy-day-js / Mastra AI wave (Microsoft attributes it to North Korea's Sapphire Sleet / BlueNoroff). Pins confirmed compromised versions so the standard npm package-version check fires HIGH; the inert ioc_inert.js carries the content IoCs.",
+  "dependencies": {
+    "@mastra/core": "1.42.1",
+    "@mastra/memory": "1.20.4",
+    "easy-day-js": "1.11.22"
+  }
+}
