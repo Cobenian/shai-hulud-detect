@@ -1,0 +1,4 @@
+github.com/spf13/cobra v1.8.0 h1:7aJaZx1B85qltLMc546zn58BxxfZdR/W22ej9CFoEf0=
+github.com/spf13/cobra v1.8.0/go.mod h1:WXLWAPfKLpfhDi7R4S5Snnae4z8XaXt/Bv6c5sJSjpA=
+github.com/verana-labs/verana-blockchain v0.10.1-dev.20 h1:0000000000000000000000000000000000000000000=
+github.com/verana-labs/verana-blockchain v0.10.1-dev.20/go.mod h1:1111111111111111111111111111111111111111111=

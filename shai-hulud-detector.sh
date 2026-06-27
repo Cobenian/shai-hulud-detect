@@ -23,8 +23,13 @@ set -eo pipefail
 # Script directory for locating companion files (compromised-packages.txt)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Resolved compromised-packages list path. Defaults to the bundled file; the
+# SHAI_HULUD_PACKAGES_FILE override (applied in load_compromised_packages) updates
+# this so every per-ecosystem checker reads the same list.
+COMPROMISED_PACKAGES_FILE="$SCRIPT_DIR/compromised-packages.txt"
+
 # Tool version (surfaced in --json output for downstream consumers)
-SCRIPT_VERSION="3.10.0"
+SCRIPT_VERSION="3.13.0"
 
 # Global temp directory for file-based storage
 TEMP_DIR=""
@@ -139,6 +144,15 @@ create_temp_dir() {
     touch "$TEMP_DIR/crates_manifests.txt"
     touch "$TEMP_DIR/crates_lockfiles.txt"
     touch "$TEMP_DIR/crates_all_deps.txt"
+    touch "$TEMP_DIR/go_manifests.txt"
+    touch "$TEMP_DIR/go_lockfiles.txt"
+    touch "$TEMP_DIR/go_all_deps.txt"
+    touch "$TEMP_DIR/hex_manifests.txt"
+    touch "$TEMP_DIR/hex_lockfiles.txt"
+    touch "$TEMP_DIR/hex_all_deps.txt"
+    touch "$TEMP_DIR/gem_manifests.txt"
+    touch "$TEMP_DIR/gem_lockfiles.txt"
+    touch "$TEMP_DIR/gem_all_deps.txt"
     touch "$TEMP_DIR/github_runners.txt"
     touch "$TEMP_DIR/malicious_hashes.txt"
     touch "$TEMP_DIR/destructive_patterns.txt"
@@ -295,27 +309,39 @@ declare -A ECOSYSTEM_MARKERS=(
     ["pypi"]="pyproject.toml|requirements.txt|requirements-dev.txt|requirements-prod.txt|Pipfile|Pipfile.lock|poetry.lock|uv.lock|setup.py|setup.cfg"
     ["composer"]="composer.json|composer.lock"
     ["crates"]="Cargo.toml|Cargo.lock"
+    ["go"]="go.mod|go.sum"
+    ["hex"]="mix.exs|mix.lock"
+    ["gem"]="Gemfile|Gemfile.lock"
 )
 declare -A ECOSYSTEM_EXCLUDE_PATHS=(
     ["npm"]="node_modules"
     ["pypi"]="node_modules|\\.venv|/venv/|\\.tox|site-packages"
     ["composer"]="node_modules|/vendor/"
     ["crates"]="node_modules|/target/"
+    ["go"]="node_modules|/vendor/"
+    ["hex"]="node_modules|/deps/|/_build/"
+    ["gem"]="node_modules|/vendor/"
 )
-declare -a SUPPORTED_ECOSYSTEMS=("npm" "pypi" "composer" "crates")
+declare -a SUPPORTED_ECOSYSTEMS=("npm" "pypi" "composer" "crates" "go" "hex" "gem")
 declare -a ACTIVE_ECOSYSTEMS=()
 ECOSYSTEM_OVERRIDE=""  # set by --ecosystem flag; empty = auto-detect
 
 # Dispatch table: ecosystem -> space-separated list of check function names.
-# This is the extension point for adding new ecosystems (hex, go, cargo, gem...).
+# This is the extension point for adding new ecosystems (more like gradle, gem...).
 # To add a new ecosystem:
 #   1. Add a marker pattern to ECOSYSTEM_MARKERS
 #   2. Add an exclude-paths pattern to ECOSYSTEM_EXCLUDE_PATHS
 #   3. Add the ecosystem name to SUPPORTED_ECOSYSTEMS
-#   4. Write a parser + check_<eco>_packages function
+#   4. Write a parser + check_<eco>_packages function (read the resolved list via
+#      "$COMPROMISED_PACKAGES_FILE", not the hardcoded path, so the
+#      SHAI_HULUD_PACKAGES_FILE override applies)
 #   5. Add a row here mapping the ecosystem to its check function(s)
 #   6. Teach load_compromised_packages to recognize the new "<eco>:" prefix
-#   7. Extend collect_all_files with the relevant manifest filenames
+#   7. Add the manifest/lockfile filenames in TWO places in collect_all_files:
+#      (a) the `find ... -name` allow-list that builds all_files_raw.txt (files
+#          NOT listed there are invisible to detection), and
+#      (b) the per-ecosystem grep that splits them into <eco>_manifests.txt /
+#          <eco>_lockfiles.txt; also `touch` those temp files in the init block
 # Nothing in main() needs to change - the dispatcher walks ACTIVE_ECOSYSTEMS
 # and invokes whatever functions this table lists for each active ecosystem.
 declare -A ECOSYSTEM_CHECK_FUNCTIONS=(
@@ -323,6 +349,9 @@ declare -A ECOSYSTEM_CHECK_FUNCTIONS=(
     ["pypi"]="check_pypi_packages"
     ["composer"]="check_composer_packages"
     ["crates"]="check_crates_packages"
+    ["go"]="check_go_packages"
+    ["hex"]="check_hex_packages"
+    ["gem"]="check_gem_packages"
 )
 
 # Function: ecosystem_active
@@ -431,12 +460,16 @@ load_compromised_packages() {
     if [[ -n "${SHAI_HULUD_PACKAGES_FILE:-}" && -f "$SHAI_HULUD_PACKAGES_FILE" ]]; then
         packages_file="$SHAI_HULUD_PACKAGES_FILE"
     fi
+    # Publish the resolved path so the per-ecosystem checkers (which do their own
+    # awk lookup) honor the same SHAI_HULUD_PACKAGES_FILE override, not just the
+    # npm map built here.
+    COMPROMISED_PACKAGES_FILE="$packages_file"
     local count=0
 
     # Entries may be ecosystem-prefixed ("pypi:name:version", "npm:name:version")
     # or bare ("name:version"), in which case they default to npm. The internal
     # map key is always "ecosystem:name:version" for unambiguous lookups.
-    local pypi_count=0 npm_count=0 composer_count=0 crates_count=0
+    local pypi_count=0 npm_count=0 composer_count=0 crates_count=0 go_count=0 hex_count=0 gem_count=0
 
     if [[ -f "$packages_file" ]]; then
         local -a raw_lines
@@ -494,6 +527,42 @@ load_compromised_packages() {
                 COMPROMISED_PACKAGES_MAP["$key"]=1
                 ((crates_count++)) || true
                 ((count++)) || true
+            elif [[ "$line" == go:* ]]; then
+                # go:module/path:version  (Go modules; version keeps its canonical
+                # leading "v", e.g. go:github.com/foo/bar:v1.2.3). Module paths never
+                # contain ":", and versions never do, so the prefix/name/version split
+                # on ":" is unambiguous.
+                eco="go"
+                pkg_name="${line#go:}"
+                pkg_name="${pkg_name%:*}"
+                pkg_version="${line##*:}"
+                [[ -z "$pkg_version" || "$pkg_version" == "$line" ]] && continue
+                key="go:$pkg_name:$pkg_version"
+                COMPROMISED_PACKAGES_MAP["$key"]=1
+                ((go_count++)) || true
+                ((count++)) || true
+            elif [[ "$line" == hex:* ]]; then
+                # hex:name:version  (Elixir / Hex.pm). Bare semver, no leading "v".
+                eco="hex"
+                pkg_name="${line#hex:}"
+                pkg_name="${pkg_name%:*}"
+                pkg_version="${line##*:}"
+                [[ -z "$pkg_version" || "$pkg_version" == "$line" ]] && continue
+                key="hex:$pkg_name:$pkg_version"
+                COMPROMISED_PACKAGES_MAP["$key"]=1
+                ((hex_count++)) || true
+                ((count++)) || true
+            elif [[ "$line" == gem:* ]]; then
+                # gem:name:version  (RubyGems / Bundler). Bare semver, no leading "v".
+                eco="gem"
+                pkg_name="${line#gem:}"
+                pkg_name="${pkg_name%:*}"
+                pkg_version="${line##*:}"
+                [[ -z "$pkg_version" || "$pkg_version" == "$line" ]] && continue
+                key="gem:$pkg_name:$pkg_version"
+                COMPROMISED_PACKAGES_MAP["$key"]=1
+                ((gem_count++)) || true
+                ((count++)) || true
             elif [[ "$line" =~ ^[@a-zA-Z0-9][^:]+:[0-9]+\.[0-9]+\.[0-9]+ ]]; then
                 # Bare entry -> npm. npm package names may start with a digit
                 # (e.g. "02-echo"); only a leading "." or "_" is disallowed, so the
@@ -508,7 +577,7 @@ load_compromised_packages() {
             fi
         done
 
-        print_status "$BLUE" "📦 Loaded $count compromised packages from $packages_file (npm: $npm_count, pypi: $pypi_count, composer: $composer_count, crates: $crates_count)"
+        print_status "$BLUE" "📦 Loaded $count compromised packages from $packages_file (npm: $npm_count, pypi: $pypi_count, composer: $composer_count, crates: $crates_count, go: $go_count, hex: $hex_count, gem: $gem_count)"
     else
         # Fallback to embedded list if file not found
         print_status "$YELLOW" "⚠️  Warning: $packages_file not found, using embedded package list"
@@ -974,7 +1043,10 @@ collect_all_files() {
             -name "requirements.txt" -o -name "requirements-*.txt" -o -name "*-requirements.txt" -o \
             -name "setup.py" -o -name "setup.cfg" -o \
             -name "composer.json" -o -name "composer.lock" -o \
-            -name "Cargo.toml" -o -name "Cargo.lock" \
+            -name "Cargo.toml" -o -name "Cargo.lock" -o \
+            -name "go.mod" -o -name "go.sum" -o \
+            -name "mix.exs" -o -name "mix.lock" -o \
+            -name "Gemfile" -o -name "Gemfile.lock" \
         \) -type f 2>/dev/null || true
     } > "$TEMP_DIR/all_files_raw.txt"
 
@@ -1053,6 +1125,25 @@ collect_all_files() {
         grep -vE "/(node_modules|target)/" > "$TEMP_DIR/crates_manifests.txt" || touch "$TEMP_DIR/crates_manifests.txt"
     grep -E "/Cargo\.lock$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null | \
         grep -vE "/(node_modules|target)/" > "$TEMP_DIR/crates_lockfiles.txt" || touch "$TEMP_DIR/crates_lockfiles.txt"
+
+    # Go modules. go.mod declares required modules; go.sum pins the resolved set.
+    # Exclude vendored copies under vendor/.
+    grep -E "/go\.mod$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null | \
+        grep -vE "/(node_modules|vendor)/" > "$TEMP_DIR/go_manifests.txt" || touch "$TEMP_DIR/go_manifests.txt"
+    grep -E "/go\.sum$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null | \
+        grep -vE "/(node_modules|vendor)/" > "$TEMP_DIR/go_lockfiles.txt" || touch "$TEMP_DIR/go_lockfiles.txt"
+
+    # Hex (Elixir) manifests/lockfiles. Exclude fetched deps under deps/ and build output under _build/.
+    grep -E "/mix\.exs$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null | \
+        grep -vE "/(node_modules|deps|_build)/" > "$TEMP_DIR/hex_manifests.txt" || touch "$TEMP_DIR/hex_manifests.txt"
+    grep -E "/mix\.lock$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null | \
+        grep -vE "/(node_modules|deps|_build)/" > "$TEMP_DIR/hex_lockfiles.txt" || touch "$TEMP_DIR/hex_lockfiles.txt"
+
+    # RubyGems (Bundler) manifests/lockfiles. Exclude vendored gems under vendor/.
+    grep -E "/Gemfile$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null | \
+        grep -vE "/(node_modules|vendor)/" > "$TEMP_DIR/gem_manifests.txt" || touch "$TEMP_DIR/gem_manifests.txt"
+    grep -E "/Gemfile\.lock$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null | \
+        grep -vE "/(node_modules|vendor)/" > "$TEMP_DIR/gem_lockfiles.txt" || touch "$TEMP_DIR/gem_lockfiles.txt"
 
     # Filter GitHub workflow files specifically
     grep "/.github/workflows/.*\.ya\?ml$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/github_workflows.txt" 2>/dev/null || touch "$TEMP_DIR/github_workflows.txt"
@@ -1824,7 +1915,7 @@ check_pypi_packages() {
     awk -F: '
         /^[[:space:]]*#/ || NF < 3 { next }
         $1 == "pypi" { print $2":"$3 }
-    ' "$SCRIPT_DIR/compromised-packages.txt" | LC_ALL=C sort > "$TEMP_DIR/pypi_compromised_lookup.txt"
+    ' "$COMPROMISED_PACKAGES_FILE" | LC_ALL=C sort > "$TEMP_DIR/pypi_compromised_lookup.txt"
 
     if [[ ! -s "$TEMP_DIR/pypi_compromised_lookup.txt" ]]; then
         # No PyPI entries in the database - nothing to do
@@ -1952,6 +2043,115 @@ parse_cargo_lock() {
     ' "$1"
 }
 
+# Function: parse_go_mod
+# Args: $1 = path to a go.mod
+# Output: normalized module:version lines for every `require`d module.
+#         Handles both the single-line form (`require example.com/m v1.2.3`) and
+#         the block form (`require (` … `)`). Go versions keep their canonical
+#         leading "v" (e.g. v1.2.3, v0.0.0-20210101000000-abcdef, v0.10.1-dev.20).
+#         `// indirect` trailing comments and `replace`/`exclude` lines are ignored.
+parse_go_mod() {
+    awk '
+        # Strip trailing line comments ("// indirect", etc.)
+        { sub(/\/\/.*$/, "") }
+        # Enter / leave a require ( ... ) block
+        /^[[:space:]]*require[[:space:]]*\(/ { inblock=1; next }
+        inblock && /^[[:space:]]*\)/        { inblock=0; next }
+        # Single-line: require <module> <version>
+        /^[[:space:]]*require[[:space:]]+[^[:space:]]+[[:space:]]+v/ {
+            n=$2; v=$3
+            if (length(n) > 0 && v ~ /^v/) print n ":" v
+            next
+        }
+        # Inside a block: <module> <version>
+        inblock && /^[[:space:]]*[^[:space:]]+[[:space:]]+v/ {
+            n=$1; v=$2
+            if (length(n) > 0 && v ~ /^v/) print n ":" v
+        }
+    ' "$1"
+}
+
+# Function: parse_go_sum
+# Args: $1 = path to a go.sum
+# Output: normalized module:version lines (resolved set — authoritative).
+#         go.sum lists each module twice: "<module> <version> h1:..." and
+#         "<module> <version>/go.mod h1:...". We strip the "/go.mod" suffix from
+#         the version and dedupe is handled downstream.
+parse_go_sum() {
+    awk '
+        NF >= 2 && $2 ~ /^v/ {
+            n=$1; v=$2
+            sub(/\/go\.mod$/, "", v)
+            if (length(n) > 0 && length(v) > 0) print n ":" v
+        }
+    ' "$1"
+}
+
+# Function: parse_mix_exs
+# Args: $1 = path to an Elixir mix.exs
+# Output: normalized name:version lines for deps declared as {:name, "<req>"}.
+#         Manifest requirements carry operators (~>, >=, ==); we strip them
+#         best-effort. The authoritative exact versions come from mix.lock.
+#         Git/path deps (no version string) are skipped.
+parse_mix_exs() {
+    awk '
+        /{:[A-Za-z0-9_]+,/ {
+            name=$0; sub(/^[^{]*{:/, "", name); sub(/[,}].*/, "", name)
+            if ($0 ~ /"/) {
+                ver=$0; sub(/^[^"]*"/, "", ver); sub(/".*/, "", ver)
+                gsub(/[~><=, ]/, "", ver)
+                if (length(name) > 0 && ver ~ /^[0-9]/) print name ":" ver
+            }
+        }
+    ' "$1"
+}
+
+# Function: parse_mix_lock
+# Args: $1 = path to an Elixir mix.lock
+# Output: normalized name:version lines (resolved versions — authoritative).
+#         Each entry looks like:  "phoenix": {:hex, :phoenix, "1.7.10", "h1...", ...}
+#         Split on the double-quote: field 2 = name, field 4 = version.
+parse_mix_lock() {
+    awk -F'"' '
+        /{:hex,/ {
+            if (length($2) > 0 && $4 ~ /^[0-9]/) print $2 ":" $4
+        }
+    ' "$1"
+}
+
+# Function: parse_gemfile
+# Args: $1 = path to a Ruby Gemfile
+# Output: normalized name:version lines for `gem "name", "<req>"` declarations.
+#         Single quotes are normalized to double quotes first; requirement
+#         operators are stripped best-effort. Gems with no pinned version are
+#         skipped (Gemfile.lock is the authoritative source).
+parse_gemfile() {
+    tr "'" '"' < "$1" | awk '
+        /^[[:space:]]*gem[[:space:]]+"/ {
+            n=$0; sub(/^[[:space:]]*gem[[:space:]]+"/, "", n); sub(/".*/, "", n)
+            rest=$0; sub(/^[[:space:]]*gem[[:space:]]+"[^"]*"/, "", rest)
+            v=""
+            if (rest ~ /"/) { v=rest; sub(/^[^"]*"/, "", v); sub(/".*/, "", v); gsub(/[~><=, ]/, "", v) }
+            if (length(n) > 0 && v ~ /^[0-9]/) print n ":" v
+        }
+    '
+}
+
+# Function: parse_gemfile_lock
+# Args: $1 = path to a Gemfile.lock
+# Output: normalized name:version lines (resolved versions — authoritative).
+#         The GEM specs section lists `    name (1.2.3)`; transitive dependency
+#         constraint lines (`name (>= 1.0)`, `name (~> 2.0)`) open the paren with
+#         an operator, not a digit, so the `\([0-9]` anchor excludes them.
+parse_gemfile_lock() {
+    awk '
+        /^[[:space:]]+[A-Za-z0-9_.-]+ \([0-9]/ {
+            n=$1; v=$2; gsub(/[()]/, "", v)
+            if (length(n) > 0 && v ~ /^[0-9]/) print n ":" v
+        }
+    ' "$1"
+}
+
 # Function: check_composer_packages
 # Purpose: Scan Composer (PHP / Packagist) manifests + lockfiles for compromised
 #          packages. Mirrors check_pypi_packages. Also always populates
@@ -1988,7 +2188,7 @@ check_composer_packages() {
     awk -F: '
         /^[[:space:]]*#/ || NF < 3 { next }
         $1 == "composer" { print $2":"$3 }
-    ' "$SCRIPT_DIR/compromised-packages.txt" | LC_ALL=C sort > "$TEMP_DIR/composer_compromised_lookup.txt"
+    ' "$COMPROMISED_PACKAGES_FILE" | LC_ALL=C sort > "$TEMP_DIR/composer_compromised_lookup.txt"
 
     if [[ -s "$TEMP_DIR/composer_compromised_lookup.txt" && -s "$TEMP_DIR/composer_all_deps.txt" ]]; then
         cut -d'|' -f2 "$TEMP_DIR/composer_all_deps.txt" | LC_ALL=C sort | uniq > "$TEMP_DIR/composer_deps_only.txt"
@@ -2037,7 +2237,7 @@ check_crates_packages() {
     awk -F: '
         /^[[:space:]]*#/ || NF < 3 { next }
         $1 == "crates" { print $2":"$3 }
-    ' "$SCRIPT_DIR/compromised-packages.txt" | LC_ALL=C sort > "$TEMP_DIR/crates_compromised_lookup.txt"
+    ' "$COMPROMISED_PACKAGES_FILE" | LC_ALL=C sort > "$TEMP_DIR/crates_compromised_lookup.txt"
 
     if [[ -s "$TEMP_DIR/crates_compromised_lookup.txt" && -s "$TEMP_DIR/crates_all_deps.txt" ]]; then
         cut -d'|' -f2 "$TEMP_DIR/crates_all_deps.txt" | LC_ALL=C sort | uniq > "$TEMP_DIR/crates_deps_only.txt"
@@ -2048,6 +2248,163 @@ check_crates_packages() {
                     [[ -n "$file_path" ]] && echo "$file_path:[Crates] ${dep/:/@}" >> "$TEMP_DIR/compromised_found.txt"
                 done
             done < "$TEMP_DIR/crates_matched_deps.txt"
+        fi
+    fi
+}
+
+# Function: check_go_packages
+# Purpose: Scan Go module manifests (go.mod) + lockfiles (go.sum) for compromised
+#          modules. Mirrors check_crates_packages. Module versions keep their
+#          canonical leading "v" both here and in the go: entries of the database,
+#          so the exact-match comparison is apples-to-apples.
+# Args: $1 = scan_dir
+# Modifies: $TEMP_DIR/compromised_found.txt, $TEMP_DIR/go_all_deps.txt
+check_go_packages() {
+    local scan_dir=$1
+    local manifest_count lockfile_count
+    manifest_count=$(wc -l < "$TEMP_DIR/go_manifests.txt" 2>/dev/null | tr -d ' ' || echo "0")
+    lockfile_count=$(wc -l < "$TEMP_DIR/go_lockfiles.txt" 2>/dev/null | tr -d ' ' || echo "0")
+    [[ "$manifest_count" == "0" && "$lockfile_count" == "0" ]] && return 0
+
+    print_status "$BLUE" "   Checking $manifest_count go.mod manifest(s) and $lockfile_count go.sum lockfile(s)..."
+
+    : > "$TEMP_DIR/go_all_deps.txt"
+    local file
+    while IFS= read -r file; do
+        [[ -z "$file" || ! -f "$file" ]] && continue
+        parse_go_mod "$file" | while IFS= read -r dep; do
+            [[ -n "$dep" ]] && echo "$file|$dep"
+        done >> "$TEMP_DIR/go_all_deps.txt"
+    done < "$TEMP_DIR/go_manifests.txt"
+    while IFS= read -r file; do
+        [[ -z "$file" || ! -f "$file" ]] && continue
+        parse_go_sum "$file" | while IFS= read -r dep; do
+            [[ -n "$dep" ]] && echo "$file|$dep"
+        done >> "$TEMP_DIR/go_all_deps.txt"
+    done < "$TEMP_DIR/go_lockfiles.txt"
+
+    # go.sum lists each module twice (plain + "/go.mod"); both normalize to the
+    # same file|module:version, so collapse exact duplicates for cleaner output.
+    if [[ -s "$TEMP_DIR/go_all_deps.txt" ]]; then
+        sort -u "$TEMP_DIR/go_all_deps.txt" -o "$TEMP_DIR/go_all_deps.txt"
+    fi
+
+    awk -F: '
+        /^[[:space:]]*#/ || NF < 3 { next }
+        $1 == "go" { print $2":"$3 }
+    ' "$COMPROMISED_PACKAGES_FILE" | LC_ALL=C sort > "$TEMP_DIR/go_compromised_lookup.txt"
+
+    if [[ -s "$TEMP_DIR/go_compromised_lookup.txt" && -s "$TEMP_DIR/go_all_deps.txt" ]]; then
+        cut -d'|' -f2 "$TEMP_DIR/go_all_deps.txt" | LC_ALL=C sort | uniq > "$TEMP_DIR/go_deps_only.txt"
+        LC_ALL=C comm -12 "$TEMP_DIR/go_compromised_lookup.txt" "$TEMP_DIR/go_deps_only.txt" > "$TEMP_DIR/go_matched_deps.txt"
+        if [[ -s "$TEMP_DIR/go_matched_deps.txt" ]]; then
+            while IFS= read -r matched_dep; do
+                { grep -F "|$matched_dep" "$TEMP_DIR/go_all_deps.txt" || true; } | while IFS='|' read -r file_path dep; do
+                    [[ -n "$file_path" ]] && echo "$file_path:[Go] ${dep/:/@}" >> "$TEMP_DIR/compromised_found.txt"
+                done
+            done < "$TEMP_DIR/go_matched_deps.txt"
+        fi
+    fi
+}
+
+# Function: check_hex_packages
+# Purpose: Scan Elixir / Hex.pm manifests (mix.exs) + lockfiles (mix.lock) for
+#          compromised packages. Mirrors check_crates_packages.
+# Args: $1 = scan_dir
+# Modifies: $TEMP_DIR/compromised_found.txt, $TEMP_DIR/hex_all_deps.txt
+check_hex_packages() {
+    local scan_dir=$1
+    local manifest_count lockfile_count
+    manifest_count=$(wc -l < "$TEMP_DIR/hex_manifests.txt" 2>/dev/null | tr -d ' ' || echo "0")
+    lockfile_count=$(wc -l < "$TEMP_DIR/hex_lockfiles.txt" 2>/dev/null | tr -d ' ' || echo "0")
+    [[ "$manifest_count" == "0" && "$lockfile_count" == "0" ]] && return 0
+
+    print_status "$BLUE" "   Checking $manifest_count mix.exs manifest(s) and $lockfile_count mix.lock lockfile(s)..."
+
+    : > "$TEMP_DIR/hex_all_deps.txt"
+    local file
+    while IFS= read -r file; do
+        [[ -z "$file" || ! -f "$file" ]] && continue
+        parse_mix_exs "$file" | while IFS= read -r dep; do
+            [[ -n "$dep" ]] && echo "$file|$dep"
+        done >> "$TEMP_DIR/hex_all_deps.txt"
+    done < "$TEMP_DIR/hex_manifests.txt"
+    while IFS= read -r file; do
+        [[ -z "$file" || ! -f "$file" ]] && continue
+        parse_mix_lock "$file" | while IFS= read -r dep; do
+            [[ -n "$dep" ]] && echo "$file|$dep"
+        done >> "$TEMP_DIR/hex_all_deps.txt"
+    done < "$TEMP_DIR/hex_lockfiles.txt"
+
+    if [[ -s "$TEMP_DIR/hex_all_deps.txt" ]]; then
+        sort -u "$TEMP_DIR/hex_all_deps.txt" -o "$TEMP_DIR/hex_all_deps.txt"
+    fi
+
+    awk -F: '
+        /^[[:space:]]*#/ || NF < 3 { next }
+        $1 == "hex" { print $2":"$3 }
+    ' "$COMPROMISED_PACKAGES_FILE" | LC_ALL=C sort > "$TEMP_DIR/hex_compromised_lookup.txt"
+
+    if [[ -s "$TEMP_DIR/hex_compromised_lookup.txt" && -s "$TEMP_DIR/hex_all_deps.txt" ]]; then
+        cut -d'|' -f2 "$TEMP_DIR/hex_all_deps.txt" | LC_ALL=C sort | uniq > "$TEMP_DIR/hex_deps_only.txt"
+        LC_ALL=C comm -12 "$TEMP_DIR/hex_compromised_lookup.txt" "$TEMP_DIR/hex_deps_only.txt" > "$TEMP_DIR/hex_matched_deps.txt"
+        if [[ -s "$TEMP_DIR/hex_matched_deps.txt" ]]; then
+            while IFS= read -r matched_dep; do
+                { grep -F "|$matched_dep" "$TEMP_DIR/hex_all_deps.txt" || true; } | while IFS='|' read -r file_path dep; do
+                    [[ -n "$file_path" ]] && echo "$file_path:[Hex] ${dep/:/@}" >> "$TEMP_DIR/compromised_found.txt"
+                done
+            done < "$TEMP_DIR/hex_matched_deps.txt"
+        fi
+    fi
+}
+
+# Function: check_gem_packages
+# Purpose: Scan RubyGems / Bundler manifests (Gemfile) + lockfiles (Gemfile.lock)
+#          for compromised packages. Mirrors check_crates_packages.
+# Args: $1 = scan_dir
+# Modifies: $TEMP_DIR/compromised_found.txt, $TEMP_DIR/gem_all_deps.txt
+check_gem_packages() {
+    local scan_dir=$1
+    local manifest_count lockfile_count
+    manifest_count=$(wc -l < "$TEMP_DIR/gem_manifests.txt" 2>/dev/null | tr -d ' ' || echo "0")
+    lockfile_count=$(wc -l < "$TEMP_DIR/gem_lockfiles.txt" 2>/dev/null | tr -d ' ' || echo "0")
+    [[ "$manifest_count" == "0" && "$lockfile_count" == "0" ]] && return 0
+
+    print_status "$BLUE" "   Checking $manifest_count Gemfile manifest(s) and $lockfile_count Gemfile.lock lockfile(s)..."
+
+    : > "$TEMP_DIR/gem_all_deps.txt"
+    local file
+    while IFS= read -r file; do
+        [[ -z "$file" || ! -f "$file" ]] && continue
+        parse_gemfile "$file" | while IFS= read -r dep; do
+            [[ -n "$dep" ]] && echo "$file|$dep"
+        done >> "$TEMP_DIR/gem_all_deps.txt"
+    done < "$TEMP_DIR/gem_manifests.txt"
+    while IFS= read -r file; do
+        [[ -z "$file" || ! -f "$file" ]] && continue
+        parse_gemfile_lock "$file" | while IFS= read -r dep; do
+            [[ -n "$dep" ]] && echo "$file|$dep"
+        done >> "$TEMP_DIR/gem_all_deps.txt"
+    done < "$TEMP_DIR/gem_lockfiles.txt"
+
+    if [[ -s "$TEMP_DIR/gem_all_deps.txt" ]]; then
+        sort -u "$TEMP_DIR/gem_all_deps.txt" -o "$TEMP_DIR/gem_all_deps.txt"
+    fi
+
+    awk -F: '
+        /^[[:space:]]*#/ || NF < 3 { next }
+        $1 == "gem" { print $2":"$3 }
+    ' "$COMPROMISED_PACKAGES_FILE" | LC_ALL=C sort > "$TEMP_DIR/gem_compromised_lookup.txt"
+
+    if [[ -s "$TEMP_DIR/gem_compromised_lookup.txt" && -s "$TEMP_DIR/gem_all_deps.txt" ]]; then
+        cut -d'|' -f2 "$TEMP_DIR/gem_all_deps.txt" | LC_ALL=C sort | uniq > "$TEMP_DIR/gem_deps_only.txt"
+        LC_ALL=C comm -12 "$TEMP_DIR/gem_compromised_lookup.txt" "$TEMP_DIR/gem_deps_only.txt" > "$TEMP_DIR/gem_matched_deps.txt"
+        if [[ -s "$TEMP_DIR/gem_matched_deps.txt" ]]; then
+            while IFS= read -r matched_dep; do
+                { grep -F "|$matched_dep" "$TEMP_DIR/gem_all_deps.txt" || true; } | while IFS='|' read -r file_path dep; do
+                    [[ -n "$file_path" ]] && echo "$file_path:[Gem] ${dep/:/@}" >> "$TEMP_DIR/compromised_found.txt"
+                done
+            done < "$TEMP_DIR/gem_matched_deps.txt"
         fi
     fi
 }
@@ -3468,25 +3825,40 @@ check_packages() {
     awk -F: '
         /^[[:space:]]*#/ || NF < 2 { next }
         $1 == "npm" && NF >= 3 { print $2":"$3; next }
-        $1 == "pypi" { next }
+        $1 == "pypi" || $1 == "composer" || $1 == "crates" || $1 == "go" || $1 == "hex" || $1 == "gem" { next }
         /^[@a-zA-Z0-9]/ { print $1":"$2 }
-    ' "$SCRIPT_DIR/compromised-packages.txt" | LC_ALL=C sort > "$TEMP_DIR/compromised_lookup.txt"
+    ' "$COMPROMISED_PACKAGES_FILE" | LC_ALL=C sort > "$TEMP_DIR/compromised_lookup.txt"
 
     # Extract all dependencies from all package.json files using parallel xargs + awk
     # Format: file_path|package_name:version
     # Use awk to parse JSON dependencies - portable and fast
     # Use null-delimited input to handle filenames with spaces (issue #92)
+    #
+    # The parser buffers the whole file and "explodes" structural punctuation
+    # ({ } ,) onto their own lines before applying line-oriented logic. This makes
+    # it format-agnostic: a `"dependencies": { "x": "1.0.0", "y": "2.0.0" }` object
+    # written inline on ONE line is parsed exactly like a pretty-printed one. The
+    # previous line-only parser silently extracted ZERO deps from inline/minified
+    # package.json files — a false negative and a trivial evasion vector (issue #148-adjacent).
     tr '\n' '\0' < "$TEMP_DIR/package_files.txt" | \
         xargs -0 -P "$PARALLELISM" -n1 -r awk '
-            /"dependencies":|"devDependencies":/ {flag=1; next}
-            /^[[:space:]]*\}/ {flag=0}
-            flag && /^[[:space:]]*"[^"]+":/ {
-                # Extract "package": "version"
-                gsub(/^[[:space:]]*"/, "")
-                gsub(/":[[:space:]]*"/, ":")
-                gsub(/".*$/, "")
-                if (length($0) > 0 && index($0, ":") > 0) {
-                    print FILENAME "|" $0
+            { buf = buf $0 "\n" }
+            END {
+                # Put every { } and , on its own line so inline objects parse too.
+                gsub(/[{}]/, "\n&\n", buf)
+                gsub(/,/, "\n", buf)
+                n = split(buf, lines, "\n")
+                flag = 0
+                for (i = 1; i <= n; i++) {
+                    line = lines[i]
+                    # Only the dependencies / devDependencies objects (match original scope).
+                    if (line ~ /"(dependencies|devDependencies)"[[:space:]]*:/) { flag = 1; continue }
+                    if (line ~ /^[[:space:]]*\}/) { flag = 0; continue }
+                    if (flag && line ~ /^[[:space:]]*"[^"]+"[[:space:]]*:/) {
+                        name = line; sub(/^[[:space:]]*"/, "", name); sub(/".*$/, "", name)
+                        ver = line; sub(/^[[:space:]]*"[^"]+"[[:space:]]*:[[:space:]]*"/, "", ver); sub(/".*$/, "", ver)
+                        if (length(name) > 0 && length(ver) > 0) print FILENAME "|" name ":" ver
+                    }
                 }
             }
         ' > "$TEMP_DIR/all_deps.txt" 2>/dev/null

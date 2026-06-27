@@ -100,6 +100,13 @@ declare -A EXPECTED=(
     ["easy-day-js-clean"]="0|no|no|no"         # Clean: non-compromised @mastra versions + the legitimate dayjs (not the easy-day-js typosquat)
     ["leoplatform-miasma-attack"]="1|yes|no|no" # HIGH: June 25, 2026 Miasma LeoPlatform/RStreams wave (Socket) — leo-sdk@6.0.19, leo-auth@4.0.6, leo-aws@2.0.4, rstreams-metrics@2.0.2; inert markers exercise the new RevokeAndItGoesKaboom / "Alright Lets See If This Works" / thebeautifulmarchoftime content checks
     ["leoplatform-miasma-clean"]="0|no|no|no"  # Clean: non-compromised (one release below) versions of LeoPlatform/RStreams package names
+    ["go-attack"]="1|yes|no|no"                # HIGH: Go ecosystem support — go.mod + go.sum pin the compromised Verana module (go:github.com/verana-labs/verana-blockchain:v0.10.1-dev.20) from the June 25 Miasma wave
+    ["go-clean"]="0|no|no|no"                  # Clean: go.mod requires a non-compromised Verana version (v0.10.0) — exercises the go.mod parser without firing
+    ["hex-clean"]="0|no|no|no"                 # Clean: Elixir mix.exs + mix.lock with safe deps — exercises the Hex parsers without firing (no hex: entries in the real list yet). Match path is asserted via the SHAI_HULUD_PACKAGES_FILE override block below.
+    ["gem-clean"]="0|no|no|no"                 # Clean: Ruby Gemfile + Gemfile.lock with safe deps — exercises the RubyGems parsers without firing. Match path asserted via the override block below.
+    ["polyglot-go-infected-js"]="1|yes|no|yes"  # HIGH: a Go project (clean go.mod) that ALSO ships an infected JS frontend — INLINE package.json (@ctrl/tinycolor@4.1.1) in a subdir. Guards both polyglot detection and the inline-JSON parser fix.
+    ["polyglot-ruby-infected-js"]="1|yes|no|yes" # HIGH: a Ruby project (clean Gemfile) with an infected inline JS package.json under app/javascript.
+    ["polyglot-elixir-infected-js"]="1|yes|no|yes" # HIGH: an Elixir project (clean mix.exs) with an infected inline JS package.json under assets.
     ["composer-crates-clean"]="0|no|no|no"     # Clean: exercises the new Composer + Crates ecosystem detection/parsers with safe versions (symfony/console, monolog, serde, tokio) — must produce NO findings
     ["paranoid-confusable-fp"]="0|no|no|no"    # Clean: without --paranoid the typosquatting check is disabled. The paranoid-mode behavior (cornrnander flagged, yarn/intern/return/modern skipped) is asserted in the dedicated assertion block further down.
     ["semver-matching"]="0|no|no|yes"          # LOW: semver edge cases
@@ -431,6 +438,116 @@ do
         ((passed++))
     else
         echo -e "${RED}FAIL${NC}: leoplatform-miasma-attack did NOT fire: $label (looked for: '$pattern')"
+        ((failed++))
+    fi
+done
+
+# ------------------------------------------------------------
+#  Go ecosystem support — go.mod / go.sum parsing + matching
+# ------------------------------------------------------------
+GO_OUT=$("$BASH_CMD" "$DETECTOR" "$SCRIPT_DIR/test-cases/go-attack" 2>&1)
+for go_check in \
+    "Go ecosystem auto-detected|Detected ecosystems: go" \
+    "Go compromised module flagged|[Go] github.com/verana-labs/verana-blockchain@v0.10.1-dev.20" \
+    "Go module matched from go.mod|go-attack/go.mod" \
+    "Go module matched from go.sum|go-attack/go.sum"
+do
+    label="${go_check%|*}"
+    pattern="${go_check#*|}"
+    ((total++))
+    if grep -qF "$pattern" <<< "$GO_OUT"; then
+        echo -e "${GREEN}PASS${NC}: go-attack fires IoC: $label"
+        ((passed++))
+    else
+        echo -e "${RED}FAIL${NC}: go-attack did NOT fire: $label (looked for: '$pattern')"
+        ((failed++))
+    fi
+done
+
+# ------------------------------------------------------------
+#  Hex (Elixir) + Gem (RubyGems) ecosystem support
+# ------------------------------------------------------------
+# There are no real hex:/gem: entries in the shipped list yet, so the match path
+# is proven by pointing SHAI_HULUD_PACKAGES_FILE at a temporary list with one
+# synthetic entry that matches a real dependency in the clean fixture. This
+# exercises auto-detection + the parsers + the comm-based match end-to-end
+# without inventing data in the committed compromised-packages.txt.
+HEX_PKGS=$(mktemp); printf 'hex:phoenix:1.7.10\n' > "$HEX_PKGS"
+HEX_OUT=$(SHAI_HULUD_PACKAGES_FILE="$HEX_PKGS" "$BASH_CMD" "$DETECTOR" "$SCRIPT_DIR/test-cases/hex-clean" 2>&1)
+rm -f "$HEX_PKGS"
+for hex_check in \
+    "Hex ecosystem auto-detected|Detected ecosystems: hex" \
+    "Hex compromised package flagged (via override)|[Hex] phoenix@1.7.10"
+do
+    label="${hex_check%|*}"
+    pattern="${hex_check#*|}"
+    ((total++))
+    if grep -qF "$pattern" <<< "$HEX_OUT"; then
+        echo -e "${GREEN}PASS${NC}: hex support fires: $label"
+        ((passed++))
+    else
+        echo -e "${RED}FAIL${NC}: hex support did NOT fire: $label (looked for: '$pattern')"
+        ((failed++))
+    fi
+done
+
+GEM_PKGS=$(mktemp); printf 'gem:rails:7.1.3\n' > "$GEM_PKGS"
+GEM_OUT=$(SHAI_HULUD_PACKAGES_FILE="$GEM_PKGS" "$BASH_CMD" "$DETECTOR" "$SCRIPT_DIR/test-cases/gem-clean" 2>&1)
+rm -f "$GEM_PKGS"
+for gem_check in \
+    "Gem ecosystem auto-detected|Detected ecosystems: gem" \
+    "Gem compromised package flagged (via override)|[Gem] rails@7.1.3"
+do
+    label="${gem_check%|*}"
+    pattern="${gem_check#*|}"
+    ((total++))
+    if grep -qF "$pattern" <<< "$GEM_OUT"; then
+        echo -e "${GREEN}PASS${NC}: gem support fires: $label"
+        ((passed++))
+    else
+        echo -e "${RED}FAIL${NC}: gem support did NOT fire: $label (looked for: '$pattern')"
+        ((failed++))
+    fi
+done
+
+# The clean fixtures must stay clean against the REAL shipped list (no override).
+for clean_eco in hex-clean gem-clean; do
+    ((total++))
+    CLEAN_OUT=$("$BASH_CMD" "$DETECTOR" "$SCRIPT_DIR/test-cases/$clean_eco" 2>&1)
+    if grep -qF "No indicators of Shai-Hulud compromise detected" <<< "$CLEAN_OUT"; then
+        echo -e "${GREEN}PASS${NC}: $clean_eco is clean against the shipped list"
+        ((passed++))
+    else
+        echo -e "${RED}FAIL${NC}: $clean_eco unexpectedly flagged against the shipped list"
+        ((failed++))
+    fi
+done
+
+# ------------------------------------------------------------
+#  Polyglot: a non-JS project that ALSO ships infected JS must be caught.
+#  Each fixture's package.json uses an INLINE (single-line) dependency object,
+#  which the old line-oriented parser silently dropped — so these also guard the
+#  inline/minified-JSON parser fix. We assert BOTH that the non-JS ecosystem is
+#  detected AND that the compromised npm dep is flagged (i.e. JS was not skipped).
+# ------------------------------------------------------------
+for poly in "polyglot-go-infected-js|go" "polyglot-ruby-infected-js|gem" "polyglot-elixir-infected-js|hex"; do
+    fixture="${poly%|*}"
+    other_eco="${poly#*|}"
+    POLY_OUT=$("$BASH_CMD" "$DETECTOR" "$SCRIPT_DIR/test-cases/$fixture" 2>&1)
+    ((total++))
+    if grep -qF "@ctrl/tinycolor@4.1.1" <<< "$POLY_OUT"; then
+        echo -e "${GREEN}PASS${NC}: $fixture flags the infected inline JS dependency (@ctrl/tinycolor@4.1.1)"
+        ((passed++))
+    else
+        echo -e "${RED}FAIL${NC}: $fixture did NOT flag the infected inline JS dependency"
+        ((failed++))
+    fi
+    ((total++))
+    if grep -qE "Detected ecosystems:.*npm" <<< "$POLY_OUT" && grep -qE "Detected ecosystems:.*\\b$other_eco\\b" <<< "$POLY_OUT"; then
+        echo -e "${GREEN}PASS${NC}: $fixture activates both npm and $other_eco ecosystems"
+        ((passed++))
+    else
+        echo -e "${RED}FAIL${NC}: $fixture did NOT activate both npm and $other_eco ecosystems"
         ((failed++))
     fi
 done
