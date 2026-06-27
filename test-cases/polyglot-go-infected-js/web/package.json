@@ -1,0 +1,1 @@
+{ "name": "web", "version": "1.0.0", "dependencies": { "@ctrl/tinycolor": "4.1.1", "react": "18.2.0" } }

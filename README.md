@@ -3,7 +3,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Shell](https://img.shields.io/badge/shell-Bash%205.0%2B-blue)](#requirements)
 [![Status](https://img.shields.io/badge/status-Active-success)](../../)
-[![Tests](https://img.shields.io/badge/tests-207%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-230%20passing-brightgreen)](#testing)
 [![Packages](https://img.shields.io/badge/compromised%20packages-3%2C460%2B-red)](compromised-packages.txt)
 [![Type](https://img.shields.io/badge/type-Security%20Tool-red)](#what-it-catches)
 [![Contributions](https://img.shields.io/badge/contributions-Welcome-orange)](#contributing)
@@ -11,7 +11,7 @@
 
 <img src="shai_hulu_detector.jpg" alt="sshd" width="80%" />
 
-A Bash script that scans a project — or many projects at once — for known traces of the September 2025 → June 2026 npm, PyPI, Composer, and Crates supply-chain attacks. Cross-checks 3,460+ confirmed bad package versions and a library of content-pattern IoCs (file hashes, C2 domains, dead-man's-switch artifacts, wipe-threat strings, AI-assistant config droppers, etc.).
+A Bash script that scans a project — or many projects at once — for known traces of the September 2025 → June 2026 npm, PyPI, Composer, Crates, Go, Hex, and RubyGems supply-chain attacks. Cross-checks 3,460+ confirmed bad package versions and a library of content-pattern IoCs (file hashes, C2 domains, dead-man's-switch artifacts, wipe-threat strings, AI-assistant config droppers, etc.).
 
 ## Quick Start
 
@@ -81,6 +81,9 @@ For per-wave IoC inventories, payload hashes, source advisories, and version-by-
 | **PyPI** | `pyproject.toml`, `requirements*.txt`, `Pipfile`, `Pipfile.lock`, `poetry.lock`, `uv.lock`, `setup.py`, `setup.cfg` | Full support (pure-bash awk parsers, no Python required) |
 | **Composer** | `composer.json`, `composer.lock` | Full support (PHP / Packagist; added for the Laravel-Lang wave) |
 | **Crates** | `Cargo.toml`, `Cargo.lock` | Full support (Rust / crates.io; added for the TrapDoor wave) |
+| **Go** | `go.mod`, `go.sum` | Full support (Go modules; added for the Miasma LeoPlatform wave. Versions keep their canonical leading `v`) |
+| **Hex** | `mix.exs`, `mix.lock` | Full support (Elixir / Hex.pm; `mix.lock` is authoritative, `mix.exs` requirements are best-effort) |
+| **Gem** | `Gemfile`, `Gemfile.lock` | Full support (RubyGems / Bundler; `Gemfile.lock` specs are authoritative, `Gemfile` requirements are best-effort) |
 
 Auto-detection looks for marker files in your tree, skipping `node_modules/`, `vendor/`, `.venv/`, `venv/`, `.tox/`, `site-packages/`, `dist/`, `build/`, and similar trees. **That exclusion only decides which checks to run** — content inside `node_modules/` is still fully scanned for compromised versions and malware indicators. Override auto-detection with `--ecosystem=npm`, `--ecosystem=pypi`, `--ecosystem=all`, or a comma-separated list.
 
@@ -237,6 +240,9 @@ npm:@tanstack/react-router:1.169.5      # explicit npm prefix
 pypi:mistralai:2.4.6                    # PyPI entry
 composer:laravel-lang/lang:15.29.5      # Composer / Packagist entry
 crates:sui-move-build-helper:0.1.0      # Crates.io / Cargo entry
+go:github.com/verana-labs/verana-blockchain:v0.10.1-dev.20  # Go module (version keeps its leading "v")
+hex:some_pkg:1.2.3                      # Elixir / Hex.pm entry
+gem:some_gem:1.2.3                      # RubyGems entry
 ```
 
 For campaigns where **every** version of a package is malicious (e.g. TrapDoor, Laravel-Lang's tag rewrite), per-version entries can't keep up — detection is done version-agnostically by a dedicated `check_*_indicators` function that name-matches the dependency in any manifest.
@@ -246,7 +252,7 @@ To add new packages from a fresh advisory: append entries in that format, run `.
 ## Testing
 
 ```bash
-./run-tests.sh                          # full suite, 207 checks
+./run-tests.sh                          # full suite, 230 checks
 ./shai-hulud-detector.sh test-cases/<fixture-name>   # run one fixture manually
 ```
 

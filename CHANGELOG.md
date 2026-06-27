@@ -5,6 +5,47 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.13.0] - 2026-06-26
+
+### Fixed
+- **Inline / minified `package.json` dependencies were silently skipped** (false negative + evasion vector): the npm dependency extractor was line-oriented — it only parsed dependencies when the `"dependencies"` / `"devDependencies"` object was pretty-printed with each entry on its own line. A `package.json` written with an inline object (e.g. `"dependencies": { "evil": "1.0.0" }` on one line, a single-dependency object, or a fully minified manifest) yielded **zero** extracted dependencies, so a compromised package there was never flagged and the scan reported clean. This was especially dangerous for **polyglot repos** — a Go / Ruby / Elixir / Rust / PHP project that also ships a JS frontend whose `package.json` happened to be inline would get a green light despite an infected npm dependency. The parser now buffers each file and explodes structural punctuation (`{` `}` `,`) before applying the line logic, so inline and multi-line forms parse identically. Ecosystem auto-detection and the per-ecosystem checkers were already correct; this was purely the JSON dependency parse. (The `package.json` dependency scope is unchanged: `dependencies` + `devDependencies`.)
+
+### Added
+- **Polyglot regression fixtures**: `test-cases/polyglot-go-infected-js/`, `polyglot-ruby-infected-js/`, and `polyglot-elixir-infected-js/` — each a clean non-JS project (`go.mod` / `Gemfile` / `mix.exs`) that also ships an **inline** JS `package.json` (in a subdirectory) pinning a compromised dependency (`@ctrl/tinycolor@4.1.1`, a purely version-matched classic with no content-IoC check, so the assertion exercises the dependency-parse path specifically). New assertion blocks confirm both that the non-JS ecosystem and npm are activated together and that the infected inline dependency is flagged.
+
+### Changed
+- **`shai-hulud-detector.sh`**: rewrote the `check_packages` dependency-extraction awk to be format-agnostic; `SCRIPT_VERSION` 3.12.0 → 3.13.0.
+- **`run-tests.sh`**: registered the three polyglot `EXPECTED` fixtures plus the cross-ecosystem / inline-parse assertion block. Suite: 221 → 230 checks.
+- **`README.md`**: tests badge updated.
+
+## [3.12.0] - 2026-06-26
+
+### Added
+- **Elixir / Hex.pm ecosystem support** (`mix.exs` / `mix.lock`): `parse_mix_exs` reads `{:name, "<req>"}` dependency declarations (stripping `~>`/`>=`/`==` operators best-effort; git/path deps without a version are skipped) and `parse_mix_lock` reads the authoritative resolved versions from the `{:hex, :name, "x.y.z", …}` entries. Matched against `hex:`-prefixed entries in the list; findings report as `[Hex] name@version`.
+- **RubyGems / Bundler ecosystem support** (`Gemfile` / `Gemfile.lock`): `parse_gemfile` reads `gem "name", "<req>"` declarations (single quotes normalized, operators stripped) and `parse_gemfile_lock` reads the authoritative pinned versions from the `GEM`→`specs:` section (constraint lines whose version opens with an operator are excluded). Matched against `gem:`-prefixed entries; findings report as `[Gem] name@version`.
+- Both ecosystems are auto-detected from their marker files (Hex excludes `deps/` and `_build/`; Gem excludes `vendor/`), are selectable via `--ecosystem=hex` / `--ecosystem=gem`, and dispatch through the existing `ECOSYSTEM_CHECK_FUNCTIONS` table. `SUPPORTED_ECOSYSTEMS` is now `npm, pypi, composer, crates, go, hex, gem`. No `hex:`/`gem:` entries ship yet (no documented Hex/Gem waves) — the infrastructure is in place for when one lands, exactly like Crates today.
+- **Test fixtures** (inert): `test-cases/hex-clean/` (`mix.exs` + `mix.lock`) and `test-cases/gem-clean/` (`Gemfile` + `Gemfile.lock`) with realistic safe dependencies. New assertion blocks verify Hex/Gem auto-detection and prove the full match path end-to-end by pointing `SHAI_HULUD_PACKAGES_FILE` at a temporary list with one synthetic entry matching a fixture dependency — so the matcher is exercised without inventing data in the committed list — and confirm both fixtures stay clean against the shipped list.
+
+### Fixed
+- **`SHAI_HULUD_PACKAGES_FILE` override now applies to every ecosystem**: the per-ecosystem checkers (`check_pypi/composer/crates/go/hex/gem_packages`) and the npm join-table builder previously read the bundled `compromised-packages.txt` directly, so the 3.9.0 override only affected the npm in-memory map. The resolved path is now published once as `COMPROMISED_PACKAGES_FILE` (set by `load_compromised_packages`, defaulting to the bundled file) and all lookups read it. The npm join-table awk also now skips `composer:`/`crates:`/`go:`/`hex:`/`gem:` prefixed lines (previously only `pypi:`), so prefixed entries no longer leak in as inert junk lookup rows.
+
+### Changed
+- **`shai-hulud-detector.sh`**: added `parse_mix_exs`, `parse_mix_lock`, `parse_gemfile`, `parse_gemfile_lock`, `check_hex_packages`, `check_gem_packages`; registered `hex`/`gem` in `ECOSYSTEM_MARKERS`, `ECOSYSTEM_EXCLUDE_PATHS`, `SUPPORTED_ECOSYSTEMS`, `ECOSYSTEM_CHECK_FUNCTIONS`; taught `load_compromised_packages` the `hex:`/`gem:` prefixes (with counts in the load summary); added `mix.exs`/`mix.lock`/`Gemfile`/`Gemfile.lock` to the file-collector `find` allow-list and the per-ecosystem collection; `SCRIPT_VERSION` 3.11.0 → 3.12.0. Expanded the "add an ecosystem" recipe comment to call out the `find` allow-list step and the `$COMPROMISED_PACKAGES_FILE` convention.
+- **`README.md`**: new **Hex** and **Gem** rows in the Ecosystems table; added them to the intro and the prefix-format examples; tests badge updated.
+- **`run-tests.sh`**: registered `hex-clean`/`gem-clean` `EXPECTED` fixtures plus Hex/Gem auto-detect + override-match + clean-against-shipped-list assertion blocks. Suite: 213 → 221 checks.
+
+## [3.11.0] - 2026-06-26
+
+### Added
+- **Go module ecosystem support** (`go.mod` / `go.sum`): the detector now parses Go modules and matches required/resolved module versions against `go:`-prefixed entries in `compromised-packages.txt`. `parse_go_mod` handles both the single-line (`require example.com/m v1.2.3`) and block (`require ( … )`) forms and ignores `// indirect` comments; `parse_go_sum` reads the resolved set, stripping the `/go.mod` suffix that go.sum appends to one of each module's two lines. Go versions keep their canonical leading `v` (e.g. `v1.2.3`, `v0.0.0-<pseudo>`, `v0.10.1-dev.20`) in both the parser output and the database so matching is exact. Auto-detected via `go.mod`/`go.sum` markers (excluding `vendor/`), selectable with `--ecosystem=go`, and dispatched through the existing `ECOSYSTEM_CHECK_FUNCTIONS` table. `SUPPORTED_ECOSYSTEMS` is now `npm, pypi, composer, crates, go`.
+- **First Go entry**: `go:github.com/verana-labs/verana-blockchain:v0.10.1-dev.20` — the Cosmos-SDK Layer-1 module named in the June 25 Miasma LeoPlatform/RStreams disclosure (Socket), previously unmatchable for lack of a Go parser.
+- **Test fixtures** (inert): `test-cases/go-attack/` (a `go.mod` requiring the compromised Verana module plus a `go.sum` pinning it — exercises both parsers) and `test-cases/go-clean/` (a `go.mod` requiring a non-compromised `v0.10.0`). A new assertion block in `run-tests.sh` verifies Go auto-detection, the `[Go]` compromised-module finding, and that the match fires from both `go.mod` and `go.sum`.
+
+### Changed
+- **`shai-hulud-detector.sh`**: added `parse_go_mod`, `parse_go_sum`, and `check_go_packages`; registered the `go` ecosystem in `ECOSYSTEM_MARKERS`, `ECOSYSTEM_EXCLUDE_PATHS`, `SUPPORTED_ECOSYSTEMS`, and `ECOSYSTEM_CHECK_FUNCTIONS`; taught `load_compromised_packages` the `go:` prefix (with a `go:` count in the load summary); added `go.mod`/`go.sum` to the file-collector `find` allow-list and to the per-ecosystem manifest/lockfile collection; `SCRIPT_VERSION` 3.10.0 → 3.11.0.
+- **`README.md`**: new **Go** row in the Ecosystems table; added Go to the intro's ecosystem list; tests badge updated.
+- **`run-tests.sh`**: registered `go-attack`/`go-clean` `EXPECTED` fixtures plus a Go content/parsing assertion block. Suite: 207 → 213 checks.
+
 ## [3.10.0] - 2026-06-26
 
 ### Added

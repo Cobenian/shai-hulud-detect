@@ -3962,3 +3962,6 @@ prism-silq:1.0.1
 serverless-convention:2.0.4
 serverless-leo:3.0.14
 solo-nav:1.0.1
+# Go module from the same June 25 wave (Socket): the Verana Blockchain Cosmos
+# SDK Layer-1 project. Versions keep the canonical leading "v" (go.mod/go.sum form).
+go:github.com/verana-labs/verana-blockchain:v0.10.1-dev.20
