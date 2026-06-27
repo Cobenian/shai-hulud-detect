@@ -96,6 +96,10 @@ declare -A EXPECTED=(
     ["digit-name-package-attack"]="1|yes|no|no" # HIGH: regression — npm names may start with a digit (02-echo@0.0.7). Loader regex + package.json lookup table must not silently drop digit-leading names
     ["ironworm-attack"]="1|yes|no|no"          # HIGH: June 3, 2026 IronWorm (JFrog) — Rust infostealer via 37 asteroiddao npm packages (weavedb-sdk@0.45.3, arnext@0.1.5, zkjson@0.8.5, wao@0.41.2, cwao@0.5.6) + leaked operator wallet 0x7e28...a4d6
     ["ironworm-clean"]="0|no|no|no"            # Clean: non-compromised versions of IronWorm-targeted package names
+    ["easy-day-js-attack"]="1|yes|no|no"       # HIGH: June 17, 2026 easy-day-js / Mastra AI wave (BlueNoroff) — @mastra/core@1.42.1, @mastra/memory@1.20.4, easy-day-js@1.11.22; inert markers exercise C2 IP + payload-path + postinstall-hook content checks
+    ["easy-day-js-clean"]="0|no|no|no"         # Clean: non-compromised @mastra versions + the legitimate dayjs (not the easy-day-js typosquat)
+    ["leoplatform-miasma-attack"]="1|yes|no|no" # HIGH: June 25, 2026 Miasma LeoPlatform/RStreams wave (Socket) — leo-sdk@6.0.19, leo-auth@4.0.6, leo-aws@2.0.4, rstreams-metrics@2.0.2; inert markers exercise the new RevokeAndItGoesKaboom / "Alright Lets See If This Works" / thebeautifulmarchoftime content checks
+    ["leoplatform-miasma-clean"]="0|no|no|no"  # Clean: non-compromised (one release below) versions of LeoPlatform/RStreams package names
     ["composer-crates-clean"]="0|no|no|no"     # Clean: exercises the new Composer + Crates ecosystem detection/parsers with safe versions (symfony/console, monolog, serde, tokio) — must produce NO findings
     ["paranoid-confusable-fp"]="0|no|no|no"    # Clean: without --paranoid the typosquatting check is disabled. The paranoid-mode behavior (cornrnander flagged, yarn/intern/return/modern skipped) is asserted in the dedicated assertion block further down.
     ["semver-matching"]="0|no|no|yes"          # LOW: semver edge cases
@@ -382,6 +386,51 @@ do
         ((passed++))
     else
         echo -e "${RED}FAIL${NC}: ironworm-attack did NOT fire: $label (looked for: '$pattern')"
+        ((failed++))
+    fi
+done
+
+# ------------------------------------------------------------
+#  June 17, 2026 easy-day-js / Mastra AI content-IoC assertions
+# ------------------------------------------------------------
+EASYDAYJS_OUT=$("$BASH_CMD" "$DETECTOR" "$SCRIPT_DIR/test-cases/easy-day-js-attack" 2>&1)
+for edj_check in \
+    "easy-day-js compromised npm version|@mastra/core@1.42.1" \
+    "easy-day-js malicious dependency reference|Reason: easy-day-js malicious dependency reference" \
+    "easy-day-js C2 IP address|Reason: easy-day-js C2 IP address" \
+    "easy-day-js C2 payload path|Reason: easy-day-js C2 payload path (/update/49890878)" \
+    "easy-day-js postinstall dropper hook|Reason: easy-day-js postinstall dropper hook"
+do
+    label="${edj_check%|*}"
+    pattern="${edj_check#*|}"
+    ((total++))
+    if grep -qF "$pattern" <<< "$EASYDAYJS_OUT"; then
+        echo -e "${GREEN}PASS${NC}: easy-day-js-attack fires IoC: $label"
+        ((passed++))
+    else
+        echo -e "${RED}FAIL${NC}: easy-day-js-attack did NOT fire: $label (looked for: '$pattern')"
+        ((failed++))
+    fi
+done
+
+# ------------------------------------------------------------
+#  June 25, 2026 Miasma LeoPlatform/RStreams content-IoC assertions
+# ------------------------------------------------------------
+LEOPLATFORM_OUT=$("$BASH_CMD" "$DETECTOR" "$SCRIPT_DIR/test-cases/leoplatform-miasma-attack" 2>&1)
+for lp_check in \
+    "LeoPlatform compromised npm version|leo-sdk@6.0.19" \
+    "LeoPlatform marker RevokeAndItGoesKaboom|Reason: Miasma LeoPlatform/RStreams wave marker (RevokeAndItGoesKaboom)" \
+    "LeoPlatform marker 'Alright Lets See If This Works'|Reason: Miasma LeoPlatform/RStreams wave marker (Alright Lets See If This Works)" \
+    "LeoPlatform marker thebeautifulmarchoftime|Reason: Miasma LeoPlatform/RStreams wave marker (thebeautifulmarchoftime)"
+do
+    label="${lp_check%|*}"
+    pattern="${lp_check#*|}"
+    ((total++))
+    if grep -qF "$pattern" <<< "$LEOPLATFORM_OUT"; then
+        echo -e "${GREEN}PASS${NC}: leoplatform-miasma-attack fires IoC: $label"
+        ((passed++))
+    else
+        echo -e "${RED}FAIL${NC}: leoplatform-miasma-attack did NOT fire: $label (looked for: '$pattern')"
         ((failed++))
     fi
 done

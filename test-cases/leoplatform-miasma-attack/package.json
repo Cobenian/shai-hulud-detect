@@ -1,0 +1,12 @@
+{
+  "name": "leoplatform-miasma-attack-test",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Test fixture for the June 25, 2026 Miasma 'Mini Shai-Hulud' LeoPlatform / RStreams npm wave (Socket disclosure). Pins confirmed compromised versions so the standard npm package-version check fires HIGH; the inert ioc_inert.js carries the new campaign marker strings.",
+  "dependencies": {
+    "leo-sdk": "6.0.19",
+    "leo-auth": "4.0.6",
+    "leo-aws": "2.0.4",
+    "rstreams-metrics": "2.0.2"
+  }
+}
