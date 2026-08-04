@@ -89,75 +89,81 @@ create_temp_dir() {
         exit 1
     }
 
-    # Create findings files
-    touch "$TEMP_DIR/workflow_files.txt"
-    touch "$TEMP_DIR/malicious_hashes.txt"
-    touch "$TEMP_DIR/compromised_found.txt"
-    touch "$TEMP_DIR/suspicious_found.txt"
-    touch "$TEMP_DIR/suspicious_content.txt"
-    touch "$TEMP_DIR/crypto_patterns.txt"
-    touch "$TEMP_DIR/git_branches.txt"
-    touch "$TEMP_DIR/postinstall_hooks.txt"
-    touch "$TEMP_DIR/trufflehog_activity.txt"
-    touch "$TEMP_DIR/shai_hulud_repos.txt"
-    touch "$TEMP_DIR/namespace_warnings.txt"
-    touch "$TEMP_DIR/low_risk_findings.txt"
-    touch "$TEMP_DIR/integrity_issues.txt"
-    touch "$TEMP_DIR/typosquatting_warnings.txt"
-    touch "$TEMP_DIR/network_exfiltration_warnings.txt"
-    touch "$TEMP_DIR/lockfile_safe_versions.txt"
-    touch "$TEMP_DIR/bun_setup_files.txt"
-    touch "$TEMP_DIR/bun_environment_files.txt"
-    touch "$TEMP_DIR/new_workflow_files.txt"
-    touch "$TEMP_DIR/github_sha1hulud_runners.txt"
-    touch "$TEMP_DIR/preinstall_bun_patterns.txt"
-    touch "$TEMP_DIR/malicious_repo_descriptions.txt"
-    touch "$TEMP_DIR/actions_secrets_files.txt"
-    touch "$TEMP_DIR/obfuscated_exfil_files.txt"
-    touch "$TEMP_DIR/discussion_workflows.txt"
-    touch "$TEMP_DIR/sandworm_mode_workflows.txt"
-    touch "$TEMP_DIR/axios_attack_indicators.txt"
-    touch "$TEMP_DIR/mini_shai_hulud_indicators.txt"
-    touch "$TEMP_DIR/mini_shai_hulud_host_artifacts.txt"
-    touch "$TEMP_DIR/megalodon_indicators.txt"
-    touch "$TEMP_DIR/web3_mcp_indicators.txt"
-    touch "$TEMP_DIR/polymarket_indicators.txt"
-    touch "$TEMP_DIR/sl4x0_indicators.txt"
-    touch "$TEMP_DIR/art_template_indicators.txt"
-    touch "$TEMP_DIR/durabletask_indicators.txt"
-    touch "$TEMP_DIR/hades_miasma_indicators.txt"
-    touch "$TEMP_DIR/easy_day_js_indicators.txt"
-    touch "$TEMP_DIR/keyv_indicators.txt"
-    touch "$TEMP_DIR/trapdoor_indicators.txt"
-    touch "$TEMP_DIR/laravel_lang_indicators.txt"
-    touch "$TEMP_DIR/node_ipc_indicators.txt"
-    touch "$TEMP_DIR/bitwarden_indicators.txt"
-    touch "$TEMP_DIR/nx_console_indicators.txt"
-    touch "$TEMP_DIR/ai_assistant_dropper.txt"
-    touch "$TEMP_DIR/pypi_manifests.txt"
-    touch "$TEMP_DIR/pypi_lockfiles.txt"
-    touch "$TEMP_DIR/pypi_deps_normalized.txt"
-    touch "$TEMP_DIR/pypi_compromised_lookup.txt"
-    touch "$TEMP_DIR/pypi_matched_deps.txt"
-    touch "$TEMP_DIR/composer_manifests.txt"
-    touch "$TEMP_DIR/composer_lockfiles.txt"
-    touch "$TEMP_DIR/composer_all_deps.txt"
-    touch "$TEMP_DIR/crates_manifests.txt"
-    touch "$TEMP_DIR/crates_lockfiles.txt"
-    touch "$TEMP_DIR/crates_all_deps.txt"
-    touch "$TEMP_DIR/go_manifests.txt"
-    touch "$TEMP_DIR/go_lockfiles.txt"
-    touch "$TEMP_DIR/go_all_deps.txt"
-    touch "$TEMP_DIR/hex_manifests.txt"
-    touch "$TEMP_DIR/hex_lockfiles.txt"
-    touch "$TEMP_DIR/hex_all_deps.txt"
-    touch "$TEMP_DIR/gem_manifests.txt"
-    touch "$TEMP_DIR/gem_lockfiles.txt"
-    touch "$TEMP_DIR/gem_all_deps.txt"
-    touch "$TEMP_DIR/github_runners.txt"
-    touch "$TEMP_DIR/malicious_hashes.txt"
-    touch "$TEMP_DIR/destructive_patterns.txt"
-    touch "$TEMP_DIR/trufflehog_patterns.txt"
+    # Create findings files. Truncation via bash redirection rather than
+    # `touch` keeps this fork-free: 70 touch(1) spawns cost ~0.2s per scan,
+    # which the test suite pays 237 times over.
+    local findings_file
+    for findings_file in \
+        workflow_files.txt \
+        malicious_hashes.txt \
+        compromised_found.txt \
+        suspicious_found.txt \
+        suspicious_content.txt \
+        crypto_patterns.txt \
+        git_branches.txt \
+        postinstall_hooks.txt \
+        trufflehog_activity.txt \
+        shai_hulud_repos.txt \
+        namespace_warnings.txt \
+        low_risk_findings.txt \
+        integrity_issues.txt \
+        typosquatting_warnings.txt \
+        network_exfiltration_warnings.txt \
+        lockfile_safe_versions.txt \
+        bun_setup_files.txt \
+        bun_environment_files.txt \
+        new_workflow_files.txt \
+        github_sha1hulud_runners.txt \
+        preinstall_bun_patterns.txt \
+        malicious_repo_descriptions.txt \
+        actions_secrets_files.txt \
+        obfuscated_exfil_files.txt \
+        discussion_workflows.txt \
+        sandworm_mode_workflows.txt \
+        axios_attack_indicators.txt \
+        mini_shai_hulud_indicators.txt \
+        mini_shai_hulud_host_artifacts.txt \
+        megalodon_indicators.txt \
+        web3_mcp_indicators.txt \
+        polymarket_indicators.txt \
+        sl4x0_indicators.txt \
+        art_template_indicators.txt \
+        durabletask_indicators.txt \
+        hades_miasma_indicators.txt \
+        easy_day_js_indicators.txt \
+        keyv_indicators.txt \
+        trapdoor_indicators.txt \
+        laravel_lang_indicators.txt \
+        node_ipc_indicators.txt \
+        bitwarden_indicators.txt \
+        nx_console_indicators.txt \
+        ai_assistant_dropper.txt \
+        pypi_manifests.txt \
+        pypi_lockfiles.txt \
+        pypi_deps_normalized.txt \
+        pypi_compromised_lookup.txt \
+        pypi_matched_deps.txt \
+        composer_manifests.txt \
+        composer_lockfiles.txt \
+        composer_all_deps.txt \
+        crates_manifests.txt \
+        crates_lockfiles.txt \
+        crates_all_deps.txt \
+        go_manifests.txt \
+        go_lockfiles.txt \
+        go_all_deps.txt \
+        hex_manifests.txt \
+        hex_lockfiles.txt \
+        hex_all_deps.txt \
+        gem_manifests.txt \
+        gem_lockfiles.txt \
+        gem_all_deps.txt \
+        github_runners.txt \
+        destructive_patterns.txt \
+        trufflehog_patterns.txt
+    do
+        : > "$TEMP_DIR/$findings_file"
+    done
 }
 
 # Function: cleanup_temp_files
@@ -476,110 +482,86 @@ load_compromised_packages() {
     local pypi_count=0 npm_count=0 composer_count=0 crates_count=0 go_count=0 hex_count=0 gem_count=0
 
     if [[ -f "$packages_file" ]]; then
-        local -a raw_lines
-        mapfile -t raw_lines < <(
-            grep -v '^[[:space:]]*#' "$packages_file" | \
-            grep -vE '^[[:space:]]*$' | \
-            tr -d $'\r'
-        )
+        # Parsing runs in awk and the shell only populates the maps. The list is now
+        # 5,000+ entries and doing the classification in bash - seven prefix tests and
+        # a regex per line - cost more than the whole rest of a small scan. awk applies
+        # exactly the same rules and emits "key<TAB>name<TAB>version" rows, where the
+        # name/version fields are filled in only for npm (the ecosystem that also needs
+        # COMPROMISED_VERSIONS_BY_NAME for semver-range checking), plus one trailing
+        # "#<TAB>counts" row. Entries may be ecosystem-prefixed ("pypi:name:version",
+        # "npm:name:version") or bare, in which case they default to npm; the map key
+        # is always "ecosystem:name:version" for unambiguous lookups.
+        # awk's rows go via a temp file rather than a process substitution on purpose:
+        # `read` on a pipe has to consume one byte at a time (it cannot seek back over
+        # a lookahead), which for a list this size costs ~4x what reading a seekable
+        # file does. TEMP_DIR does not exist yet at this point in startup.
+        local parsed_file
+        parsed_file=$(mktemp -t shai-hulud-pkgs-XXXXXX 2>/dev/null || echo "${TMPDIR:-/tmp}/shai-hulud-pkgs-$$")
+        awk '
+            # Split on the last ":" — the shell used ${x%:*} / ${x##*:} for this.
+            function uptolast(s)  { if (match(s, /:[^:]*$/)) return substr(s, 1, RSTART - 1); return s }
+            function afterlast(s) { if (match(s, /:[^:]*$/)) return substr(s, RSTART + 1);   return s }
+            /^[[:space:]]*#/ { next }
+            /^[[:space:]]*$/ { next }
+            {
+                line = $0
+                gsub(/\r/, "", line)
 
-        local line eco pkg_name pkg_version key
-        for line in "${raw_lines[@]}"; do
-            if [[ "$line" == pypi:* ]]; then
-                eco="pypi"
-                pkg_name="${line#pypi:}"
-                pkg_name="${pkg_name%:*}"
-                pkg_version="${line##*:}"
-                # Validate version shape (PyPI versions vary widely; accept any non-empty)
-                [[ -z "$pkg_version" || "$pkg_version" == "$line" ]] && continue
-                key="pypi:$pkg_name:$pkg_version"
-                COMPROMISED_PACKAGES_MAP["$key"]=1
-                ((pypi_count++)) || true
-                ((count++)) || true
-            elif [[ "$line" == npm:* ]]; then
-                eco="npm"
-                pkg_name="${line#npm:}"
-                pkg_name="${pkg_name%:*}"
-                pkg_version="${line##*:}"
-                [[ -z "$pkg_version" || "$pkg_version" == "$line" ]] && continue
-                # Require semver-ish version for npm
-                [[ "$pkg_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]] || continue
-                key="npm:$pkg_name:$pkg_version"
-                COMPROMISED_PACKAGES_MAP["$key"]=1
-                COMPROMISED_VERSIONS_BY_NAME["$pkg_name"]+="$pkg_version "
-                ((npm_count++)) || true
-                ((count++)) || true
-            elif [[ "$line" == composer:* ]]; then
-                # composer:vendor/package:version  (PHP / Packagist)
-                eco="composer"
-                pkg_name="${line#composer:}"
-                pkg_name="${pkg_name%:*}"
-                pkg_version="${line##*:}"
-                [[ -z "$pkg_version" || "$pkg_version" == "$line" ]] && continue
-                key="composer:$pkg_name:$pkg_version"
-                COMPROMISED_PACKAGES_MAP["$key"]=1
-                ((composer_count++)) || true
-                ((count++)) || true
-            elif [[ "$line" == crates:* ]]; then
-                # crates:name:version  (Rust / crates.io)
-                eco="crates"
-                pkg_name="${line#crates:}"
-                pkg_name="${pkg_name%:*}"
-                pkg_version="${line##*:}"
-                [[ -z "$pkg_version" || "$pkg_version" == "$line" ]] && continue
-                key="crates:$pkg_name:$pkg_version"
-                COMPROMISED_PACKAGES_MAP["$key"]=1
-                ((crates_count++)) || true
-                ((count++)) || true
-            elif [[ "$line" == go:* ]]; then
-                # go:module/path:version  (Go modules; version keeps its canonical
-                # leading "v", e.g. go:github.com/foo/bar:v1.2.3). Module paths never
-                # contain ":", and versions never do, so the prefix/name/version split
-                # on ":" is unambiguous.
-                eco="go"
-                pkg_name="${line#go:}"
-                pkg_name="${pkg_name%:*}"
-                pkg_version="${line##*:}"
-                [[ -z "$pkg_version" || "$pkg_version" == "$line" ]] && continue
-                key="go:$pkg_name:$pkg_version"
-                COMPROMISED_PACKAGES_MAP["$key"]=1
-                ((go_count++)) || true
-                ((count++)) || true
-            elif [[ "$line" == hex:* ]]; then
-                # hex:name:version  (Elixir / Hex.pm). Bare semver, no leading "v".
-                eco="hex"
-                pkg_name="${line#hex:}"
-                pkg_name="${pkg_name%:*}"
-                pkg_version="${line##*:}"
-                [[ -z "$pkg_version" || "$pkg_version" == "$line" ]] && continue
-                key="hex:$pkg_name:$pkg_version"
-                COMPROMISED_PACKAGES_MAP["$key"]=1
-                ((hex_count++)) || true
-                ((count++)) || true
-            elif [[ "$line" == gem:* ]]; then
-                # gem:name:version  (RubyGems / Bundler). Bare semver, no leading "v".
-                eco="gem"
-                pkg_name="${line#gem:}"
-                pkg_name="${pkg_name%:*}"
-                pkg_version="${line##*:}"
-                [[ -z "$pkg_version" || "$pkg_version" == "$line" ]] && continue
-                key="gem:$pkg_name:$pkg_version"
-                COMPROMISED_PACKAGES_MAP["$key"]=1
-                ((gem_count++)) || true
-                ((count++)) || true
-            elif [[ "$line" =~ ^[@a-zA-Z0-9][^:]+:[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+                eco = ""
+                if      (line ~ /^pypi:/)     { eco = "pypi";     body = substr(line, 6)  }
+                else if (line ~ /^npm:/)      { eco = "npm";      body = substr(line, 5)  }
+                else if (line ~ /^composer:/) { eco = "composer"; body = substr(line, 10) }
+                else if (line ~ /^crates:/)   { eco = "crates";   body = substr(line, 8)  }
+                else if (line ~ /^go:/)       { eco = "go";       body = substr(line, 4)  }
+                else if (line ~ /^hex:/)      { eco = "hex";      body = substr(line, 5)  }
+                else if (line ~ /^gem:/)      { eco = "gem";      body = substr(line, 5)  }
+
+                if (eco != "") {
+                    pkg = uptolast(body)
+                    ver = afterlast(line)
+                    # Versions vary widely outside npm, so any non-empty value is accepted;
+                    # npm additionally has to look semver-ish.
+                    if (ver == "") next
+                    if (eco == "npm") {
+                        if (ver !~ /^[0-9]+\.[0-9]+\.[0-9]+/) next
+                        print "npm:" pkg ":" ver "\t" pkg "\t" ver
+                    } else {
+                        print eco ":" pkg ":" ver "\t\t"
+                    }
+                    n[eco]++
+                    total++
+                    next
+                }
+
                 # Bare entry -> npm. npm package names may start with a digit
                 # (e.g. "02-echo"); only a leading "." or "_" is disallowed, so the
                 # first-character class includes 0-9 to avoid silently dropping them.
-                pkg_name="${line%:*}"
-                pkg_version="${line#*:}"
-                key="npm:$pkg_name:$pkg_version"
-                COMPROMISED_PACKAGES_MAP["$key"]=1
-                COMPROMISED_VERSIONS_BY_NAME["$pkg_name"]+="$pkg_version "
-                ((npm_count++)) || true
-                ((count++)) || true
+                if (line ~ /^[@a-zA-Z0-9][^:]+:[0-9]+\.[0-9]+\.[0-9]+/) {
+                    pkg = uptolast(line)
+                    ver = substr(line, index(line, ":") + 1)
+                    print "npm:" pkg ":" ver "\t" pkg "\t" ver
+                    n["npm"]++
+                    total++
+                }
+            }
+            END {
+                printf "#\t%d %d %d %d %d %d %d %d\n", total + 0, n["npm"] + 0, n["pypi"] + 0, \
+                    n["composer"] + 0, n["crates"] + 0, n["go"] + 0, n["hex"] + 0, n["gem"] + 0
+            }
+        ' "$packages_file" > "$parsed_file"
+
+        local key name version counts=""
+        while IFS=$'\t' read -r key name version; do
+            if [[ "$key" == "#" ]]; then
+                counts="$name"
+                continue
             fi
-        done
+            COMPROMISED_PACKAGES_MAP["$key"]=1
+            [[ -n "$name" ]] && COMPROMISED_VERSIONS_BY_NAME["$name"]+="$version "
+        done < "$parsed_file"
+        rm -f "$parsed_file"
+
+        read -r count npm_count pypi_count composer_count crates_count go_count hex_count gem_count <<< "${counts:-0 0 0 0 0 0 0 0}"
 
         print_status "$BLUE" "📦 Loaded $count compromised packages from $packages_file (npm: $npm_count, pypi: $pypi_count, composer: $composer_count, crates: $crates_count, go: $go_count, hex: $hex_count, gem: $gem_count)"
     else
@@ -847,30 +829,81 @@ print_status() {
 # =============================================================================
 # These helper functions provide a clean abstraction over grep tools.
 # GREP_TOOL is set by select_grep_tool() based on auto-detection or --use-* flags.
+#
+# PERFORMANCE NOTE: a scan issues well over a hundred of these searches, and on a
+# small tree the process spawns cost far more than the searching does. Two things
+# keep that in check:
+#   1. Paths are passed as argv instead of piped through `tr | xargs -0`, which
+#      removes three forks per call (see _fgrep_run).
+#   2. Callers that test a whole table of literals go through scan_fixed_iocs,
+#      which asks "does ANY of these match?" in one invocation before falling
+#      back to the per-literal searches.
+
+# Maximum bytes of path arguments handed to a single grep invocation. Well under
+# ARG_MAX on every supported platform, so long file lists are split into batches
+# exactly the way xargs used to split them.
+_FGREP_ARG_BUDGET=100000
+
+# Scratch array holding the file list most recently read from stdin by a
+# fast_grep_* helper. Global rather than passed so a large path list is never
+# copied through argv.
+declare -a _FGREP_FILES=()
+
+# Function: _fgrep_read_list
+# Purpose: Slurp the newline-separated file list a fast_grep_* helper was handed
+#          on stdin into _FGREP_FILES.
+# Returns: 0 if the list has at least one entry, 1 if it is empty. An empty list
+#          must never reach the grep tool: with no path arguments git grep/rg
+#          fall through to scanning the CWD (issue #148).
+_fgrep_read_list() {
+    _FGREP_FILES=()
+    mapfile -t _FGREP_FILES
+    (( ${#_FGREP_FILES[@]} > 0 ))
+}
+
+# Function: _fgrep_run
+# Purpose: Run a grep-tool command line over _FGREP_FILES, appending the paths as
+#          argv in ARG_MAX-safe batches.
+# Args: $@ = the tool and its flags (for git grep, ending in "--")
+# Output: Whatever the tool prints; always exits 0 (no match is not an error)
+_fgrep_run() {
+    local -a batch=()
+    local f budget=0
+    for f in "${_FGREP_FILES[@]}"; do
+        [[ -z "$f" ]] && continue
+        batch+=("$f")
+        budget=$(( budget + ${#f} + 1 ))
+        if (( budget >= _FGREP_ARG_BUDGET )); then
+            "$@" "${batch[@]}" 2>/dev/null || true
+            batch=()
+            budget=0
+        fi
+    done
+    if (( ${#batch[@]} > 0 )); then
+        "$@" "${batch[@]}" 2>/dev/null || true
+    fi
+    return 0
+}
 
 # Function: fast_grep_files
 # Purpose: Find files matching a pattern (case-sensitive)
 # Args: $1 = pattern (stdin = list of files to search)
 # Output: Matching filenames to stdout
-# Note: Uses null-delimited input to handle filenames with spaces (issue #92)
+# Note: Paths go through argv, which handles filenames with spaces (issue #92)
 fast_grep_files() {
-    local pattern="$1" input
-    # Read the whole file list first; if empty, return without running the grep
-    # tool. GNU xargs runs the command once on empty input (with no path args),
-    # which makes git grep/rg fall through to scanning the CWD (issue #148).
-    input="$(cat)"
-    [[ -z "$input" ]] && return 0
+    local pattern="$1"
+    _fgrep_read_list || return 0
     case "$GREP_TOOL" in
         git-grep)
             # git grep uses DFA-based regex (no backtracking) - safe for complex patterns
             # --no-index allows searching files not managed by git
-            printf '%s\n' "$input" | tr '\n' '\0' | xargs -0 git grep -l --no-index -E "$pattern" -- 2>/dev/null || true
+            _fgrep_run git grep -l --no-index -E "$pattern" --
             ;;
         ripgrep)
-            printf '%s\n' "$input" | tr '\n' '\0' | xargs -0 rg -l --no-messages -e "$pattern" 2>/dev/null || true
+            _fgrep_run rg -l --no-messages -e "$pattern"
             ;;
         grep)
-            printf '%s\n' "$input" | tr '\n' '\0' | xargs -0 grep -lE "$pattern" 2>/dev/null || true
+            _fgrep_run grep -lE "$pattern"
             ;;
     esac
 }
@@ -879,21 +912,19 @@ fast_grep_files() {
 # Purpose: Find files matching a pattern (case-insensitive)
 # Args: $1 = pattern (stdin = list of files to search)
 # Output: Matching filenames to stdout
-# Note: Uses null-delimited input to handle filenames with spaces (issue #92)
+# Note: Paths go through argv, which handles filenames with spaces (issue #92)
 fast_grep_files_i() {
-    local pattern="$1" input
-    # See fast_grep_files() — empty input must not fall through to a CWD scan (issue #148).
-    input="$(cat)"
-    [[ -z "$input" ]] && return 0
+    local pattern="$1"
+    _fgrep_read_list || return 0
     case "$GREP_TOOL" in
         git-grep)
-            printf '%s\n' "$input" | tr '\n' '\0' | xargs -0 git grep -li --no-index -E "$pattern" -- 2>/dev/null || true
+            _fgrep_run git grep -li --no-index -E "$pattern" --
             ;;
         ripgrep)
-            printf '%s\n' "$input" | tr '\n' '\0' | xargs -0 rg -li --no-messages -e "$pattern" 2>/dev/null || true
+            _fgrep_run rg -li --no-messages -e "$pattern"
             ;;
         grep)
-            printf '%s\n' "$input" | tr '\n' '\0' | xargs -0 grep -liE "$pattern" 2>/dev/null || true
+            _fgrep_run grep -liE "$pattern"
             ;;
     esac
 }
@@ -902,23 +933,118 @@ fast_grep_files_i() {
 # Purpose: Find files matching a fixed string (faster, no regex)
 # Args: $1 = literal string (stdin = list of files to search)
 # Output: Matching filenames to stdout
-# Note: Uses null-delimited input to handle filenames with spaces (issue #92)
+# Note: Paths go through argv, which handles filenames with spaces (issue #92)
 fast_grep_files_fixed() {
-    local pattern="$1" input
-    # See fast_grep_files() — empty input must not fall through to a CWD scan (issue #148).
-    input="$(cat)"
-    [[ -z "$input" ]] && return 0
+    local pattern="$1"
+    _fgrep_read_list || return 0
     case "$GREP_TOOL" in
         git-grep)
-            printf '%s\n' "$input" | tr '\n' '\0' | xargs -0 git grep -l --no-index -F "$pattern" -- 2>/dev/null || true
+            _fgrep_run git grep -l --no-index -F "$pattern" --
             ;;
         ripgrep)
-            printf '%s\n' "$input" | tr '\n' '\0' | xargs -0 rg -l --no-messages --fixed-strings "$pattern" 2>/dev/null || true
+            _fgrep_run rg -l --no-messages --fixed-strings "$pattern"
             ;;
         grep)
-            printf '%s\n' "$input" | tr '\n' '\0' | xargs -0 grep -lF "$pattern" 2>/dev/null || true
+            _fgrep_run grep -lF "$pattern"
             ;;
     esac
+}
+
+# Function: fast_grep_any_fixed
+# Purpose: Answer "does ANY of these literals appear anywhere in this file list?"
+#          in a single grep invocation, by handing the tool a pattern file.
+# Args: $1 = path of the newline-separated file list; $2.. = fixed-string literals
+# Returns: 0 if at least one literal matches somewhere, 1 if none do
+# Note: This is a prefilter, never the answer. A file matching literal N
+#       necessarily matches the union, so a miss is conclusive and lets the
+#       caller skip the per-literal searches; a hit falls through to them, so the
+#       findings themselves always come from the same per-literal greps as before.
+fast_grep_any_fixed() {
+    local list="$1"
+    shift
+    [[ -s "$list" ]] || return 1
+    (( $# > 0 )) || return 1
+
+    local patfile="$TEMP_DIR/_fgrep_union_patterns.txt"
+    printf '%s\n' "$@" > "$patfile"
+
+    _FGREP_FILES=()
+    mapfile -t _FGREP_FILES < "$list"
+    (( ${#_FGREP_FILES[@]} > 0 )) || return 1
+
+    local hit
+    case "$GREP_TOOL" in
+        git-grep)
+            hit=$(_fgrep_run git grep -l --no-index -F -f "$patfile" -- | head -n 1)
+            ;;
+        ripgrep)
+            hit=$(_fgrep_run rg -l --no-messages --fixed-strings -f "$patfile" | head -n 1)
+            ;;
+        grep)
+            hit=$(_fgrep_run grep -lF -f "$patfile" | head -n 1)
+            ;;
+    esac
+    [[ -n "$hit" ]]
+}
+
+# Function: build_file_list
+# Purpose: Concatenate the non-empty file lists in $2.. into $1, in the order given.
+# Args: $1 = output list path, $2.. = input list paths (missing/empty ones skipped)
+# Note: One process no matter how many inputs. The idiom this replaces - truncate
+#       the output, then append each input with its own cat - cost a process per
+#       input, and eight of the stage-5 checks build their search list that way.
+build_file_list() {
+    local out="$1"
+    shift
+    local -a present=()
+    local f
+    for f in "$@"; do
+        [[ -s "$f" ]] && present+=("$f")
+    done
+    if (( ${#present[@]} == 0 )); then
+        : > "$out"
+    else
+        cat "${present[@]}" > "$out"
+    fi
+}
+
+# Function: scan_fixed_iocs
+# Purpose: Run a table of fixed-string IOC searches against one file list and
+#          append "<path>:<message>" findings for every match.
+# Args: $1 = file list to search
+#       $2 = findings file to append to
+#       $3.. = rows of "LITERAL<TAB>MESSAGE", applied in the order given.
+#              Any "%s" in MESSAGE is replaced with the literal that matched.
+# Modifies: Appends to $2
+# Note: The single union prefilter up front is what makes this cheap - on a tree
+#       with none of the IOCs (the overwhelmingly common case) one invocation
+#       stands in for the whole table. When something does match, every row is
+#       searched individually exactly as before, so both the findings and their
+#       order are unchanged.
+scan_fixed_iocs() {
+    local list="$1" out="$2"
+    shift 2
+    [[ -s "$list" ]] || return 0
+    (( $# > 0 )) || return 0
+
+    local -a rows=("$@") literals=()
+    local row
+    for row in "${rows[@]}"; do
+        literals+=("${row%%$'\t'*}")
+    done
+
+    fast_grep_any_fixed "$list" "${literals[@]}" || return 0
+
+    local literal message file
+    for row in "${rows[@]}"; do
+        literal="${row%%$'\t'*}"
+        message="${row#*$'\t'}"
+        message="${message//%s/$literal}"
+        fast_grep_files_fixed "$literal" < "$list" | \
+            while IFS= read -r file; do
+                [[ -n "$file" ]] && printf '%s:%s\n' "$file" "$message" >> "$out"
+            done
+    done
 }
 
 # Function: fast_grep_quiet
@@ -1096,61 +1222,62 @@ collect_all_files() {
         print_status "$YELLOW" "   Note: excluded the detector's own directory from scan results to avoid self-detection ($self_real)."
     fi
 
-    # Categorize files for specific functions using grep (much faster than separate finds)
-    grep "package\.json$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/package_files.txt" 2>/dev/null || touch "$TEMP_DIR/package_files.txt"
-    grep "\.\(js\|ts\|json\|mjs\|cjs\)$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/code_files.txt" 2>/dev/null || touch "$TEMP_DIR/code_files.txt"
-    grep "\.\(yml\|yaml\)$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/yaml_files.txt" 2>/dev/null || touch "$TEMP_DIR/yaml_files.txt"
-    grep "\.\(py\|sh\|bat\|ps1\|cmd\|php\)$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/script_files.txt" 2>/dev/null || touch "$TEMP_DIR/script_files.txt"
-    grep "\(package-lock\.json\|yarn\.lock\|pnpm-lock\.yaml\)$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/lockfiles.txt" 2>/dev/null || touch "$TEMP_DIR/lockfiles.txt"
-    grep "shai-hulud-workflow\.yml$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/workflow_files_found.txt" 2>/dev/null || touch "$TEMP_DIR/workflow_files_found.txt"
-    grep "\(setup_bun\.js\|bun_installer\.js\)$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/setup_bun_files.txt" 2>/dev/null || touch "$TEMP_DIR/setup_bun_files.txt"
-    grep "\(bun_environment\.js\|environment_source\.js\)$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/bun_environment_files.txt" 2>/dev/null || touch "$TEMP_DIR/bun_environment_files.txt"
-    grep "actionsSecrets\.json$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/actions_secrets_found.txt" 2>/dev/null || touch "$TEMP_DIR/actions_secrets_found.txt"
-    grep -E "(3nvir0nm3nt|cl0vd|c9nt3nts|pigS3cr3ts)\.json$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/obfuscated_exfil_found.txt" 2>/dev/null || touch "$TEMP_DIR/obfuscated_exfil_found.txt"
-    grep "trufflehog" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/trufflehog_files.txt" 2>/dev/null || touch "$TEMP_DIR/trufflehog_files.txt"
-    grep "formatter_.*\.yml$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/formatter_workflows.txt" 2>/dev/null || touch "$TEMP_DIR/formatter_workflows.txt"
-    grep -E "(router_init|tanstack_runner)\.js$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/mini_shai_hulud_artifact_files.txt" 2>/dev/null || touch "$TEMP_DIR/mini_shai_hulud_artifact_files.txt"
+    # Categorize files for the specific checks that follow. This used to be 26
+    # grep pipelines (45 processes) over the same inventory; one awk pass writes
+    # every bucket instead, which matters because the categorisation runs on every
+    # scan no matter how small the tree. Each bucket keeps the exact pattern its
+    # grep used, so membership and line order are unchanged. The manifest/lockfile
+    # buckets keep their per-ecosystem vendored-directory exclusions:
+    #   PyPI     - virtualenv / site-packages / node_modules copies
+    #   Composer - vendor/ and node_modules/
+    #   Crates   - build output under target/
+    #   Go, Hex, RubyGems - vendor/, deps/ + _build/, vendor/ respectively
+    awk -v d="$TEMP_DIR" '
+        BEGIN {
+            n = split("package_files code_files yaml_files script_files lockfiles " \
+                      "workflow_files_found setup_bun_files bun_environment_files " \
+                      "actions_secrets_found obfuscated_exfil_found trufflehog_files " \
+                      "formatter_workflows mini_shai_hulud_artifact_files " \
+                      "pypi_manifests pypi_lockfiles composer_manifests composer_lockfiles " \
+                      "crates_manifests crates_lockfiles go_manifests go_lockfiles " \
+                      "hex_manifests hex_lockfiles gem_manifests gem_lockfiles " \
+                      "github_workflows", names, " ")
+            for (i = 1; i <= n; i++) {
+                out[names[i]] = d "/" names[i] ".txt"
+                printf "" > out[names[i]]
+            }
+        }
+        /package\.json$/                                  { print > out["package_files"] }
+        /\.(js|ts|json|mjs|cjs)$/                          { print > out["code_files"] }
+        /\.(yml|yaml)$/                                    { print > out["yaml_files"] }
+        /\.(py|sh|bat|ps1|cmd|php)$/                       { print > out["script_files"] }
+        /(package-lock\.json|yarn\.lock|pnpm-lock\.yaml)$/ { print > out["lockfiles"] }
+        /shai-hulud-workflow\.yml$/                        { print > out["workflow_files_found"] }
+        /(setup_bun\.js|bun_installer\.js)$/               { print > out["setup_bun_files"] }
+        /(bun_environment\.js|environment_source\.js)$/    { print > out["bun_environment_files"] }
+        /actionsSecrets\.json$/                            { print > out["actions_secrets_found"] }
+        /(3nvir0nm3nt|cl0vd|c9nt3nts|pigS3cr3ts)\.json$/   { print > out["obfuscated_exfil_found"] }
+        /trufflehog/                                       { print > out["trufflehog_files"] }
+        /formatter_.*\.yml$/                               { print > out["formatter_workflows"] }
+        /(router_init|tanstack_runner)\.js$/               { print > out["mini_shai_hulud_artifact_files"] }
+        /\/.github\/workflows\/.*\.ya?ml$/                 { print > out["github_workflows"] }
 
-    # PyPI manifests/lockfiles. Exclude virtualenv / site-packages / node_modules trees
-    # so we don't trip over copies of dependency manifests bundled inside installed packages.
-    grep -E "/(pyproject\.toml|Pipfile|setup\.py|setup\.cfg|requirements[^/]*\.txt|[^/]*-requirements\.txt)$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null | \
-        grep -vE "/(node_modules|\.venv|venv|\.tox|site-packages)/" > "$TEMP_DIR/pypi_manifests.txt" || touch "$TEMP_DIR/pypi_manifests.txt"
-    grep -E "/(poetry\.lock|uv\.lock|Pipfile\.lock)$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null | \
-        grep -vE "/(node_modules|\.venv|venv|\.tox|site-packages)/" > "$TEMP_DIR/pypi_lockfiles.txt" || touch "$TEMP_DIR/pypi_lockfiles.txt"
+        /\/(pyproject\.toml|Pipfile|setup\.py|setup\.cfg|requirements[^\/]*\.txt|[^\/]*-requirements\.txt)$/ &&
+            !/\/(node_modules|\.venv|venv|\.tox|site-packages)\// { print > out["pypi_manifests"] }
+        /\/(poetry\.lock|uv\.lock|Pipfile\.lock)$/ &&
+            !/\/(node_modules|\.venv|venv|\.tox|site-packages)\// { print > out["pypi_lockfiles"] }
 
-    # Composer (PHP) manifests/lockfiles. Exclude vendored copies under vendor/.
-    grep -E "/composer\.json$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null | \
-        grep -vE "/(node_modules|vendor)/" > "$TEMP_DIR/composer_manifests.txt" || touch "$TEMP_DIR/composer_manifests.txt"
-    grep -E "/composer\.lock$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null | \
-        grep -vE "/(node_modules|vendor)/" > "$TEMP_DIR/composer_lockfiles.txt" || touch "$TEMP_DIR/composer_lockfiles.txt"
-
-    # Crates (Rust) manifests/lockfiles. Exclude build output under target/.
-    grep -E "/Cargo\.toml$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null | \
-        grep -vE "/(node_modules|target)/" > "$TEMP_DIR/crates_manifests.txt" || touch "$TEMP_DIR/crates_manifests.txt"
-    grep -E "/Cargo\.lock$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null | \
-        grep -vE "/(node_modules|target)/" > "$TEMP_DIR/crates_lockfiles.txt" || touch "$TEMP_DIR/crates_lockfiles.txt"
-
-    # Go modules. go.mod declares required modules; go.sum pins the resolved set.
-    # Exclude vendored copies under vendor/.
-    grep -E "/go\.mod$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null | \
-        grep -vE "/(node_modules|vendor)/" > "$TEMP_DIR/go_manifests.txt" || touch "$TEMP_DIR/go_manifests.txt"
-    grep -E "/go\.sum$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null | \
-        grep -vE "/(node_modules|vendor)/" > "$TEMP_DIR/go_lockfiles.txt" || touch "$TEMP_DIR/go_lockfiles.txt"
-
-    # Hex (Elixir) manifests/lockfiles. Exclude fetched deps under deps/ and build output under _build/.
-    grep -E "/mix\.exs$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null | \
-        grep -vE "/(node_modules|deps|_build)/" > "$TEMP_DIR/hex_manifests.txt" || touch "$TEMP_DIR/hex_manifests.txt"
-    grep -E "/mix\.lock$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null | \
-        grep -vE "/(node_modules|deps|_build)/" > "$TEMP_DIR/hex_lockfiles.txt" || touch "$TEMP_DIR/hex_lockfiles.txt"
-
-    # RubyGems (Bundler) manifests/lockfiles. Exclude vendored gems under vendor/.
-    grep -E "/Gemfile$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null | \
-        grep -vE "/(node_modules|vendor)/" > "$TEMP_DIR/gem_manifests.txt" || touch "$TEMP_DIR/gem_manifests.txt"
-    grep -E "/Gemfile\.lock$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null | \
-        grep -vE "/(node_modules|vendor)/" > "$TEMP_DIR/gem_lockfiles.txt" || touch "$TEMP_DIR/gem_lockfiles.txt"
-
-    # Filter GitHub workflow files specifically
-    grep "/.github/workflows/.*\.ya\?ml$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/github_workflows.txt" 2>/dev/null || touch "$TEMP_DIR/github_workflows.txt"
+        /\/composer\.json$/ && !/\/(node_modules|vendor)\//  { print > out["composer_manifests"] }
+        /\/composer\.lock$/ && !/\/(node_modules|vendor)\//  { print > out["composer_lockfiles"] }
+        /\/Cargo\.toml$/    && !/\/(node_modules|target)\//  { print > out["crates_manifests"] }
+        /\/Cargo\.lock$/    && !/\/(node_modules|target)\//  { print > out["crates_lockfiles"] }
+        /\/go\.mod$/        && !/\/(node_modules|vendor)\//  { print > out["go_manifests"] }
+        /\/go\.sum$/        && !/\/(node_modules|vendor)\//  { print > out["go_lockfiles"] }
+        /\/mix\.exs$/  && !/\/(node_modules|deps|_build)\//  { print > out["hex_manifests"] }
+        /\/mix\.lock$/ && !/\/(node_modules|deps|_build)\//  { print > out["hex_lockfiles"] }
+        /\/Gemfile$/        && !/\/(node_modules|vendor)\//  { print > out["gem_manifests"] }
+        /\/Gemfile\.lock$/  && !/\/(node_modules|vendor)\//  { print > out["gem_lockfiles"] }
+    ' "$TEMP_DIR/all_files_raw.txt" 2>/dev/null
 }
 
 # Function: check_workflow_files
@@ -1334,45 +1461,17 @@ check_axios_attack_indicators() {
     local scan_dir=$1
     print_status "$BLUE" "   Checking for axios supply chain attack IOCs..."
 
-    # IOC 1: C2 domain and IP
-    if [[ -s "$TEMP_DIR/code_files.txt" ]]; then
-        fast_grep_files_fixed "sfrclak.com" < "$TEMP_DIR/code_files.txt" | \
-            while IFS= read -r file; do
-                echo "$file:Axios attack C2 domain (sfrclak.com)" >> "$TEMP_DIR/axios_attack_indicators.txt"
-            done
-        fast_grep_files_fixed "sfrclak[.]com" < "$TEMP_DIR/code_files.txt" | \
-            while IFS= read -r file; do
-                echo "$file:Axios attack C2 domain (sfrclak[.]com defanged)" >> "$TEMP_DIR/axios_attack_indicators.txt"
-            done
-        fast_grep_files_fixed "142.11.206.73" < "$TEMP_DIR/code_files.txt" | \
-            while IFS= read -r file; do
-                echo "$file:Axios attack C2 IP (142.11.206.73)" >> "$TEMP_DIR/axios_attack_indicators.txt"
-            done
-    fi
-
-    # IOC 2: XOR key used in obfuscated dropper
-    if [[ -s "$TEMP_DIR/code_files.txt" ]]; then
-        fast_grep_files_fixed "OrDeR_7077" < "$TEMP_DIR/code_files.txt" | \
-            while IFS= read -r file; do
-                echo "$file:Axios attack XOR key (OrDeR_7077)" >> "$TEMP_DIR/axios_attack_indicators.txt"
-            done
-    fi
-
-    # IOC 3: Distinctive User-Agent string from RAT beaconing
-    if [[ -s "$TEMP_DIR/code_files.txt" ]]; then
-        fast_grep_files_fixed "msie 8.0; windows nt 5.1; trident/4.0" < "$TEMP_DIR/code_files.txt" | \
-            while IFS= read -r file; do
-                echo "$file:Axios attack RAT User-Agent string detected" >> "$TEMP_DIR/axios_attack_indicators.txt"
-            done
-    fi
+    # IOC 1-3: C2 domain/IP, the dropper's XOR key, and the RAT's User-Agent.
+    scan_fixed_iocs "$TEMP_DIR/code_files.txt" "$TEMP_DIR/axios_attack_indicators.txt" \
+        $'sfrclak.com\tAxios attack C2 domain (sfrclak.com)' \
+        $'sfrclak[.]com\tAxios attack C2 domain (sfrclak[.]com defanged)' \
+        $'142.11.206.73\tAxios attack C2 IP (142.11.206.73)' \
+        $'OrDeR_7077\tAxios attack XOR key (OrDeR_7077)' \
+        $'msie 8.0; windows nt 5.1; trident/4.0\tAxios attack RAT User-Agent string detected'
 
     # IOC 4: plain-crypto-js as a dependency (any version - entirely an attack package)
-    if [[ -s "$TEMP_DIR/package_files.txt" ]]; then
-        fast_grep_files_fixed "plain-crypto-js" < "$TEMP_DIR/package_files.txt" | \
-            while IFS= read -r file; do
-                echo "$file:Malicious dependency plain-crypto-js (axios supply chain attack)" >> "$TEMP_DIR/axios_attack_indicators.txt"
-            done
-    fi
+    scan_fixed_iocs "$TEMP_DIR/package_files.txt" "$TEMP_DIR/axios_attack_indicators.txt" \
+        $'plain-crypto-js\tMalicious dependency plain-crypto-js (axios supply chain attack)'
 
     # IOC 5: Filesystem artifacts (RAT persistence)
     local -a artifact_names=("com.apple.act.mond" "ld.py")
@@ -1422,137 +1521,54 @@ check_mini_shai_hulud_indicators() {
         done < "$TEMP_DIR/mini_shai_hulud_artifact_files.txt"
     fi
 
-    # IOC 2: Wipe-threat token description string (DO NOT REVOKE - triggers wipe routine)
-    if [[ -s "$TEMP_DIR/code_files.txt" ]]; then
-        fast_grep_files_fixed "IfYouRevokeThisTokenItWillWipeTheComputerOfTheOwner" < "$TEMP_DIR/code_files.txt" | \
-            while IFS= read -r file; do
-                echo "$file:Mini Shai-Hulud wipe-threat token description string" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
-            done
-    fi
-
+    # IOC 2: Wipe-threat token description string (DO NOT REVOKE - triggers wipe routine).
     # IOC 3: Marker / beacon strings left on attacker-created exfil repos.
-    # May 11: "A Mini Shai-Hulud has Appeared" + two specific repo names.
-    # May 19: "niagA oG eW ereH :duluH-iahS" (character-reversed "Shai-Hulud: Here We Go Again"),
-    #         stamped on every exfil repo created by the wave.
-    if [[ -s "$TEMP_DIR/code_files.txt" ]]; then
-        fast_grep_files_fixed "A Mini Shai-Hulud has Appeared" < "$TEMP_DIR/code_files.txt" | \
-            while IFS= read -r file; do
-                echo "$file:Mini Shai-Hulud marker repo description string (May 11 wave)" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
-            done
-        fast_grep_files_fixed "siridar-ghola-567" < "$TEMP_DIR/code_files.txt" | \
-            while IFS= read -r file; do
-                echo "$file:Mini Shai-Hulud marker repo name (siridar-ghola-567)" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
-            done
-        fast_grep_files_fixed "tleilaxu-ornithopter-43" < "$TEMP_DIR/code_files.txt" | \
-            while IFS= read -r file; do
-                echo "$file:Mini Shai-Hulud marker repo name (tleilaxu-ornithopter-43)" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
-            done
-        fast_grep_files_fixed "niagA oG eW ereH :duluH-iahS" < "$TEMP_DIR/code_files.txt" | \
-            while IFS= read -r file; do
-                echo "$file:Mini Shai-Hulud beacon string from exfil repos (May 19 wave)" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
-            done
-    fi
-
+    #        May 11: "A Mini Shai-Hulud has Appeared" + two specific repo names.
+    #        May 19: "niagA oG eW ereH :duluH-iahS" (character-reversed "Shai-Hulud: Here We Go Again"),
+    #                stamped on every exfil repo created by the wave.
     # IOC 4: C2 domains observed in the attack (May 11 + May 19).
-    if [[ -s "$TEMP_DIR/code_files.txt" ]]; then
-        local c2_domain
-        for c2_domain in \
-            "api.masscan.cloud" "git-tanstack.com" "filev2.getsession.org" "seed1.getsession.org" \
-            "t.m-kosche.com"
-        do
-            fast_grep_files_fixed "$c2_domain" < "$TEMP_DIR/code_files.txt" | \
-                while IFS= read -r file; do
-                    echo "$file:Mini Shai-Hulud C2 domain ($c2_domain)" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
-                done
-        done
-    fi
-
     # IOC 5: Threat actor account references and malicious commit SHAs.
-    # May 11: voicproducoes account + one antv-router commit SHA.
-    # May 19: atool account (npm publisher) + three antvis/G2 orphan commit SHAs + forged-author email.
-    if [[ -s "$TEMP_DIR/code_files.txt" ]]; then
-        fast_grep_files_fixed "voicproducoes" < "$TEMP_DIR/code_files.txt" | \
-            while IFS= read -r file; do
-                echo "$file:Mini Shai-Hulud threat actor reference (voicproducoes, May 11 wave)" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
-            done
-        # atool: match in JSON publisher context (quoted) to avoid false-positive on bare "atool" text.
-        fast_grep_files_fixed '"_npmUser":{"name":"atool"' < "$TEMP_DIR/code_files.txt" | \
-            while IFS= read -r file; do
-                echo "$file:Mini Shai-Hulud threat actor (atool, May 19 wave - npm publisher metadata)" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
-            done
-        # Forged author email used on impostor antvis/G2 commits.
-        fast_grep_files_fixed "huiyu.zjt@ant.com" < "$TEMP_DIR/code_files.txt" | \
-            while IFS= read -r file; do
-                echo "$file:Mini Shai-Hulud forged-author email (huiyu.zjt@ant.com, May 19 wave)" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
-            done
-        # Malicious commit SHAs across both waves.
-        local bad_sha
-        for bad_sha in \
-            "79ac49eedf774dd4b0cfa308722bc463cfe5885c" \
-            "1916faa365f2788b6e193514872d51a242876569" \
-            "7cb42f57561c321ecb09b4552802ae0ac55b3a7a" \
-            "dc3d62a2181beb9f326952a2d212900c94f2e13d"
-        do
-            fast_grep_files_fixed "$bad_sha" < "$TEMP_DIR/code_files.txt" | \
-                while IFS= read -r file; do
-                    echo "$file:Mini Shai-Hulud malicious orphan-commit SHA reference ($bad_sha)" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
-                done
-        done
-        # firedalazer: GitHub commit-search dead-drop keyword (May 19 wave). The payload polls
-        # commits matching this exact word to receive RSA-PSS signed C2 commands.
-        fast_grep_files_fixed "firedalazer" < "$TEMP_DIR/code_files.txt" | \
-            while IFS= read -r file; do
-                echo "$file:Mini Shai-Hulud C2 dead-drop keyword (firedalazer, May 19 wave)" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
-            done
-    fi
-
+    #        May 11: voicproducoes account + one antv-router commit SHA.
+    #        May 19: atool account (npm publisher) + three antvis/G2 orphan commit SHAs
+    #                + forged-author email.
     # IOC 6: Campaign-specific cryptographic constants (May 11 wave).
-    if [[ -s "$TEMP_DIR/code_files.txt" ]]; then
-        fast_grep_files_fixed "0c0e873033875f1bc471eda37e3b9d0f9b89bd41a4bbb4f86746caa2176c40aa" < "$TEMP_DIR/code_files.txt" | \
-            while IFS= read -r file; do
-                echo "$file:Mini Shai-Hulud PBKDF2 master key constant" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
-            done
-        fast_grep_files_fixed "svksjrhjkcejg" < "$TEMP_DIR/code_files.txt" | \
-            while IFS= read -r file; do
-                echo "$file:Mini Shai-Hulud PBKDF2 salt constant" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
-            done
-    fi
+    scan_fixed_iocs "$TEMP_DIR/code_files.txt" "$TEMP_DIR/mini_shai_hulud_indicators.txt" \
+        $'IfYouRevokeThisTokenItWillWipeTheComputerOfTheOwner\tMini Shai-Hulud wipe-threat token description string' \
+        $'A Mini Shai-Hulud has Appeared\tMini Shai-Hulud marker repo description string (May 11 wave)' \
+        $'siridar-ghola-567\tMini Shai-Hulud marker repo name (siridar-ghola-567)' \
+        $'tleilaxu-ornithopter-43\tMini Shai-Hulud marker repo name (tleilaxu-ornithopter-43)' \
+        $'niagA oG eW ereH :duluH-iahS\tMini Shai-Hulud beacon string from exfil repos (May 19 wave)' \
+        $'api.masscan.cloud\tMini Shai-Hulud C2 domain (%s)' \
+        $'git-tanstack.com\tMini Shai-Hulud C2 domain (%s)' \
+        $'filev2.getsession.org\tMini Shai-Hulud C2 domain (%s)' \
+        $'seed1.getsession.org\tMini Shai-Hulud C2 domain (%s)' \
+        $'t.m-kosche.com\tMini Shai-Hulud C2 domain (%s)' \
+        $'voicproducoes\tMini Shai-Hulud threat actor reference (voicproducoes, May 11 wave)' \
+        $'"_npmUser":{"name":"atool"\tMini Shai-Hulud threat actor (atool, May 19 wave - npm publisher metadata)' \
+        $'huiyu.zjt@ant.com\tMini Shai-Hulud forged-author email (huiyu.zjt@ant.com, May 19 wave)' \
+        $'79ac49eedf774dd4b0cfa308722bc463cfe5885c\tMini Shai-Hulud malicious orphan-commit SHA reference (%s)' \
+        $'1916faa365f2788b6e193514872d51a242876569\tMini Shai-Hulud malicious orphan-commit SHA reference (%s)' \
+        $'7cb42f57561c321ecb09b4552802ae0ac55b3a7a\tMini Shai-Hulud malicious orphan-commit SHA reference (%s)' \
+        $'dc3d62a2181beb9f326952a2d212900c94f2e13d\tMini Shai-Hulud malicious orphan-commit SHA reference (%s)' \
+        $'firedalazer\tMini Shai-Hulud C2 dead-drop keyword (firedalazer, May 19 wave)' \
+        $'0c0e873033875f1bc471eda37e3b9d0f9b89bd41a4bbb4f86746caa2176c40aa\tMini Shai-Hulud PBKDF2 master key constant' \
+        $'svksjrhjkcejg\tMini Shai-Hulud PBKDF2 salt constant'
 
     # IOC 7: Structural package.json signals - malicious optionalDependencies / prepare-or-preinstall script.
-    if [[ -s "$TEMP_DIR/package_files.txt" ]]; then
-        # May 11: orphan-commit github: ref to the attacker's tanstack/router fork.
-        fast_grep_files_fixed "github:tanstack/router#79ac49ee" < "$TEMP_DIR/package_files.txt" | \
-            while IFS= read -r file; do
-                echo "$file:Mini Shai-Hulud malicious optionalDependencies (May 11: tanstack/router orphan commit)" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
-            done
-        # May 19: orphan-commit github: refs to antvis/G2 (any of the three known SHAs).
-        local antvis_sha
-        for antvis_sha in "1916faa365" "7cb42f5756" "dc3d62a218"; do
-            fast_grep_files_fixed "github:antvis/G2#$antvis_sha" < "$TEMP_DIR/package_files.txt" | \
-                while IFS= read -r file; do
-                    echo "$file:Mini Shai-Hulud malicious optionalDependencies (May 19: antvis/G2 orphan commit $antvis_sha...)" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
-                done
-        done
-        # Prepare/preinstall script that invokes the payload (May 11: tanstack_runner.js;
-        # May 19: bun run index.js).
-        fast_grep_files_fixed "bun run tanstack_runner.js" < "$TEMP_DIR/package_files.txt" | \
-            while IFS= read -r file; do
-                echo "$file:Mini Shai-Hulud prepare script invokes tanstack_runner.js (May 11 wave)" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
-            done
-        # bun run index.js as a preinstall is a strong signal in non-Bun-targeted projects.
-        # Match it as a preinstall script value specifically; "scripts": { "preinstall": "bun run index.js" }.
-        if fast_grep_files_fixed '"preinstall": "bun run index.js"' < "$TEMP_DIR/package_files.txt" > "$TEMP_DIR/_mini_sh_preinstall_bun.tmp"; then
-            while IFS= read -r file; do
-                echo "$file:Mini Shai-Hulud preinstall script invokes bun run index.js (May 19 wave install vector)" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
-            done < "$TEMP_DIR/_mini_sh_preinstall_bun.tmp"
-        fi
-        rm -f "$TEMP_DIR/_mini_sh_preinstall_bun.tmp"
-        # The synthetic @tanstack/setup package name (attacker-created, May 11 wave).
-        fast_grep_files_fixed "@tanstack/setup" < "$TEMP_DIR/package_files.txt" | \
-            while IFS= read -r file; do
-                echo "$file:Mini Shai-Hulud reference to fake @tanstack/setup package (May 11 wave)" >> "$TEMP_DIR/mini_shai_hulud_indicators.txt"
-            done
-    fi
+    #   May 11: orphan-commit github: ref to the attacker's tanstack/router fork.
+    #   May 19: orphan-commit github: refs to antvis/G2 (any of the three known SHAs).
+    #   Prepare/preinstall script that invokes the payload (May 11: tanstack_runner.js;
+    #   May 19: bun run index.js - matched as a preinstall script *value* specifically,
+    #   since "bun run index.js" alone is a strong signal only in that position).
+    #   Plus the synthetic @tanstack/setup package name (attacker-created, May 11 wave).
+    scan_fixed_iocs "$TEMP_DIR/package_files.txt" "$TEMP_DIR/mini_shai_hulud_indicators.txt" \
+        $'github:tanstack/router#79ac49ee\tMini Shai-Hulud malicious optionalDependencies (May 11: tanstack/router orphan commit)' \
+        $'github:antvis/G2#1916faa365\tMini Shai-Hulud malicious optionalDependencies (May 19: antvis/G2 orphan commit 1916faa365...)' \
+        $'github:antvis/G2#7cb42f5756\tMini Shai-Hulud malicious optionalDependencies (May 19: antvis/G2 orphan commit 7cb42f5756...)' \
+        $'github:antvis/G2#dc3d62a218\tMini Shai-Hulud malicious optionalDependencies (May 19: antvis/G2 orphan commit dc3d62a218...)' \
+        $'bun run tanstack_runner.js\tMini Shai-Hulud prepare script invokes tanstack_runner.js (May 11 wave)' \
+        $'"preinstall": "bun run index.js"\tMini Shai-Hulud preinstall script invokes bun run index.js (May 19 wave install vector)' \
+        $'@tanstack/setup\tMini Shai-Hulud reference to fake @tanstack/setup package (May 11 wave)'
 
     # IOC 8: Dead-man's-switch host-level persistence (opt-in via --check-host).
     # Both waves install a polling daemon that wipes the host if its monitored token
@@ -2456,31 +2472,20 @@ check_megalodon_indicators() {
     # Megalodon's C2 IP and commit SHA can appear in YAML workflow files (where the
     # attack lives natively) as well as in JS/TS/JSON code, so search both. Build a
     # combined file list once for the two literal-string IoCs below.
-    : > "$TEMP_DIR/_megalodon_search_files.txt"
-    [[ -s "$TEMP_DIR/code_files.txt" ]] && cat "$TEMP_DIR/code_files.txt" >> "$TEMP_DIR/_megalodon_search_files.txt"
-    [[ -s "$TEMP_DIR/yaml_files.txt" ]] && cat "$TEMP_DIR/yaml_files.txt" >> "$TEMP_DIR/_megalodon_search_files.txt"
-    [[ -s "$TEMP_DIR/script_files.txt" ]] && cat "$TEMP_DIR/script_files.txt" >> "$TEMP_DIR/_megalodon_search_files.txt"
+    build_file_list "$TEMP_DIR/_megalodon_search_files.txt" \
+        "$TEMP_DIR/code_files.txt" \
+        "$TEMP_DIR/yaml_files.txt" \
+        "$TEMP_DIR/script_files.txt"
 
     # IOC 2: C2 IP literal. Match the bare IP and the IP:port form. Match the defanged
-    # form too in case it appears in advisories/notes the user has checked into the repo.
-    if [[ -s "$TEMP_DIR/_megalodon_search_files.txt" ]]; then
-        local c2_ip
-        for c2_ip in "216.126.225.129" "216.126.225.129:8443" "216.126.225[.]129"; do
-            fast_grep_files_fixed "$c2_ip" < "$TEMP_DIR/_megalodon_search_files.txt" | \
-                while IFS= read -r file; do
-                    echo "$file:Megalodon C2 IP reference ($c2_ip)" >> "$TEMP_DIR/megalodon_indicators.txt"
-                done
-        done
-    fi
-
+    #        form too in case it appears in advisories/notes the user has checked into the repo.
     # IOC 3: Known Tiledesk malicious commit SHA. Anywhere in code/config (lockfiles,
-    # CI configs, vendored copies — anywhere a contaminated source tree might reference it).
-    if [[ -s "$TEMP_DIR/_megalodon_search_files.txt" ]]; then
-        fast_grep_files_fixed "acac5a9854650c4ae2883c4740bf87d34120c038" < "$TEMP_DIR/_megalodon_search_files.txt" | \
-            while IFS= read -r file; do
-                echo "$file:Megalodon malicious commit SHA (Tiledesk variant)" >> "$TEMP_DIR/megalodon_indicators.txt"
-            done
-    fi
+    #        CI configs, vendored copies — anywhere a contaminated source tree might reference it).
+    scan_fixed_iocs "$TEMP_DIR/_megalodon_search_files.txt" "$TEMP_DIR/megalodon_indicators.txt" \
+        $'216.126.225.129\tMegalodon C2 IP reference (%s)' \
+        $'216.126.225.129:8443\tMegalodon C2 IP reference (%s)' \
+        $'216.126.225[.]129\tMegalodon C2 IP reference (%s)' \
+        $'acac5a9854650c4ae2883c4740bf87d34120c038\tMegalodon malicious commit SHA (Tiledesk variant)'
     rm -f "$TEMP_DIR/_megalodon_search_files.txt"
 
     # Deduplicate
@@ -2502,22 +2507,13 @@ check_web3_mcp_indicators() {
     local scan_dir=$1
     print_status "$BLUE" "   Checking for Web3/DeFi MCP-server typosquat IOCs (May 20, 2026)..."
 
-    if [[ -s "$TEMP_DIR/code_files.txt" ]]; then
-        # Primary C2: dynamic-webhook config fetched from an attacker-controlled GitHub Pages site.
-        local web3_indicator
-        for web3_indicator in \
-            "ddjidd564.github.io/defi-security-best-practices/config.json" \
-            "ddjidd564.github.io" \
-            "ddjidd564[.]github[.]io" \
-            "webhook.site/8d334534-1c63-4f4f-a0d7-95c446c8b233" \
-            "8d334534-1c63-4f4f-a0d7-95c446c8b233"
-        do
-            fast_grep_files_fixed "$web3_indicator" < "$TEMP_DIR/code_files.txt" | \
-                while IFS= read -r file; do
-                    echo "$file:Web3/DeFi MCP-typosquat C2 reference ($web3_indicator)" >> "$TEMP_DIR/web3_mcp_indicators.txt"
-                done
-        done
-    fi
+    # Primary C2: dynamic-webhook config fetched from an attacker-controlled GitHub Pages site.
+    scan_fixed_iocs "$TEMP_DIR/code_files.txt" "$TEMP_DIR/web3_mcp_indicators.txt" \
+        $'ddjidd564.github.io/defi-security-best-practices/config.json\tWeb3/DeFi MCP-typosquat C2 reference (%s)' \
+        $'ddjidd564.github.io\tWeb3/DeFi MCP-typosquat C2 reference (%s)' \
+        $'ddjidd564[.]github[.]io\tWeb3/DeFi MCP-typosquat C2 reference (%s)' \
+        $'webhook.site/8d334534-1c63-4f4f-a0d7-95c446c8b233\tWeb3/DeFi MCP-typosquat C2 reference (%s)' \
+        $'8d334534-1c63-4f4f-a0d7-95c446c8b233\tWeb3/DeFi MCP-typosquat C2 reference (%s)'
 
     # Deduplicate
     if [[ -s "$TEMP_DIR/web3_mcp_indicators.txt" ]]; then
@@ -2541,41 +2537,20 @@ check_polymarket_indicators() {
     local scan_dir=$1
     print_status "$BLUE" "   Checking for Polymarket wallet-drainer IOCs (May 21, 2026)..."
 
-    if [[ -s "$TEMP_DIR/code_files.txt" ]]; then
-        # IOC 1: C2 host + exfil endpoint (Cloudflare Worker subdomain).
-        local poly_indicator
-        for poly_indicator in \
-            "polymarketbot.polymarketdev.workers.dev" \
-            "polymarketbot.polymarketdev[.]workers[.]dev" \
-            "/v1/wallets/keys"
-        do
-            fast_grep_files_fixed "$poly_indicator" < "$TEMP_DIR/code_files.txt" | \
-                while IFS= read -r file; do
-                    echo "$file:Polymarket C2 reference ($poly_indicator)" >> "$TEMP_DIR/polymarket_indicators.txt"
-                done
-        done
-
-        # IOC 2: Payload SHA-256 mentioned as a literal string (advisories, runbooks,
-        # incident-response notes the user has checked into the repo).
-        fast_grep_files_fixed "e01b85c1437085a519217338fe4ee5ed7858c28a10f8c1477b2f1857c3386edb" < "$TEMP_DIR/code_files.txt" | \
-            while IFS= read -r file; do
-                echo "$file:Polymarket payload SHA-256 literal reference" >> "$TEMP_DIR/polymarket_indicators.txt"
-            done
-
-        # IOC 3: Threat-actor publisher fingerprint in package.json metadata that npm
-        # caches after install. Same JSON-context-quoted approach used for the May 19
-        # atool wave to avoid false-positive matches on the bare word "polymarketdev".
-        fast_grep_files_fixed '"_npmUser":{"name":"polymarketdev"' < "$TEMP_DIR/code_files.txt" | \
-            while IFS= read -r file; do
-                echo "$file:Polymarket threat-actor publisher (polymarketdev)" >> "$TEMP_DIR/polymarket_indicators.txt"
-            done
-
-        # IOC 4: GitHub source repo the campaign was built from.
-        fast_grep_files_fixed "texsellix/polymarket-trading-bot" < "$TEMP_DIR/code_files.txt" | \
-            while IFS= read -r file; do
-                echo "$file:Polymarket attacker GitHub source repo reference (texsellix/polymarket-trading-bot)" >> "$TEMP_DIR/polymarket_indicators.txt"
-            done
-    fi
+    # IOC 1: C2 host + exfil endpoint (Cloudflare Worker subdomain).
+    # IOC 2: Payload SHA-256 mentioned as a literal string (advisories, runbooks,
+    #        incident-response notes the user has checked into the repo).
+    # IOC 3: Threat-actor publisher fingerprint in package.json metadata that npm
+    #        caches after install. Same JSON-context-quoted approach used for the May 19
+    #        atool wave to avoid false-positive matches on the bare word "polymarketdev".
+    # IOC 4: GitHub source repo the campaign was built from.
+    scan_fixed_iocs "$TEMP_DIR/code_files.txt" "$TEMP_DIR/polymarket_indicators.txt" \
+        $'polymarketbot.polymarketdev.workers.dev\tPolymarket C2 reference (%s)' \
+        $'polymarketbot.polymarketdev[.]workers[.]dev\tPolymarket C2 reference (%s)' \
+        $'/v1/wallets/keys\tPolymarket C2 reference (%s)' \
+        $'e01b85c1437085a519217338fe4ee5ed7858c28a10f8c1477b2f1857c3386edb\tPolymarket payload SHA-256 literal reference' \
+        $'"_npmUser":{"name":"polymarketdev"\tPolymarket threat-actor publisher (polymarketdev)' \
+        $'texsellix/polymarket-trading-bot\tPolymarket attacker GitHub source repo reference (texsellix/polymarket-trading-bot)'
 
     # IOC 5: Local artifact files the payload writes — staged stolen wallet keys.
     # These directories are exactly what the dropper creates; presence is enough.
@@ -2618,38 +2593,21 @@ check_sl4x0_indicators() {
     local scan_dir=$1
     print_status "$BLUE" "   Checking for sl4x0 dependency-confusion campaign IOCs..."
 
-    if [[ -s "$TEMP_DIR/code_files.txt" ]]; then
-        # IOC 1: C2 exfiltration domain (bare and defanged forms).
-        local sl4x0_indicator
-        for sl4x0_indicator in \
-            "oob.sl4x0.xyz" \
-            "oob[.]sl4x0[.]xyz" \
-            "sl4x0.xyz" \
-            "sl4x0[.]xyz"
-        do
-            fast_grep_files_fixed "$sl4x0_indicator" < "$TEMP_DIR/code_files.txt" | \
-                while IFS= read -r file; do
-                    echo "$file:sl4x0 C2/domain reference ($sl4x0_indicator)" >> "$TEMP_DIR/sl4x0_indicators.txt"
-                done
-        done
-
-        # IOC 2: Publisher email-domain fingerprint. All 32 attacker accounts use
-        # @sl4x0.xyz email addresses in their npm publisher metadata. Catches every
-        # package the campaign has ever published — including the 70+ that npm has
-        # since removed — as long as a copy exists in node_modules.
-        fast_grep_files_fixed "@sl4x0.xyz" < "$TEMP_DIR/code_files.txt" | \
-            while IFS= read -r file; do
-                echo "$file:sl4x0 publisher email-domain fingerprint (@sl4x0.xyz)" >> "$TEMP_DIR/sl4x0_indicators.txt"
-            done
-
-        # IOC 3: Fabricated GitHub organization name embedded in package.json metadata.
-        # `slaxorg` is referenced in the campaign's package.json `repository` fields but
-        # the org does not actually exist on GitHub.
-        fast_grep_files_fixed "slaxorg" < "$TEMP_DIR/code_files.txt" | \
-            while IFS= read -r file; do
-                echo "$file:sl4x0 fabricated GitHub org reference (slaxorg)" >> "$TEMP_DIR/sl4x0_indicators.txt"
-            done
-    fi
+    # IOC 1: C2 exfiltration domain (bare and defanged forms).
+    # IOC 2: Publisher email-domain fingerprint. All 32 attacker accounts use
+    #        @sl4x0.xyz email addresses in their npm publisher metadata. Catches every
+    #        package the campaign has ever published — including the 70+ that npm has
+    #        since removed — as long as a copy exists in node_modules.
+    # IOC 3: Fabricated GitHub organization name embedded in package.json metadata.
+    #        `slaxorg` is referenced in the campaign's package.json `repository` fields but
+    #        the org does not actually exist on GitHub.
+    scan_fixed_iocs "$TEMP_DIR/code_files.txt" "$TEMP_DIR/sl4x0_indicators.txt" \
+        $'oob.sl4x0.xyz\tsl4x0 C2/domain reference (%s)' \
+        $'oob[.]sl4x0[.]xyz\tsl4x0 C2/domain reference (%s)' \
+        $'sl4x0.xyz\tsl4x0 C2/domain reference (%s)' \
+        $'sl4x0[.]xyz\tsl4x0 C2/domain reference (%s)' \
+        $'@sl4x0.xyz\tsl4x0 publisher email-domain fingerprint (@sl4x0.xyz)' \
+        $'slaxorg\tsl4x0 fabricated GitHub org reference (slaxorg)'
 
     # IOC 4: Unique hex-named payload files inside any package. `b02e30.js` and
     # `6ad264.js` are the campaign's two helper modules with effectively-unique names;
@@ -2685,48 +2643,26 @@ check_art_template_indicators() {
     local scan_dir=$1
     print_status "$BLUE" "   Checking for art-template npm hijack IOCs (March 2025 - May 2026)..."
 
-    if [[ -s "$TEMP_DIR/code_files.txt" ]]; then
-        # C2 domains and exploit-kit URLs (bare + defanged).
-        local art_indicator
-        for art_indicator in \
-            "v3.jiathis.com" \
-            "v3.jiathis[.]com" \
-            "git.youzzjizz.com" \
-            "git.youzzjizz[.]com" \
-            "utaq.cfww.shop" \
-            "utaq.cfww[.]shop" \
-            "l1ewsu3yjkqeroy.xyz" \
-            "l1ewsu3yjkqeroy[.]xyz" \
-            "/api/ip-sync/sync"
-        do
-            fast_grep_files_fixed "$art_indicator" < "$TEMP_DIR/code_files.txt" | \
-                while IFS= read -r file; do
-                    echo "$file:art-template hijack C2 reference ($art_indicator)" >> "$TEMP_DIR/art_template_indicators.txt"
-                done
-        done
-
-        # Threat-actor publisher / GitHub account fingerprints in package.json metadata.
-        local art_actor
-        for art_actor in \
-            '"_npmUser":{"name":"v4v5qc"' \
-            '"_npmUser":{"name":"npmpacketmaintainmember7"' \
-            '"_npmUser":{"name":"daughtrymom"' \
-            "github.com/goofychris/" \
-            "eb8org@gmail.com" \
-            "npmpacketmaintainmember7@proton.me"
-        do
-            fast_grep_files_fixed "$art_actor" < "$TEMP_DIR/code_files.txt" | \
-                while IFS= read -r file; do
-                    echo "$file:art-template hijack threat-actor fingerprint ($art_actor)" >> "$TEMP_DIR/art_template_indicators.txt"
-                done
-        done
-
-        # Obfuscation seed (string-decode key) — unique enough to flag as a literal match.
-        fast_grep_files_fixed "cecd08aa6ff548c2" < "$TEMP_DIR/code_files.txt" | \
-            while IFS= read -r file; do
-                echo "$file:art-template hijack obfuscation seed (cecd08aa6ff548c2)" >> "$TEMP_DIR/art_template_indicators.txt"
-            done
-    fi
+    # C2 domains and exploit-kit URLs (bare + defanged), then threat-actor publisher /
+    # GitHub account fingerprints in package.json metadata, then the obfuscation seed
+    # (string-decode key) — unique enough to flag as a literal match.
+    scan_fixed_iocs "$TEMP_DIR/code_files.txt" "$TEMP_DIR/art_template_indicators.txt" \
+        $'v3.jiathis.com\tart-template hijack C2 reference (%s)' \
+        $'v3.jiathis[.]com\tart-template hijack C2 reference (%s)' \
+        $'git.youzzjizz.com\tart-template hijack C2 reference (%s)' \
+        $'git.youzzjizz[.]com\tart-template hijack C2 reference (%s)' \
+        $'utaq.cfww.shop\tart-template hijack C2 reference (%s)' \
+        $'utaq.cfww[.]shop\tart-template hijack C2 reference (%s)' \
+        $'l1ewsu3yjkqeroy.xyz\tart-template hijack C2 reference (%s)' \
+        $'l1ewsu3yjkqeroy[.]xyz\tart-template hijack C2 reference (%s)' \
+        $'/api/ip-sync/sync\tart-template hijack C2 reference (%s)' \
+        $'"_npmUser":{"name":"v4v5qc"\tart-template hijack threat-actor fingerprint (%s)' \
+        $'"_npmUser":{"name":"npmpacketmaintainmember7"\tart-template hijack threat-actor fingerprint (%s)' \
+        $'"_npmUser":{"name":"daughtrymom"\tart-template hijack threat-actor fingerprint (%s)' \
+        $'github.com/goofychris/\tart-template hijack threat-actor fingerprint (%s)' \
+        $'eb8org@gmail.com\tart-template hijack threat-actor fingerprint (%s)' \
+        $'npmpacketmaintainmember7@proton.me\tart-template hijack threat-actor fingerprint (%s)' \
+        $'cecd08aa6ff548c2\tart-template hijack obfuscation seed (cecd08aa6ff548c2)'
 
     # Deduplicate
     if [[ -s "$TEMP_DIR/art_template_indicators.txt" ]]; then
@@ -2752,39 +2688,25 @@ check_durabletask_indicators() {
     # durabletask is a PyPI package — the malicious code lives in .py files, which
     # are categorised as script_files.txt (not code_files.txt). Search both so the
     # C2/beacon literals are caught whether they appear in JS, JSON, Python, or shell.
-    : > "$TEMP_DIR/_durabletask_search_files.txt"
-    [[ -s "$TEMP_DIR/code_files.txt" ]] && cat "$TEMP_DIR/code_files.txt" >> "$TEMP_DIR/_durabletask_search_files.txt"
-    [[ -s "$TEMP_DIR/script_files.txt" ]] && cat "$TEMP_DIR/script_files.txt" >> "$TEMP_DIR/_durabletask_search_files.txt"
-    [[ -s "$TEMP_DIR/yaml_files.txt" ]] && cat "$TEMP_DIR/yaml_files.txt" >> "$TEMP_DIR/_durabletask_search_files.txt"
+    build_file_list "$TEMP_DIR/_durabletask_search_files.txt" \
+        "$TEMP_DIR/code_files.txt" \
+        "$TEMP_DIR/script_files.txt" \
+        "$TEMP_DIR/yaml_files.txt"
 
-    if [[ -s "$TEMP_DIR/_durabletask_search_files.txt" ]]; then
-        # IOC 1: Primary C2 (the secondary t.m-kosche.com is already caught by
-        # check_mini_shai_hulud_indicators).
-        local dt_indicator
-        for dt_indicator in \
-            "check.git-service.com" \
-            "check.git-service[.]com" \
-            "/api/public/version" \
-            "/v1/models" \
-            "/rope.pyz" \
-            "/audio.mp3"
-        do
-            fast_grep_files_fixed "$dt_indicator" < "$TEMP_DIR/_durabletask_search_files.txt" | \
-                while IFS= read -r file; do
-                    echo "$file:durabletask C2 reference ($dt_indicator)" >> "$TEMP_DIR/durabletask_indicators.txt"
-                done
-        done
-
-        # IOC 2: Slavic-folklore beacon strings used in commit messages and exfil-repo
-        # naming. Unique enough that a literal match has near-zero FP risk.
-        local dt_beacon
-        for dt_beacon in "FIRESCALE" "BABA-YAGA-KOSCHEI" "PUSH UR T3MPRR"; do
-            fast_grep_files_fixed "$dt_beacon" < "$TEMP_DIR/_durabletask_search_files.txt" | \
-                while IFS= read -r file; do
-                    echo "$file:durabletask beacon string ($dt_beacon)" >> "$TEMP_DIR/durabletask_indicators.txt"
-                done
-        done
-    fi
+    # IOC 1: Primary C2 (the secondary t.m-kosche.com is already caught by
+    #        check_mini_shai_hulud_indicators).
+    # IOC 2: Slavic-folklore beacon strings used in commit messages and exfil-repo
+    #        naming. Unique enough that a literal match has near-zero FP risk.
+    scan_fixed_iocs "$TEMP_DIR/_durabletask_search_files.txt" "$TEMP_DIR/durabletask_indicators.txt" \
+        $'check.git-service.com\tdurabletask C2 reference (%s)' \
+        $'check.git-service[.]com\tdurabletask C2 reference (%s)' \
+        $'/api/public/version\tdurabletask C2 reference (%s)' \
+        $'/v1/models\tdurabletask C2 reference (%s)' \
+        $'/rope.pyz\tdurabletask C2 reference (%s)' \
+        $'/audio.mp3\tdurabletask C2 reference (%s)' \
+        $'FIRESCALE\tdurabletask beacon string (%s)' \
+        $'BABA-YAGA-KOSCHEI\tdurabletask beacon string (%s)' \
+        $'PUSH UR T3MPRR\tdurabletask beacon string (%s)'
     rm -f "$TEMP_DIR/_durabletask_search_files.txt"
 
     # IOC 3: Stage-2 payload file (rope.pyz) anywhere in the tree. Hash check via
@@ -2844,65 +2766,34 @@ check_hades_miasma_indicators() {
 
     # The payload lives in Python (.pth/.py) and JavaScript files, so search the
     # code/script/yaml buckets together (same approach as the durabletask check).
-    : > "$TEMP_DIR/_hades_search_files.txt"
-    [[ -s "$TEMP_DIR/code_files.txt" ]] && cat "$TEMP_DIR/code_files.txt" >> "$TEMP_DIR/_hades_search_files.txt"
-    [[ -s "$TEMP_DIR/script_files.txt" ]] && cat "$TEMP_DIR/script_files.txt" >> "$TEMP_DIR/_hades_search_files.txt"
-    [[ -s "$TEMP_DIR/yaml_files.txt" ]] && cat "$TEMP_DIR/yaml_files.txt" >> "$TEMP_DIR/_hades_search_files.txt"
+    build_file_list "$TEMP_DIR/_hades_search_files.txt" \
+        "$TEMP_DIR/code_files.txt" \
+        "$TEMP_DIR/script_files.txt" \
+        "$TEMP_DIR/yaml_files.txt"
 
-    if [[ -s "$TEMP_DIR/_hades_search_files.txt" ]]; then
-        # IOC 1: Dead-man's-switch token-nuke marker strings. Each wave uses its own
-        # variant; the May-wave "IfYouRevoke...Wipe" string is handled separately in
-        # check_mini_shai_hulud_indicators. These are unique enough for a literal match.
-        local hm_marker
-        for hm_marker in \
-            "IfYouYankThisTokenItWillNukeTheComputerOfTheOwnerFully" \
-            "IfYouInvalidateThisTokenItWillNukeTheComputerOfTheOwner"
-        do
-            fast_grep_files_fixed "$hm_marker" < "$TEMP_DIR/_hades_search_files.txt" | \
-                while IFS= read -r file; do
-                    echo "$file:Hades/Miasma dead-man's-switch token-nuke marker ($hm_marker)" >> "$TEMP_DIR/hades_miasma_indicators.txt"
-                done
-        done
-
-        # IOC 2: Exfil-repo description / beacon strings stamped on attacker-created
-        # GitHub repos (the git-config form is also matched by malicious_descriptions).
-        local hm_beacon
-        for hm_beacon in \
-            "Hades - The End for the Damned" \
-            "Miasma - The Spreading Blight"
-        do
-            fast_grep_files_fixed "$hm_beacon" < "$TEMP_DIR/_hades_search_files.txt" | \
-                while IFS= read -r file; do
-                    echo "$file:Hades/Miasma exfil-repo beacon string ($hm_beacon)" >> "$TEMP_DIR/hades_miasma_indicators.txt"
-                done
-        done
-
-        # IOC 3: C2 camouflage path. The Hades loader exfiltrates via a path under the
-        # legitimate Anthropic API host. Real clients use api.anthropic.com/v1/messages;
-        # /v1/api is not a real endpoint, so this literal match is low-FP.
-        fast_grep_files_fixed "api.anthropic.com/v1/api" < "$TEMP_DIR/_hades_search_files.txt" | \
-            while IFS= read -r file; do
-                echo "$file:Hades C2 camouflage path (api.anthropic.com/v1/api)" >> "$TEMP_DIR/hades_miasma_indicators.txt"
-            done
-
-        # IOC 4: June 25 LeoPlatform / RStreams wave marker strings (Socket disclosure).
-        # The wave reuses the binding.gyp install trigger (hash-pinned in
-        # MALICIOUS_HASHLIST) but stamps these new near-zero-FP markers on its
-        # payloads / exfil repos. "TheBeautifulSandsOfTime" from the May TanStack
-        # wave is matched in check_mini_shai_hulud_indicators; these are the new variants.
-        local lp_marker
-        for lp_marker in \
-            "RevokeAndItGoesKaboom" \
-            "Alright Lets See If This Works" \
-            "thebeautifulmarchoftime" \
-            "thebeautifulsnadsoftime"
-        do
-            fast_grep_files_fixed "$lp_marker" < "$TEMP_DIR/_hades_search_files.txt" | \
-                while IFS= read -r file; do
-                    echo "$file:Miasma LeoPlatform/RStreams wave marker ($lp_marker)" >> "$TEMP_DIR/hades_miasma_indicators.txt"
-                done
-        done
-    fi
+    # IOC 1: Dead-man's-switch token-nuke marker strings. Each wave uses its own
+    #        variant; the May-wave "IfYouRevoke...Wipe" string is handled separately in
+    #        check_mini_shai_hulud_indicators. These are unique enough for a literal match.
+    # IOC 2: Exfil-repo description / beacon strings stamped on attacker-created
+    #        GitHub repos (the git-config form is also matched by malicious_descriptions).
+    # IOC 3: C2 camouflage path. The Hades loader exfiltrates via a path under the
+    #        legitimate Anthropic API host. Real clients use api.anthropic.com/v1/messages;
+    #        /v1/api is not a real endpoint, so this literal match is low-FP.
+    # IOC 4: June 25 LeoPlatform / RStreams wave marker strings (Socket disclosure).
+    #        The wave reuses the binding.gyp install trigger (hash-pinned in
+    #        MALICIOUS_HASHLIST) but stamps these new near-zero-FP markers on its
+    #        payloads / exfil repos. "TheBeautifulSandsOfTime" from the May TanStack
+    #        wave is matched in check_mini_shai_hulud_indicators; these are the new variants.
+    scan_fixed_iocs "$TEMP_DIR/_hades_search_files.txt" "$TEMP_DIR/hades_miasma_indicators.txt" \
+        $'IfYouYankThisTokenItWillNukeTheComputerOfTheOwnerFully\tHades/Miasma dead-man\'s-switch token-nuke marker (%s)' \
+        $'IfYouInvalidateThisTokenItWillNukeTheComputerOfTheOwner\tHades/Miasma dead-man\'s-switch token-nuke marker (%s)' \
+        $'Hades - The End for the Damned\tHades/Miasma exfil-repo beacon string (%s)' \
+        $'Miasma - The Spreading Blight\tHades/Miasma exfil-repo beacon string (%s)' \
+        $'api.anthropic.com/v1/api\tHades C2 camouflage path (api.anthropic.com/v1/api)' \
+        $'RevokeAndItGoesKaboom\tMiasma LeoPlatform/RStreams wave marker (%s)' \
+        $'Alright Lets See If This Works\tMiasma LeoPlatform/RStreams wave marker (%s)' \
+        $'thebeautifulmarchoftime\tMiasma LeoPlatform/RStreams wave marker (%s)' \
+        $'thebeautifulsnadsoftime\tMiasma LeoPlatform/RStreams wave marker (%s)'
     rm -f "$TEMP_DIR/_hades_search_files.txt"
 
     # Deduplicate
@@ -2929,44 +2820,23 @@ check_easy_day_js_indicators() {
 
     # The dropper and C2 references live in JS payloads and package manifests, so
     # search the code/script buckets plus the package-file bucket together.
-    : > "$TEMP_DIR/_easy_day_js_search_files.txt"
-    [[ -s "$TEMP_DIR/code_files.txt" ]] && cat "$TEMP_DIR/code_files.txt" >> "$TEMP_DIR/_easy_day_js_search_files.txt"
-    [[ -s "$TEMP_DIR/script_files.txt" ]] && cat "$TEMP_DIR/script_files.txt" >> "$TEMP_DIR/_easy_day_js_search_files.txt"
-    [[ -s "$TEMP_DIR/package_files.txt" ]] && cat "$TEMP_DIR/package_files.txt" >> "$TEMP_DIR/_easy_day_js_search_files.txt"
+    build_file_list "$TEMP_DIR/_easy_day_js_search_files.txt" \
+        "$TEMP_DIR/code_files.txt" \
+        "$TEMP_DIR/script_files.txt" \
+        "$TEMP_DIR/package_files.txt"
     sort -u "$TEMP_DIR/_easy_day_js_search_files.txt" -o "$TEMP_DIR/_easy_day_js_search_files.txt"
 
-    if [[ -s "$TEMP_DIR/_easy_day_js_search_files.txt" ]]; then
-        # IOC 1: the malicious injected dependency by name. "easy-day-js" is a
-        # dayjs typosquat published only for this campaign — literal match is low-FP.
-        fast_grep_files_fixed "easy-day-js" < "$TEMP_DIR/_easy_day_js_search_files.txt" | \
-            while IFS= read -r file; do
-                echo "$file:easy-day-js malicious dependency reference (dayjs typosquat)" >> "$TEMP_DIR/easy_day_js_indicators.txt"
-            done
-
-        # IOC 2: hardcoded C2 IP addresses (stage-1 payload host + stage-2 beacon host).
-        local edj_c2
-        for edj_c2 in \
-            "23.254.164.92" \
-            "23.254.164.123"
-        do
-            fast_grep_files_fixed "$edj_c2" < "$TEMP_DIR/_easy_day_js_search_files.txt" | \
-                while IFS= read -r file; do
-                    echo "$file:easy-day-js C2 IP address ($edj_c2)" >> "$TEMP_DIR/easy_day_js_indicators.txt"
-                done
-        done
-
-        # IOC 3: the campaign payload path used on both C2 hosts.
-        fast_grep_files_fixed "/update/49890878" < "$TEMP_DIR/_easy_day_js_search_files.txt" | \
-            while IFS= read -r file; do
-                echo "$file:easy-day-js C2 payload path (/update/49890878)" >> "$TEMP_DIR/easy_day_js_indicators.txt"
-            done
-
-        # IOC 4: the postinstall dropper invocation.
-        fast_grep_files_fixed "node setup.cjs --no-warnings" < "$TEMP_DIR/_easy_day_js_search_files.txt" | \
-            while IFS= read -r file; do
-                echo "$file:easy-day-js postinstall dropper hook (node setup.cjs --no-warnings)" >> "$TEMP_DIR/easy_day_js_indicators.txt"
-            done
-    fi
+    # IOC 1: the malicious injected dependency by name. "easy-day-js" is a
+    #        dayjs typosquat published only for this campaign — literal match is low-FP.
+    # IOC 2: hardcoded C2 IP addresses (stage-1 payload host + stage-2 beacon host).
+    # IOC 3: the campaign payload path used on both C2 hosts.
+    # IOC 4: the postinstall dropper invocation.
+    scan_fixed_iocs "$TEMP_DIR/_easy_day_js_search_files.txt" "$TEMP_DIR/easy_day_js_indicators.txt" \
+        $'easy-day-js\teasy-day-js malicious dependency reference (dayjs typosquat)' \
+        $'23.254.164.92\teasy-day-js C2 IP address (%s)' \
+        $'23.254.164.123\teasy-day-js C2 IP address (%s)' \
+        $'/update/49890878\teasy-day-js C2 payload path (/update/49890878)' \
+        $'node setup.cjs --no-warnings\teasy-day-js postinstall dropper hook (node setup.cjs --no-warnings)'
     rm -f "$TEMP_DIR/_easy_day_js_search_files.txt"
 
     # Deduplicate
@@ -3048,12 +2918,17 @@ check_trapdoor_indicators() {
         "move-analyzer-build" "move-compiler-tools" "move-project-builder"
         "sui-framework-helpers" "sui-move-build-helper" "sui-sdk-build-utils"
     )
-    : > "$TEMP_DIR/_trapdoor_deps.txt"
-    local df
-    for df in all_deps pypi_all_deps crates_all_deps composer_all_deps; do
-        [[ -s "$TEMP_DIR/$df.txt" ]] && cat "$TEMP_DIR/$df.txt" >> "$TEMP_DIR/_trapdoor_deps.txt"
-    done
-    if [[ -s "$TEMP_DIR/_trapdoor_deps.txt" ]]; then
+    build_file_list "$TEMP_DIR/_trapdoor_deps.txt" \
+        "$TEMP_DIR/all_deps.txt" \
+        "$TEMP_DIR/pypi_all_deps.txt" \
+        "$TEMP_DIR/crates_all_deps.txt" \
+        "$TEMP_DIR/composer_all_deps.txt"
+    # One union pass decides whether any campaign name is present at all. Without it
+    # the loop below runs a grep|cut|sort pipeline per name — 33 names, three
+    # processes each — on every scan of any project that declares dependencies.
+    if [[ -s "$TEMP_DIR/_trapdoor_deps.txt" ]] && \
+       printf '|%s:\n' "${trapdoor_names[@]}" > "$TEMP_DIR/_trapdoor_name_patterns.txt" && \
+       grep -qF -f "$TEMP_DIR/_trapdoor_name_patterns.txt" "$TEMP_DIR/_trapdoor_deps.txt" 2>/dev/null; then
         local td_name
         for td_name in "${trapdoor_names[@]}"; do
             { grep -F "|$td_name:" "$TEMP_DIR/_trapdoor_deps.txt" || true; } | cut -d'|' -f1 | sort -u | \
@@ -3062,28 +2937,19 @@ check_trapdoor_indicators() {
                 done
         done
     fi
-    rm -f "$TEMP_DIR/_trapdoor_deps.txt"
+    rm -f "$TEMP_DIR/_trapdoor_deps.txt" "$TEMP_DIR/_trapdoor_name_patterns.txt"
 
     # IOC 2: Content literals across code/script/yaml files.
-    : > "$TEMP_DIR/_trapdoor_search_files.txt"
-    [[ -s "$TEMP_DIR/code_files.txt" ]] && cat "$TEMP_DIR/code_files.txt" >> "$TEMP_DIR/_trapdoor_search_files.txt"
-    [[ -s "$TEMP_DIR/script_files.txt" ]] && cat "$TEMP_DIR/script_files.txt" >> "$TEMP_DIR/_trapdoor_search_files.txt"
-    [[ -s "$TEMP_DIR/yaml_files.txt" ]] && cat "$TEMP_DIR/yaml_files.txt" >> "$TEMP_DIR/_trapdoor_search_files.txt"
-    if [[ -s "$TEMP_DIR/_trapdoor_search_files.txt" ]]; then
-        local td_indicator
-        for td_indicator in \
-            "P-2024-001" \
-            "cargo-build-helper-2026" \
-            "Universal AI Agent Extraction Framework" \
-            "ddjidd564.github.io/defi-security-best-practices" \
-            "defi-security-best-practices/config.json"
-        do
-            fast_grep_files_fixed "$td_indicator" < "$TEMP_DIR/_trapdoor_search_files.txt" | \
-                while IFS= read -r file; do
-                    echo "$file:TrapDoor campaign indicator ($td_indicator)" >> "$TEMP_DIR/trapdoor_indicators.txt"
-                done
-        done
-    fi
+    build_file_list "$TEMP_DIR/_trapdoor_search_files.txt" \
+        "$TEMP_DIR/code_files.txt" \
+        "$TEMP_DIR/script_files.txt" \
+        "$TEMP_DIR/yaml_files.txt"
+    scan_fixed_iocs "$TEMP_DIR/_trapdoor_search_files.txt" "$TEMP_DIR/trapdoor_indicators.txt" \
+        $'P-2024-001\tTrapDoor campaign indicator (%s)' \
+        $'cargo-build-helper-2026\tTrapDoor campaign indicator (%s)' \
+        $'Universal AI Agent Extraction Framework\tTrapDoor campaign indicator (%s)' \
+        $'ddjidd564.github.io/defi-security-best-practices\tTrapDoor campaign indicator (%s)' \
+        $'defi-security-best-practices/config.json\tTrapDoor campaign indicator (%s)'
     rm -f "$TEMP_DIR/_trapdoor_search_files.txt"
 
     # IOC 3: Payload + C2-hosted framework docs anywhere in the tree.
@@ -3116,7 +2982,10 @@ check_laravel_lang_indicators() {
     print_status "$BLUE" "   Checking for Laravel-Lang Composer tag-rewrite IOCs (May 22, 2026)..."
 
     # IOC 1: Any dependency on the four compromised packages (all tags malicious).
-    if [[ -s "$TEMP_DIR/composer_all_deps.txt" ]]; then
+    # All four live under the same vendor prefix, so one cheap test decides whether
+    # the per-name pipelines below need to run at all.
+    if [[ -s "$TEMP_DIR/composer_all_deps.txt" ]] && \
+       grep -qF "|laravel-lang/" "$TEMP_DIR/composer_all_deps.txt" 2>/dev/null; then
         local ll_name
         for ll_name in \
             "laravel-lang/lang" "laravel-lang/http-statuses" \
@@ -3132,30 +3001,21 @@ check_laravel_lang_indicators() {
     # IOC 2: Content literals. The PHP payload lives in script_files (*.php); the
     # malicious commit SHAs live in composer.lock "reference" fields, so search the
     # Composer manifests/lockfiles too.
-    : > "$TEMP_DIR/_laravel_search_files.txt"
-    [[ -s "$TEMP_DIR/code_files.txt" ]] && cat "$TEMP_DIR/code_files.txt" >> "$TEMP_DIR/_laravel_search_files.txt"
-    [[ -s "$TEMP_DIR/script_files.txt" ]] && cat "$TEMP_DIR/script_files.txt" >> "$TEMP_DIR/_laravel_search_files.txt"
-    [[ -s "$TEMP_DIR/yaml_files.txt" ]] && cat "$TEMP_DIR/yaml_files.txt" >> "$TEMP_DIR/_laravel_search_files.txt"
-    [[ -s "$TEMP_DIR/composer_manifests.txt" ]] && cat "$TEMP_DIR/composer_manifests.txt" >> "$TEMP_DIR/_laravel_search_files.txt"
-    [[ -s "$TEMP_DIR/composer_lockfiles.txt" ]] && cat "$TEMP_DIR/composer_lockfiles.txt" >> "$TEMP_DIR/_laravel_search_files.txt"
-    if [[ -s "$TEMP_DIR/_laravel_search_files.txt" ]]; then
-        local ll_indicator
-        for ll_indicator in \
-            "flipboxstudio.info" \
-            "flipboxstudio[.]info" \
-            "DebugElevator" \
-            "DebugChromium" \
-            "Chromium-DebugElevator" \
-            "a5ea2e8fa92ccf29cdb1d2dadbeb27722b2bff37" \
-            "bba2e443dc7ff1f8704f52a5375383e3f4f643b8" \
-            "26c233e1a0d4fd2331e8e0f175e18f8eed904aa3"
-        do
-            fast_grep_files_fixed "$ll_indicator" < "$TEMP_DIR/_laravel_search_files.txt" | \
-                while IFS= read -r file; do
-                    echo "$file:Laravel-Lang campaign indicator ($ll_indicator)" >> "$TEMP_DIR/laravel_lang_indicators.txt"
-                done
-        done
-    fi
+    build_file_list "$TEMP_DIR/_laravel_search_files.txt" \
+        "$TEMP_DIR/code_files.txt" \
+        "$TEMP_DIR/script_files.txt" \
+        "$TEMP_DIR/yaml_files.txt" \
+        "$TEMP_DIR/composer_manifests.txt" \
+        "$TEMP_DIR/composer_lockfiles.txt"
+    scan_fixed_iocs "$TEMP_DIR/_laravel_search_files.txt" "$TEMP_DIR/laravel_lang_indicators.txt" \
+        $'flipboxstudio.info\tLaravel-Lang campaign indicator (%s)' \
+        $'flipboxstudio[.]info\tLaravel-Lang campaign indicator (%s)' \
+        $'DebugElevator\tLaravel-Lang campaign indicator (%s)' \
+        $'DebugChromium\tLaravel-Lang campaign indicator (%s)' \
+        $'Chromium-DebugElevator\tLaravel-Lang campaign indicator (%s)' \
+        $'a5ea2e8fa92ccf29cdb1d2dadbeb27722b2bff37\tLaravel-Lang campaign indicator (%s)' \
+        $'bba2e443dc7ff1f8704f52a5375383e3f4f643b8\tLaravel-Lang campaign indicator (%s)' \
+        $'26c233e1a0d4fd2331e8e0f175e18f8eed904aa3\tLaravel-Lang campaign indicator (%s)'
     rm -f "$TEMP_DIR/_laravel_search_files.txt"
 
     if [[ -s "$TEMP_DIR/laravel_lang_indicators.txt" ]]; then
@@ -3177,22 +3037,13 @@ check_node_ipc_indicators() {
     local scan_dir=$1
     print_status "$BLUE" "   Checking for node-ipc backdoor IOCs (May 14, 2026)..."
 
-    if [[ -s "$TEMP_DIR/code_files.txt" ]]; then
-        local ni_indicator
-        for ni_indicator in \
-            "sh.azurestaticprovider.net" \
-            "sh.azurestaticprovider[.]net" \
-            "azurestaticprovider.net" \
-            "qZ8pL3vNxR9wKmTyHbVcFgDsJaEoUi" \
-            "__ntRun" \
-            "37.16.75.69"
-        do
-            fast_grep_files_fixed "$ni_indicator" < "$TEMP_DIR/code_files.txt" | \
-                while IFS= read -r file; do
-                    echo "$file:node-ipc backdoor indicator ($ni_indicator)" >> "$TEMP_DIR/node_ipc_indicators.txt"
-                done
-        done
-    fi
+    scan_fixed_iocs "$TEMP_DIR/code_files.txt" "$TEMP_DIR/node_ipc_indicators.txt" \
+        $'sh.azurestaticprovider.net\tnode-ipc backdoor indicator (%s)' \
+        $'sh.azurestaticprovider[.]net\tnode-ipc backdoor indicator (%s)' \
+        $'azurestaticprovider.net\tnode-ipc backdoor indicator (%s)' \
+        $'qZ8pL3vNxR9wKmTyHbVcFgDsJaEoUi\tnode-ipc backdoor indicator (%s)' \
+        $'__ntRun\tnode-ipc backdoor indicator (%s)' \
+        $'37.16.75.69\tnode-ipc backdoor indicator (%s)'
 
     if [[ -s "$TEMP_DIR/node_ipc_indicators.txt" ]]; then
         sort -u "$TEMP_DIR/node_ipc_indicators.txt" -o "$TEMP_DIR/node_ipc_indicators.txt"
@@ -3212,22 +3063,13 @@ check_bitwarden_indicators() {
     local scan_dir=$1
     print_status "$BLUE" "   Checking for Bitwarden CLI compromise IOCs (April 22, 2026)..."
 
-    if [[ -s "$TEMP_DIR/code_files.txt" ]]; then
-        local bw_indicator
-        for bw_indicator in \
-            "audit.checkmarx.cx" \
-            "audit.checkmarx[.]cx" \
-            "94.154.172.43" \
-            "Shai-Hulud: The Third Coming" \
-            "Would be executing butlerian jihad!" \
-            "LongLiveTheResistanceAgainstMachines"
-        do
-            fast_grep_files_fixed "$bw_indicator" < "$TEMP_DIR/code_files.txt" | \
-                while IFS= read -r file; do
-                    echo "$file:Bitwarden CLI compromise indicator ($bw_indicator)" >> "$TEMP_DIR/bitwarden_indicators.txt"
-                done
-        done
-    fi
+    scan_fixed_iocs "$TEMP_DIR/code_files.txt" "$TEMP_DIR/bitwarden_indicators.txt" \
+        $'audit.checkmarx.cx\tBitwarden CLI compromise indicator (%s)' \
+        $'audit.checkmarx[.]cx\tBitwarden CLI compromise indicator (%s)' \
+        $'94.154.172.43\tBitwarden CLI compromise indicator (%s)' \
+        $'Shai-Hulud: The Third Coming\tBitwarden CLI compromise indicator (%s)' \
+        $'Would be executing butlerian jihad!\tBitwarden CLI compromise indicator (%s)' \
+        $'LongLiveTheResistanceAgainstMachines\tBitwarden CLI compromise indicator (%s)'
 
     # bw1.js payload filename anywhere in the tree.
     local in_tree_bw
@@ -3256,28 +3098,19 @@ check_nx_console_indicators() {
     local check_host=${2:-false}
     print_status "$BLUE" "   Checking for Nx Console 18.95.0 compromise IOCs (May 18, 2026)..."
 
-    : > "$TEMP_DIR/_nx_search_files.txt"
-    [[ -s "$TEMP_DIR/code_files.txt" ]] && cat "$TEMP_DIR/code_files.txt" >> "$TEMP_DIR/_nx_search_files.txt"
-    [[ -s "$TEMP_DIR/script_files.txt" ]] && cat "$TEMP_DIR/script_files.txt" >> "$TEMP_DIR/_nx_search_files.txt"
-    [[ -s "$TEMP_DIR/yaml_files.txt" ]] && cat "$TEMP_DIR/yaml_files.txt" >> "$TEMP_DIR/_nx_search_files.txt"
-    if [[ -s "$TEMP_DIR/_nx_search_files.txt" ]]; then
-        local nx_indicator
-        for nx_indicator in \
-            "558b09d7ad0d1660e2a0fb8a06da81a6f42e06d2" \
-            "ba642fe2c7c65e42dd7f6444b83023dc6827e08c" \
-            "github:nrwl/nx#558b09d7" \
-            "nxConsole.mcpExtensionInstalledSha" \
-            "install-mcp-extension" \
-            "__DAEMONIZED=1" \
-            "api.github.com/search/commits?q=firedalazer" \
-            "firedalazer"
-        do
-            fast_grep_files_fixed "$nx_indicator" < "$TEMP_DIR/_nx_search_files.txt" | \
-                while IFS= read -r file; do
-                    echo "$file:Nx Console 18.95.0 compromise indicator ($nx_indicator)" >> "$TEMP_DIR/nx_console_indicators.txt"
-                done
-        done
-    fi
+    build_file_list "$TEMP_DIR/_nx_search_files.txt" \
+        "$TEMP_DIR/code_files.txt" \
+        "$TEMP_DIR/script_files.txt" \
+        "$TEMP_DIR/yaml_files.txt"
+    scan_fixed_iocs "$TEMP_DIR/_nx_search_files.txt" "$TEMP_DIR/nx_console_indicators.txt" \
+        $'558b09d7ad0d1660e2a0fb8a06da81a6f42e06d2\tNx Console 18.95.0 compromise indicator (%s)' \
+        $'ba642fe2c7c65e42dd7f6444b83023dc6827e08c\tNx Console 18.95.0 compromise indicator (%s)' \
+        $'github:nrwl/nx#558b09d7\tNx Console 18.95.0 compromise indicator (%s)' \
+        $'nxConsole.mcpExtensionInstalledSha\tNx Console 18.95.0 compromise indicator (%s)' \
+        $'install-mcp-extension\tNx Console 18.95.0 compromise indicator (%s)' \
+        $'__DAEMONIZED=1\tNx Console 18.95.0 compromise indicator (%s)' \
+        $'api.github.com/search/commits?q=firedalazer\tNx Console 18.95.0 compromise indicator (%s)' \
+        $'firedalazer\tNx Console 18.95.0 compromise indicator (%s)'
     rm -f "$TEMP_DIR/_nx_search_files.txt"
 
     if [[ -s "$TEMP_DIR/nx_console_indicators.txt" ]]; then
@@ -3323,25 +3156,13 @@ check_ai_assistant_dropper() {
     # IOC 2: mouse5212-super-formatter "Malware-Slop" indicators (npm postinstall that
     # uploads /mnt/user-data to a GitHub repo using an embedded PAT). The attacker
     # username and the hard-coded token prefix are unique, high-confidence signals.
-    if [[ -s "$TEMP_DIR/code_files.txt" ]]; then
-        local ms_indicator
-        for ms_indicator in \
-            "mouse5212-super-formatter" \
-            "unplowed3584" \
-            "github_pat_11CEVM5CA0SRA"
-        do
-            fast_grep_files_fixed "$ms_indicator" < "$TEMP_DIR/code_files.txt" | \
-                while IFS= read -r file; do
-                    echo "$file:Malware-Slop indicator ($ms_indicator)" >> "$TEMP_DIR/ai_assistant_dropper.txt"
-                done
-        done
-        # /mnt/user-data (Claude's upload dir) referenced from JS is a strong contextual
-        # signal — almost never legitimate inside a published npm package.
-        fast_grep_files_fixed "/mnt/user-data" < "$TEMP_DIR/code_files.txt" | \
-            while IFS= read -r file; do
-                echo "$file:References Claude upload directory /mnt/user-data (Malware-Slop exfil target)" >> "$TEMP_DIR/ai_assistant_dropper.txt"
-            done
-    fi
+    # The final row: /mnt/user-data (Claude's upload dir) referenced from JS is a
+    # strong contextual signal — almost never legitimate inside a published npm package.
+    scan_fixed_iocs "$TEMP_DIR/code_files.txt" "$TEMP_DIR/ai_assistant_dropper.txt" \
+        $'mouse5212-super-formatter\tMalware-Slop indicator (%s)' \
+        $'unplowed3584\tMalware-Slop indicator (%s)' \
+        $'github_pat_11CEVM5CA0SRA\tMalware-Slop indicator (%s)' \
+        $'/mnt/user-data\tReferences Claude upload directory /mnt/user-data (Malware-Slop exfil target)'
 
     # IOC 3: With --check-host, inspect ~/.claude/settings.json for the Nx Console
     # payload's markers (it writes itself there for persistence).
@@ -3937,14 +3758,21 @@ check_packages() {
     print_status "$BLUE" "   Checking for compromised namespaces..."
     # Quick check: just look in the already-extracted dependencies file
     # This is much faster than re-reading all package.json files
-    for namespace in "${COMPROMISED_NAMESPACES[@]}"; do
-        # Check if any dependency starts with this namespace
-        if grep -q "|$namespace/" "$TEMP_DIR/all_deps.txt" 2>/dev/null; then
-            { grep "|$namespace/" "$TEMP_DIR/all_deps.txt" || true; } | cut -d'|' -f1 | sort | uniq | while read -r file; do
-                [[ -n "$file" ]] && echo "$file:Contains packages from compromised namespace: $namespace" >> "$TEMP_DIR/namespace_warnings.txt"
-            done
-        fi
-    done
+    # Test all namespaces in one pass before looping. Every dependency set has to be
+    # checked against all 17, and on the common clean tree none of them hit, so the
+    # union pass stands in for 17 separate greps.
+    printf '|%s/\n' "${COMPROMISED_NAMESPACES[@]}" > "$TEMP_DIR/_namespace_patterns.txt"
+    if grep -qF -f "$TEMP_DIR/_namespace_patterns.txt" "$TEMP_DIR/all_deps.txt" 2>/dev/null; then
+        for namespace in "${COMPROMISED_NAMESPACES[@]}"; do
+            # Check if any dependency starts with this namespace
+            if grep -q "|$namespace/" "$TEMP_DIR/all_deps.txt" 2>/dev/null; then
+                { grep "|$namespace/" "$TEMP_DIR/all_deps.txt" || true; } | cut -d'|' -f1 | sort | uniq | while read -r file; do
+                    [[ -n "$file" ]] && echo "$file:Contains packages from compromised namespace: $namespace" >> "$TEMP_DIR/namespace_warnings.txt"
+                done
+            fi
+        done
+    fi
+    rm -f "$TEMP_DIR/_namespace_patterns.txt"
 
     echo -ne "\r\033[K"
 }
@@ -4048,18 +3876,14 @@ check_content() {
     local scan_dir=$1
     print_status "$BLUE" "   Checking for suspicious content patterns..."
 
-    # FAST: Use xargs with grep -l for bulk searching instead of per-file grep
-    # Search for webhook.site references
-    cat "$TEMP_DIR/code_files.txt" "$TEMP_DIR/yaml_files.txt" 2>/dev/null | \
-        fast_grep_files_fixed "webhook.site" | while read -r file; do
-        [[ -n "$file" ]] && echo "$file:webhook.site reference" >> "$TEMP_DIR/suspicious_content.txt"
-    done
+    # Both indicators live in code or workflow/CI YAML, so search one combined list.
+    : > "$TEMP_DIR/_content_search_files.txt"
+    cat "$TEMP_DIR/code_files.txt" "$TEMP_DIR/yaml_files.txt" 2>/dev/null >> "$TEMP_DIR/_content_search_files.txt"
 
-    # Search for malicious webhook endpoint
-    cat "$TEMP_DIR/code_files.txt" "$TEMP_DIR/yaml_files.txt" 2>/dev/null | \
-        fast_grep_files_fixed "bb8ca5f6-4175-45d2-b042-fc9ebb8170b7" | while read -r file; do
-        [[ -n "$file" ]] && echo "$file:malicious webhook endpoint" >> "$TEMP_DIR/suspicious_content.txt"
-    done
+    scan_fixed_iocs "$TEMP_DIR/_content_search_files.txt" "$TEMP_DIR/suspicious_content.txt" \
+        $'webhook.site\twebhook.site reference' \
+        $'bb8ca5f6-4175-45d2-b042-fc9ebb8170b7\tmalicious webhook endpoint'
+    rm -f "$TEMP_DIR/_content_search_files.txt"
 }
 
 # Function: check_crypto_theft_patterns
@@ -4071,52 +3895,65 @@ check_crypto_theft_patterns() {
     local scan_dir=$1
     print_status "$BLUE" "   Checking for cryptocurrency theft patterns..."
 
-    # FAST: Use xargs with grep -l for bulk pattern searching
-    # Check for specific malicious functions from chalk/debug attack (highest priority)
-    fast_grep_files "checkethereumw|runmask|newdlocal|_0x19ca67" < "$TEMP_DIR/code_files.txt" | \
-        while read -r file; do
-            [[ -n "$file" ]] && echo "$file:Known crypto theft function names detected" >> "$TEMP_DIR/crypto_patterns.txt"
-        done
+    # Every check below this guard keys off one of these literals (the two regex
+    # searches are pure literal alternations), so a single union prefilter decides
+    # whether any of them can possibly match. On a tree with none of them — the
+    # common case — this replaces five searches with one.
+    if fast_grep_any_fixed "$TEMP_DIR/code_files.txt" \
+        "checkethereumw" "runmask" "newdlocal" "_0x19ca67" \
+        "0xFc4a4858bafef54D1b1d7697bfb5c52F4c166976" \
+        "1H13VnQJKtT4HjD5ZFKaaiZEetMbG7nDHx" \
+        "TB9emsCq6fQw6wRk4HBxxNnU6Hwt1DnV67" \
+        "0x7e28D9889f414B06c19a22A9Bd316f0AC279a4d6" \
+        "npmjs.help" "XMLHttpRequest.prototype.send" "javascript-obfuscator"
+    then
+        # FAST: Use xargs with grep -l for bulk pattern searching
+        # Check for specific malicious functions from chalk/debug attack (highest priority)
+        fast_grep_files "checkethereumw|runmask|newdlocal|_0x19ca67" < "$TEMP_DIR/code_files.txt" | \
+            while read -r file; do
+                [[ -n "$file" ]] && echo "$file:Known crypto theft function names detected" >> "$TEMP_DIR/crypto_patterns.txt"
+            done
 
-    # Check for known attacker wallets (high priority)
-    # 0x7e28...a4d6: IronWorm (June 3, 2026) operator's own Ethereum address, leaked because
-    # they hardcoded their BIP-39 seed into the malware's exfiltration skip-list (JFrog disclosure).
-    fast_grep_files "0xFc4a4858bafef54D1b1d7697bfb5c52F4c166976|1H13VnQJKtT4HjD5ZFKaaiZEetMbG7nDHx|TB9emsCq6fQw6wRk4HBxxNnU6Hwt1DnV67|0x7e28D9889f414B06c19a22A9Bd316f0AC279a4d6" < "$TEMP_DIR/code_files.txt" | \
-        while read -r file; do
-            [[ -n "$file" ]] && echo "$file:Known attacker wallet address detected - HIGH RISK" >> "$TEMP_DIR/crypto_patterns.txt"
-        done
+        # Check for known attacker wallets (high priority)
+        # 0x7e28...a4d6: IronWorm (June 3, 2026) operator's own Ethereum address, leaked because
+        # they hardcoded their BIP-39 seed into the malware's exfiltration skip-list (JFrog disclosure).
+        fast_grep_files "0xFc4a4858bafef54D1b1d7697bfb5c52F4c166976|1H13VnQJKtT4HjD5ZFKaaiZEetMbG7nDHx|TB9emsCq6fQw6wRk4HBxxNnU6Hwt1DnV67|0x7e28D9889f414B06c19a22A9Bd316f0AC279a4d6" < "$TEMP_DIR/code_files.txt" | \
+            while read -r file; do
+                [[ -n "$file" ]] && echo "$file:Known attacker wallet address detected - HIGH RISK" >> "$TEMP_DIR/crypto_patterns.txt"
+            done
 
-    # Check for npmjs.help phishing domain
-    fast_grep_files_fixed "npmjs.help" < "$TEMP_DIR/code_files.txt" | \
-        while read -r file; do
-            [[ -n "$file" ]] && echo "$file:Phishing domain npmjs.help detected" >> "$TEMP_DIR/crypto_patterns.txt"
-        done
+        # Check for npmjs.help phishing domain
+        fast_grep_files_fixed "npmjs.help" < "$TEMP_DIR/code_files.txt" | \
+            while read -r file; do
+                [[ -n "$file" ]] && echo "$file:Phishing domain npmjs.help detected" >> "$TEMP_DIR/crypto_patterns.txt"
+            done
 
-    # Check for XMLHttpRequest hijacking (medium priority - filter out framework code)
-    fast_grep_files_fixed "XMLHttpRequest.prototype.send" < "$TEMP_DIR/code_files.txt" | \
-        while read -r file; do
-            [[ -z "$file" ]] && continue
-            if [[ "$file" == *"/react-native/Libraries/Network/"* ]] || [[ "$file" == *"/next/dist/compiled/"* ]]; then
-                # Framework code - check for crypto patterns too
-                if fast_grep_quiet "0x[a-fA-F0-9]{40}|checkethereumw|runmask|webhook\.site|npmjs\.help" "$file"; then
-                    echo "$file:XMLHttpRequest prototype modification with crypto patterns detected - HIGH RISK" >> "$TEMP_DIR/crypto_patterns.txt"
+        # Check for XMLHttpRequest hijacking (medium priority - filter out framework code)
+        fast_grep_files_fixed "XMLHttpRequest.prototype.send" < "$TEMP_DIR/code_files.txt" | \
+            while read -r file; do
+                [[ -z "$file" ]] && continue
+                if [[ "$file" == *"/react-native/Libraries/Network/"* ]] || [[ "$file" == *"/next/dist/compiled/"* ]]; then
+                    # Framework code - check for crypto patterns too
+                    if fast_grep_quiet "0x[a-fA-F0-9]{40}|checkethereumw|runmask|webhook\.site|npmjs\.help" "$file"; then
+                        echo "$file:XMLHttpRequest prototype modification with crypto patterns detected - HIGH RISK" >> "$TEMP_DIR/crypto_patterns.txt"
+                    else
+                        echo "$file:XMLHttpRequest prototype modification detected in framework code - LOW RISK" >> "$TEMP_DIR/crypto_patterns.txt"
+                    fi
                 else
-                    echo "$file:XMLHttpRequest prototype modification detected in framework code - LOW RISK" >> "$TEMP_DIR/crypto_patterns.txt"
+                    if fast_grep_quiet "0x[a-fA-F0-9]{40}|checkethereumw|runmask|webhook\.site|npmjs\.help" "$file"; then
+                        echo "$file:XMLHttpRequest prototype modification with crypto patterns detected - HIGH RISK" >> "$TEMP_DIR/crypto_patterns.txt"
+                    else
+                        echo "$file:XMLHttpRequest prototype modification detected - MEDIUM RISK" >> "$TEMP_DIR/crypto_patterns.txt"
+                    fi
                 fi
-            else
-                if fast_grep_quiet "0x[a-fA-F0-9]{40}|checkethereumw|runmask|webhook\.site|npmjs\.help" "$file"; then
-                    echo "$file:XMLHttpRequest prototype modification with crypto patterns detected - HIGH RISK" >> "$TEMP_DIR/crypto_patterns.txt"
-                else
-                    echo "$file:XMLHttpRequest prototype modification detected - MEDIUM RISK" >> "$TEMP_DIR/crypto_patterns.txt"
-                fi
-            fi
-        done
+            done
 
-    # Check for javascript obfuscation
-    fast_grep_files_fixed "javascript-obfuscator" < "$TEMP_DIR/code_files.txt" | \
-        while read -r file; do
-            [[ -n "$file" ]] && echo "$file:JavaScript obfuscation detected" >> "$TEMP_DIR/crypto_patterns.txt"
-        done
+        # Check for javascript obfuscation
+        fast_grep_files_fixed "javascript-obfuscator" < "$TEMP_DIR/code_files.txt" | \
+            while read -r file; do
+                [[ -n "$file" ]] && echo "$file:JavaScript obfuscation detected" >> "$TEMP_DIR/crypto_patterns.txt"
+            done
+    fi
 
     # Check for generic Ethereum wallet address patterns (MEDIUM priority)
     # Files with 0x addresses AND crypto-related keywords

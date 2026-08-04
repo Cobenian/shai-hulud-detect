@@ -608,26 +608,27 @@ rm -rf "$SELF_FP_TMP"
 # ============================================================
 #  Issue #148: empty file list must not fall through to a CWD scan
 # ============================================================
-# When a scan target has no files of a given category, the three fast_grep_files*
-# helpers used to pipe an EMPTY list into `xargs -0 <tool>`. GNU xargs runs the
-# command once on empty input (with no path args), so git grep/rg recursively
-# scan the current working directory instead of nothing — producing false
-# positives whose paths point at the CWD (test-cases/, /tmp junk, bulk reports).
+# When a scan target has no files of a given category, an EMPTY list must not
+# reach the grep tool: with no path arguments git grep/rg recursively scan the
+# current working directory instead of nothing — producing false positives whose
+# paths point at the CWD (test-cases/, /tmp junk, bulk reports).
 #
-# The bug is invisible on macOS (BSD xargs does not run on empty input), so this
-# test does not rely on real xargs semantics. Instead it shadows `xargs` with a
-# stub that emits a sentinel whenever invoked, sources the real helper functions
-# straight out of the detector, and asserts that empty input never reaches xargs
-# (i.e. the early-return guard fired). This fails on the unpatched code on every
-# platform, macOS included.
+# The test shadows every tool the helpers can dispatch to (git, rg, grep, and
+# xargs, which earlier versions of the helpers piped through) with stubs that
+# emit a sentinel whenever invoked, sources the real helper functions straight
+# out of the detector, and asserts that empty input never reaches any of them —
+# i.e. the early-return guard fired. This fails on the unpatched code.
 XARGS_TMP=$(mktemp -d)
 mkdir -p "$XARGS_TMP/bin"
-printf '#!/bin/sh\necho STUB_XARGS_CALLED\n' > "$XARGS_TMP/bin/xargs"
-chmod +x "$XARGS_TMP/bin/xargs"
-# Pull the three contiguous helpers (fast_grep_files .. fast_grep_files_fixed)
-# out of the detector so we exercise the real function bodies, not a copy.
+for stub in xargs git rg grep; do
+    printf '#!/bin/sh\necho STUB_%s_CALLED\n' "$stub" > "$XARGS_TMP/bin/$stub"
+    chmod +x "$XARGS_TMP/bin/$stub"
+done
+# Pull the helper block (the private _fgrep_* plumbing plus the three public
+# fast_grep_files* entry points) out of the detector so we exercise the real
+# function bodies, not a copy.
 HELPERS_SRC="$XARGS_TMP/helpers.sh"
-awk '/^fast_grep_files\(\) \{/{f=1} f{print} f&&/^\}/{c++} c==3{exit}' "$DETECTOR" > "$HELPERS_SRC"
+awk '/^_FGREP_ARG_BUDGET=/{f=1} f{print} /^fast_grep_files_fixed\(\) \{/{g=1} g&&/^\}/{exit}' "$DETECTOR" > "$HELPERS_SRC"
 for helper in fast_grep_files fast_grep_files_i fast_grep_files_fixed; do
     ((total++))
     # git-grep is the auto-selected tool whose empty-input branch triggers the
