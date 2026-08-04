@@ -5,6 +5,37 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.14.0] - 2026-08-04
+
+### Added
+- **August 4, 2026 Shai-Hulud "Here We Go Again" — keyv / cacheable wave**: `compromised-packages.txt` gains **1,782 malicious versions across 434 npm packages** in nine organizations — the largest wave to date by install volume (**>2 billion monthly installs**). Entry point was the compromised GitHub account of the `keyv`/`cacheable` maintainer; `keyv@6.0.0` was published at 09:35 UTC and by 10:43 UTC the worm had republished eight further orgs at roughly one package per second each, driven by npm publish tokens harvested from the previous victim. Highest-volume packages: `keyv` (604M/mo), `flat-cache` (580M/mo), `file-entry-cache` (571M/mo), `cacheable-request` (137M/mo), `cacheable` (30M/mo). Secondary orgs by version count: `@servicetitan` (845), `@ornikar` (297, mostly shared build/lint configs reached as devDependencies), `@onereach` (208), `@or-sdk` (155), `@qlik` (28), `@hubsync` (27), `@nebula.js` (21), `@arv-bedrock` (10), plus `@picsart`, `@deliveroo`, `@adminide-stack`, `@workbench-stack`, `@thiennq`. `@or-sdk/auth` and `@arv-bedrock/auth-sso` are authentication libraries, so downstream exposure compounds. Zero overlap with any previously listed entry.
+- **Payload hashes** added to `MALICIOUS_HASHLIST`:
+  - `54dc7ea54a1317cca0e890a2770630cf7fa6c97813e0cb9d2caa93012b350668` — `setup.mjs`, the npm tarball preinstall loader
+  - `fd3ca4007b225fdf8de7af4345a19179d5efa8c4bb9205f88cda806e5684b1eb` — `setup.mjs`, the `.claude` / `.vscode` repository loader
+  - `9fc2570b7cef51c1b8df116d144d11ff4096357be7d2c4c6367cfc2509cf1bcc` — `Math_Symbol.js` / `math_init.js`, the 727,680-byte Bun-compiled payload (ten AES-256-GCM blobs keyed by PBKDF2, salt `svksjrhjkcejg`, 200,000 iterations)
+- **Test fixtures**: `test-cases/keyv-shai-hulud-attack/` (HIGH: five confirmed compromised versions including the scoped `@or-sdk/auth@0.38.2`, plus the `node setup.mjs` preinstall hook) and `test-cases/keyv-shai-hulud-clean/` (six verified last-known-good versions — must stay clean).
+
+### Changed
+- **`check_preinstall_bun_patterns` now matches `"preinstall": "node setup.mjs"`**, the delivery vector for this wave. The pattern previously only covered the November 2025 forms (`node setup_bun.js`, `node bun_installer.js`), so an August-wave `package.json` extracted from a tarball or vendored into a repo produced no preinstall finding.
+- **`check_malicious_repo_descriptions` now matches the plain forward string `Shai-Hulud: Here We Go Again`.** The May 19 wave stamped this marker *character-reversed* (`niagA oG eW ereH :duluH-iahS`, already matched in `check_mini_shai_hulud_indicators`); the August wave uses the unreversed form on its GitHub dead-drop repositories, of which roughly 546–1,300 were created on August 4.
+- **`shai-hulud-detector.sh`**: `SCRIPT_VERSION` 3.13.0 → 3.14.0.
+- **`run-tests.sh`**: registered the two new `EXPECTED` fixtures plus a five-assertion content-IoC block. Suite: 230 → 237 checks.
+- **`README.md`**: counters bumped (3,460+ → 5,240+, 230 → 237, coverage window now September 2025 → August 2026); new campaign-table row.
+
+### Notes
+- **Exfiltration uses no attacker-controlled domain.** Harvested credentials are RSA-4096 encrypted and pushed to GitHub dead-drop repositories, so there is nothing to blocklist at the network layer. (Aikido separately reported `npm-cache[.]com:443/router` for a variant; Socket and SafeDep observed GitHub-only exfil in the samples they analysed. It is not added as a C2 indicator here pending corroboration.)
+- **Provenance is not a safety signal for this wave.** Poisoned releases carry valid npm OIDC provenance and SLSA attestation because the publishing CI itself was compromised.
+- **The dead-man's switch fires on credential rotation.** Persistence is installed as `~/.local/bin/gh-token-monitor.sh` (macOS LaunchAgent `com.user.gh-token-monitor`, Linux systemd `gh-token-monitor.service`), polling GitHub every 60s and `eval`-ing an attacker-supplied handler when the stolen token is revoked. These paths were already covered by the existing dead-man's-switch check added for the May 11 wave. Rotate credentials only from a host verified clean.
+- The `.claude/settings.json` (`SessionStart`) and `.vscode/tasks.json` (`runOn: folderOpen`) hooks planted in infected repositories are gated behind editor/agent workspace-trust prompts and only execute if the developer accepts.
+- Counts are as of the Wiz Research IoC CSV at 2026-08-04 12:55 UTC. The wave was still being enumerated at that point — other trackers reported up to 868 package names — so expect follow-up additions.
+
+### Sources
+- [Wiz — keyv and cacheable npm Package Hijacked in Supply Chain Attack](https://www.wiz.io/blog/keyv-and-cacheable-npm-supply-chain-attack) (version list: [`wiz-sec-public/wiz-research-iocs` → `reports/keyv-packages.csv`](https://github.com/wiz-sec-public/wiz-research-iocs/blob/main/reports/keyv-packages.csv))
+- [Socket — Popular npm Packages in the keyv and cacheable Namespaces Compromised](https://socket.dev/blog/popular-npm-packages-in-the-keyv-and-cacheable-namespaces-compromised-in-active-supply-chain) (payload hashes, persistence paths)
+- [SafeDep — npm Worm Poisons 400+ Packages Across Nine Organisations](https://safedep.io/keyv-npm-supply-chain-compromise/) (timeline, crypto internals, dead-man's switch)
+- [Aikido — Keyv and friends compromised in npm supply chain attack](https://www.aikido.dev/blog/keyv-and-friends-compromised-in-npm-supply-chain-attack)
+- [The Hacker News — Keyv-Linked npm Worm Poisons Hundreds of Packages, Plants Claude Code and VS Code Hooks](https://thehackernews.com/2026/08/keyv-linked-npm-worm-poisons-hundreds.html)
+
 ## [3.13.0] - 2026-06-26
 
 ### Fixed

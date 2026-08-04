@@ -29,7 +29,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPROMISED_PACKAGES_FILE="$SCRIPT_DIR/compromised-packages.txt"
 
 # Tool version (surfaced in --json output for downstream consumers)
-SCRIPT_VERSION="3.13.0"
+SCRIPT_VERSION="3.14.0"
 
 # Global temp directory for file-based storage
 TEMP_DIR=""
@@ -264,6 +264,9 @@ MALICIOUS_HASHLIST=(
     "1a0e1daeaea87cab5610a3cc2aa72e7c6f1abfe55959a156368bcfa6585fa6ce" # June 25, 2026 Miasma LeoPlatform wave: decoded first-stage JavaScript (Socket IOC)
     "ceff7c51d70832c3ec8dd2744b606a23b3c924ef664ae23439b9b742ea154108" # June 25, 2026 Miasma LeoPlatform wave: decrypted Bun bootstrap payload (Socket IOC)
     "9f93d77d32833a515bc406c46da477142bb1ac2babeecb6aa42f98669a6db015" # June 25, 2026 Miasma LeoPlatform wave: decrypted main payload (Socket IOC)
+    "54dc7ea54a1317cca0e890a2770630cf7fa6c97813e0cb9d2caa93012b350668" # Aug 4, 2026 keyv/cacheable wave: setup.mjs npm tarball preinstall loader (Socket/Aikido IOC)
+    "fd3ca4007b225fdf8de7af4345a19179d5efa8c4bb9205f88cda806e5684b1eb" # Aug 4, 2026 keyv/cacheable wave: setup.mjs .claude/.vscode repository loader (Socket IOC)
+    "9fc2570b7cef51c1b8df116d144d11ff4096357be7d2c4c6367cfc2509cf1bcc" # Aug 4, 2026 keyv/cacheable wave: Math_Symbol.js / math_init.js 727KB Bun payload (Socket IOC)
 )
 
 PARALLELISM=4
@@ -3478,11 +3481,14 @@ check_preinstall_bun_patterns() {
     local scan_dir=$1
     print_status "$BLUE" "   Checking for fake Bun preinstall patterns..."
 
-    # Look for package.json files with suspicious "preinstall": "node setup_bun.js" pattern
+    # Look for package.json files with a suspicious Bun-bootstrapping preinstall hook.
+    # Nov 2025 wave: "node setup_bun.js" / "node bun_installer.js".
+    # Aug 4, 2026 keyv/cacheable wave: "node setup.mjs" — the loader that downloads
+    # Bun 1.3.13 from the genuine oven-sh release and runs Math_Symbol.js.
     while IFS= read -r file; do
         if [[ -f "$file" ]]; then
             # Check if the file contains the malicious preinstall pattern
-            if grep -Eq '"preinstall"[[:space:]]*:[[:space:]]*"node (setup_bun|bun_installer)\.js"' "$file" 2>/dev/null; then
+            if grep -Eq '"preinstall"[[:space:]]*:[[:space:]]*"node (setup_bun\.js|bun_installer\.js|setup\.mjs)"' "$file" 2>/dev/null; then
                 echo "$file" >> "$TEMP_DIR/preinstall_bun_patterns.txt"
             fi
         fi
@@ -3536,6 +3542,10 @@ check_malicious_repo_descriptions() {
         "Goldox-T3chs: Only Happy Girl"
         "Miasma - The Spreading Blight"
         "Hades - The End for the Damned"
+        # Aug 4, 2026 keyv/cacheable wave. The May 19 wave stamped this string
+        # character-reversed (matched in check_mini_shai_hulud_indicators); the
+        # August wave uses the plain forward form on its GitHub dead-drop repos.
+        "Shai-Hulud: Here We Go Again"
     )
 
     # Check git repositories with malicious descriptions
