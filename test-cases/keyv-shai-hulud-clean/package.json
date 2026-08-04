@@ -1,0 +1,14 @@
+{
+  "name": "keyv-shai-hulud-clean-test",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Clean fixture: last-known-good versions of packages targeted by the August 4, 2026 keyv/cacheable wave. The detector must NOT flag these versions.",
+  "dependencies": {
+    "flat-cache": "6.1.23",
+    "file-entry-cache": "11.1.5",
+    "cacheable-request": "13.0.19",
+    "cache-manager": "7.2.9",
+    "cacheable": "2.5.0",
+    "@or-sdk/auth": "0.38.0"
+  }
+}
