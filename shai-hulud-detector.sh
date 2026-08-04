@@ -334,6 +334,9 @@ declare -A ECOSYSTEM_EXCLUDE_PATHS=(
 )
 declare -a SUPPORTED_ECOSYSTEMS=("npm" "pypi" "composer" "crates" "go" "hex" "gem")
 declare -a ACTIVE_ECOSYSTEMS=()
+# ecosystem -> number of its marker files in the tree. Filled by count_ecosystem_markers()
+# so detect_ecosystems() and ecosystem_banner() share one pass over the inventory.
+declare -A ECOSYSTEM_MARKER_COUNTS=()
 ECOSYSTEM_OVERRIDE=""  # set by --ecosystem flag; empty = auto-detect
 
 # Dispatch table: ecosystem -> space-separated list of check function names.
@@ -377,13 +380,60 @@ ecosystem_active() {
     return 1
 }
 
+# Function: count_ecosystem_markers
+# Purpose: Count each supported ecosystem's marker files in the inventory, in one pass.
+# Args: None (consumes $TEMP_DIR/all_files_raw.txt)
+# Modifies: ECOSYSTEM_MARKER_COUNTS (every supported ecosystem gets an entry, 0 or more)
+# Note: This replaces a four-process pipeline (grep | grep -v | head | grep -q) run once
+#       per ecosystem in detect_ecosystems and again in ecosystem_banner - 28 processes
+#       plus 4 more, before a single check had run. Each ecosystem's include/exclude
+#       regexes are interpolated into the awk program verbatim, so a marker matches
+#       exactly what its grep -E matched (including the "." metacharacters in names
+#       like package.json, and the exclude alternations that can never fire because
+#       they carry their own slashes, e.g. pypi's "/venv/" inside "/(...)/"). They are
+#       built into the program text rather than passed with -v because awk applies
+#       escape processing to -v values, which would eat the "\." in the pypi pattern.
+count_ecosystem_markers() {
+    ECOSYSTEM_MARKER_COUNTS=()
+
+    local eco markers exclude prog=""
+    for eco in "${SUPPORTED_ECOSYSTEMS[@]}"; do
+        # "/" has to be escaped or it would close the awk regex literal early. Some
+        # exclude alternations carry their own slashes ("/vendor/", "/venv/"); grep -E
+        # needed no escaping there, awk does.
+        markers="${ECOSYSTEM_MARKERS[$eco]//\//\\/}"
+        exclude="${ECOSYSTEM_EXCLUDE_PATHS[$eco]//\//\\/}"
+        prog+="/\/($markers)\$/ && \$0 !~ /\/($exclude)\// { c[\"$eco\"]++ }"$'\n'
+    done
+    prog+="END { n = split(\"${SUPPORTED_ECOSYSTEMS[*]}\", order, \" \")
+                 for (i = 1; i <= n; i++) printf \"%s %d\n\", order[i], c[order[i]] + 0 }"
+
+    local count rows=0
+    while read -r eco count; do
+        ECOSYSTEM_MARKER_COUNTS["$eco"]=$count
+        (( rows++ )) || true
+    done < <(awk "$prog" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null || true)
+
+    # A broken awk program would leave every count at 0, which reads exactly like
+    # "no ecosystems in this tree" and would silently skip every package check.
+    # The END block always emits one row per supported ecosystem, so a short read
+    # means the pass did not run.
+    if (( rows != ${#SUPPORTED_ECOSYSTEMS[@]} )); then
+        print_status "$RED" "Error: ecosystem marker detection failed (awk produced $rows of ${#SUPPORTED_ECOSYSTEMS[@]} rows)."
+        exit 1
+    fi
+}
+
 # Function: detect_ecosystems
 # Purpose: Populate ACTIVE_ECOSYSTEMS based on marker files in the scan tree,
 #          unless overridden by --ecosystem flag.
 # Args: None (consumes ECOSYSTEM_OVERRIDE and $TEMP_DIR/all_files_raw.txt)
-# Modifies: ACTIVE_ECOSYSTEMS
+# Modifies: ACTIVE_ECOSYSTEMS, ECOSYSTEM_MARKER_COUNTS
 detect_ecosystems() {
     ACTIVE_ECOSYSTEMS=()
+    # Counted unconditionally, including under --ecosystem, so ecosystem_banner()
+    # has the numbers it needs whichever branch below returns.
+    count_ecosystem_markers
 
     if [[ -n "$ECOSYSTEM_OVERRIDE" ]]; then
         if [[ "$ECOSYSTEM_OVERRIDE" == "all" ]]; then
@@ -411,17 +461,11 @@ detect_ecosystems() {
     fi
 
     # Auto-detect from marker files in the file inventory
-    local eco markers exclude
+    local eco
     for eco in "${SUPPORTED_ECOSYSTEMS[@]}"; do
-        markers="${ECOSYSTEM_MARKERS[$eco]}"
-        exclude="${ECOSYSTEM_EXCLUDE_PATHS[$eco]}"
-        # Match any line whose basename is one of the marker files, excluding
-        # paths that contain ecosystem-irrelevant directories.
-        if grep -E "/($markers)$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null | \
-           grep -vE "/($exclude)/" 2>/dev/null | head -n1 | grep -q .; then
-            ACTIVE_ECOSYSTEMS+=("$eco")
-        fi
+        (( ${ECOSYSTEM_MARKER_COUNTS[$eco]:-0} > 0 )) && ACTIVE_ECOSYSTEMS+=("$eco")
     done
+    return 0
 }
 
 # Function: ecosystem_banner
@@ -432,16 +476,12 @@ ecosystem_banner() {
         print_status "$YELLOW" "   No package-manifest markers detected. Content-pattern checks will still run."
         return 0
     fi
-    local eco markers exclude count summary=""
+    local eco count summary=""
     for eco in "${ACTIVE_ECOSYSTEMS[@]}"; do
-        markers="${ECOSYSTEM_MARKERS[$eco]}"
-        exclude="${ECOSYSTEM_EXCLUDE_PATHS[$eco]}"
-        # `|| true` + default keep set -eo pipefail from aborting when an active
-        # ecosystem has zero marker files in the tree (e.g. under --ecosystem=all on a
-        # single-ecosystem project) — the leading grep exits non-zero on no match.
-        count=$(grep -E "/($markers)$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null | \
-                grep -vE "/($exclude)/" 2>/dev/null | wc -l | tr -d ' ' || true)
-        count=${count:-0}
+        # Counts come from count_ecosystem_markers()'s single pass. The default
+        # covers an active ecosystem with zero marker files in the tree (e.g. under
+        # --ecosystem=all on a single-ecosystem project).
+        count=${ECOSYSTEM_MARKER_COUNTS[$eco]:-0}
         if [[ -z "$summary" ]]; then
             summary="$eco ($count marker file(s))"
         else
@@ -485,16 +525,17 @@ load_compromised_packages() {
         # Parsing runs in awk and the shell only populates the maps. The list is now
         # 5,000+ entries and doing the classification in bash - seven prefix tests and
         # a regex per line - cost more than the whole rest of a small scan. awk applies
-        # exactly the same rules and emits "key<TAB>name<TAB>version" rows, where the
-        # name/version fields are filled in only for npm (the ecosystem that also needs
-        # COMPROMISED_VERSIONS_BY_NAME for semver-range checking), plus one trailing
-        # "#<TAB>counts" row. Entries may be ecosystem-prefixed ("pypi:name:version",
-        # "npm:name:version") or bare, in which case they default to npm; the map key
-        # is always "ecosystem:name:version" for unambiguous lookups.
-        # awk's rows go via a temp file rather than a process substitution on purpose:
-        # `read` on a pipe has to consume one byte at a time (it cannot seek back over
-        # a lookahead), which for a list this size costs ~4x what reading a seekable
-        # file does. TEMP_DIR does not exist yet at this point in startup.
+        # exactly the same rules and emits three blank-line-separated sections: the map
+        # keys, then "name<TAB>versions" rows for npm only (the ecosystem that also needs
+        # COMPROMISED_VERSIONS_BY_NAME for semver-range checking, with the per-name
+        # version list already joined), then the counts line. Entries may be
+        # ecosystem-prefixed ("pypi:name:version", "npm:name:version") or bare, in which
+        # case they default to npm; the map key is always "ecosystem:name:version" for
+        # unambiguous lookups.
+        # awk's output goes via a temp file rather than a process substitution on
+        # purpose: mapfile on a pipe has to consume one byte at a time (it cannot seek
+        # back over a lookahead), which for a list this size costs ~4x what reading a
+        # seekable file does. TEMP_DIR does not exist yet at this point in startup.
         local parsed_file
         parsed_file=$(mktemp -t shai-hulud-pkgs-XXXXXX 2>/dev/null || echo "${TMPDIR:-/tmp}/shai-hulud-pkgs-$$")
         awk '
@@ -524,9 +565,10 @@ load_compromised_packages() {
                     if (ver == "") next
                     if (eco == "npm") {
                         if (ver !~ /^[0-9]+\.[0-9]+\.[0-9]+/) next
-                        print "npm:" pkg ":" ver "\t" pkg "\t" ver
+                        keys[++nk] = "npm:" pkg ":" ver
+                        if (pkg != "") vers[pkg] = vers[pkg] ver " "
                     } else {
-                        print eco ":" pkg ":" ver "\t\t"
+                        keys[++nk] = eco ":" pkg ":" ver
                     }
                     n[eco]++
                     total++
@@ -539,27 +581,42 @@ load_compromised_packages() {
                 if (line ~ /^[@a-zA-Z0-9][^:]+:[0-9]+\.[0-9]+\.[0-9]+/) {
                     pkg = uptolast(line)
                     ver = substr(line, index(line, ":") + 1)
-                    print "npm:" pkg ":" ver "\t" pkg "\t" ver
+                    keys[++nk] = "npm:" pkg ":" ver
+                    if (pkg != "") vers[pkg] = vers[pkg] ver " "
                     n["npm"]++
                     total++
                 }
             }
             END {
-                printf "#\t%d %d %d %d %d %d %d %d\n", total + 0, n["npm"] + 0, n["pypi"] + 0, \
+                for (i = 1; i <= nk; i++) print keys[i]
+                print ""
+                for (p in vers) print p "\t" vers[p]
+                print ""
+                printf "%d %d %d %d %d %d %d %d\n", total + 0, n["npm"] + 0, n["pypi"] + 0, \
                     n["composer"] + 0, n["crates"] + 0, n["go"] + 0, n["hex"] + 0, n["gem"] + 0
             }
         ' "$packages_file" > "$parsed_file"
 
-        local key name version counts=""
-        while IFS=$'\t' read -r key name version; do
-            if [[ "$key" == "#" ]]; then
-                counts="$name"
-                continue
-            fi
-            COMPROMISED_PACKAGES_MAP["$key"]=1
-            [[ -n "$name" ]] && COMPROMISED_VERSIONS_BY_NAME["$name"]+="$version "
-        done < "$parsed_file"
+        # Read the whole thing at once and walk it with parameter expansion. A
+        # `while read` loop over 5,000+ rows spends more time in the read builtin
+        # itself than on the array writes it performs; mapfile plus a for loop is
+        # ~30% cheaper for the same result.
+        local -a parsed_rows=()
+        mapfile -t parsed_rows < "$parsed_file"
         rm -f "$parsed_file"
+
+        local row counts="" section=0
+        for row in "${parsed_rows[@]}"; do
+            if [[ -z "$row" ]]; then
+                (( section++ )) || true
+            elif (( section == 0 )); then
+                COMPROMISED_PACKAGES_MAP["$row"]=1
+            elif (( section == 1 )); then
+                COMPROMISED_VERSIONS_BY_NAME["${row%%$'\t'*}"]="${row#*$'\t'}"
+            else
+                counts="$row"
+            fi
+        done
 
         read -r count npm_count pypi_count composer_count crates_count go_count hex_count gem_count <<< "${counts:-0 0 0 0 0 0 0 0}"
 
@@ -960,8 +1017,25 @@ fast_grep_files_fixed() {
 #       caller skip the per-literal searches; a hit falls through to them, so the
 #       findings themselves always come from the same per-literal greps as before.
 fast_grep_any_fixed() {
-    local list="$1"
-    shift
+    _fgrep_any_fixed "" "$@"
+}
+
+# Function: fast_grep_any_fixed_i
+# Purpose: fast_grep_any_fixed, matching case-insensitively.
+# Args: $1 = path of the newline-separated file list; $2.. = fixed-string literals
+# Returns: 0 if at least one literal matches somewhere, 1 if none do
+fast_grep_any_fixed_i() {
+    _fgrep_any_fixed "-i" "$@"
+}
+
+# Function: _fgrep_any_fixed
+# Purpose: Shared body of fast_grep_any_fixed / fast_grep_any_fixed_i.
+# Args: $1 = "-i" for case-insensitive or "" for case-sensitive;
+#       $2 = path of the file list; $3.. = fixed-string literals
+_fgrep_any_fixed() {
+    local icase="$1"
+    local list="$2"
+    shift 2
     [[ -s "$list" ]] || return 1
     (( $# > 0 )) || return 1
 
@@ -975,13 +1049,13 @@ fast_grep_any_fixed() {
     local hit
     case "$GREP_TOOL" in
         git-grep)
-            hit=$(_fgrep_run git grep -l --no-index -F -f "$patfile" -- | head -n 1)
+            hit=$(_fgrep_run git grep -l --no-index ${icase:+"$icase"} -F -f "$patfile" -- | head -n 1)
             ;;
         ripgrep)
-            hit=$(_fgrep_run rg -l --no-messages --fixed-strings -f "$patfile" | head -n 1)
+            hit=$(_fgrep_run rg -l --no-messages ${icase:+"$icase"} --fixed-strings -f "$patfile" | head -n 1)
             ;;
         grep)
-            hit=$(_fgrep_run grep -lF -f "$patfile" | head -n 1)
+            hit=$(_fgrep_run grep -l ${icase:+"$icase"} -F -f "$patfile" | head -n 1)
             ;;
     esac
     [[ -n "$hit" ]]
@@ -3478,13 +3552,20 @@ check_file_hashes() {
         xargs -0 -n 100 -P "$PARALLELISM" $hash_cmd 2>/dev/null | \
         awk '{print $1, $2}' > "$TEMP_DIR/file_hashes.txt"
 
-    # Create malicious hash lookup pattern for grep
-    printf '%s\n' "${MALICIOUS_HASHLIST[@]}" > "$TEMP_DIR/malicious_patterns.txt"
+    # Fast set intersection: find matching hashes. The lookup is an in-shell set
+    # rather than a `grep -qF` per hashed file, which cost one process per file in
+    # the tree - the single worst scaling in the scan. Every MALICIOUS_HASHLIST
+    # entry is a full 64-character SHA-256, so the substring match the grep did is
+    # equality here.
+    local -A malicious_hash_set=()
+    local known_hash
+    for known_hash in "${MALICIOUS_HASHLIST[@]}"; do
+        malicious_hash_set["$known_hash"]=1
+    done
 
-    # Fast set intersection: find matching hashes
     print_status "$BLUE" "   Checking against known malicious hashes..."
     while IFS=' ' read -r hash file; do
-        if grep -qF "$hash" "$TEMP_DIR/malicious_patterns.txt" 2>/dev/null; then
+        if [[ -v malicious_hash_set["$hash"] ]]; then
             echo "$file:$hash" >> "$TEMP_DIR/malicious_hashes.txt"
         fi
     done < "$TEMP_DIR/file_hashes.txt"
@@ -4204,44 +4285,67 @@ check_trufflehog_activity() {
     # Combine script and code files for scanning
     cat "$TEMP_DIR/script_files.txt" "$TEMP_DIR/code_files.txt" 2>/dev/null | sort -u > "$TEMP_DIR/trufflehog_scan_files.txt"
 
-    # HIGH PRIORITY: Dynamic TruffleHog download patterns (November 2025 attack)
-    fast_grep_files_i "curl.*trufflehog|wget.*trufflehog|bunExecutable.*trufflehog|download.*trufflehog" \
-        < "$TEMP_DIR/trufflehog_scan_files.txt" | while read -r file; do
-        [[ -n "$file" ]] && echo "$file:HIGH:November 2025 pattern - Dynamic TruffleHog download via curl/wget/Bun" >> "$TEMP_DIR/trufflehog_activity.txt"
-    done
+    # Two probes decide which of the searches below can possibly match. Every
+    # pattern here except the last requires either the literal "trufflehog" (in
+    # some case) or one of the three credential variable names, so a miss on both
+    # probes is conclusive for those five and a tree containing neither costs two
+    # grep invocations instead of ten. A hit falls through to the original
+    # searches, so the findings and the order they are written in are unchanged.
+    local has_trufflehog=false has_cred_var=false
+    if fast_grep_any_fixed_i "$TEMP_DIR/trufflehog_scan_files.txt" "trufflehog"; then
+        has_trufflehog=true
+    fi
+    if fast_grep_any_fixed "$TEMP_DIR/trufflehog_scan_files.txt" \
+           "AWS_ACCESS_KEY" "GITHUB_TOKEN" "NPM_TOKEN"; then
+        has_cred_var=true
+    fi
 
-    # HIGH PRIORITY: TruffleHog credential harvesting patterns
-    fast_grep_files_i "TruffleHog.*scan.*credential|trufflehog.*env|trufflehog.*AWS|trufflehog.*NPM_TOKEN" \
-        < "$TEMP_DIR/trufflehog_scan_files.txt" | while read -r file; do
-        [[ -n "$file" ]] && echo "$file:HIGH:TruffleHog credential scanning pattern detected" >> "$TEMP_DIR/trufflehog_activity.txt"
-    done
+    if [[ "$has_trufflehog" == "true" ]]; then
+        # HIGH PRIORITY: Dynamic TruffleHog download patterns (November 2025 attack)
+        fast_grep_files_i "curl.*trufflehog|wget.*trufflehog|bunExecutable.*trufflehog|download.*trufflehog" \
+            < "$TEMP_DIR/trufflehog_scan_files.txt" | while read -r file; do
+            [[ -n "$file" ]] && echo "$file:HIGH:November 2025 pattern - Dynamic TruffleHog download via curl/wget/Bun" >> "$TEMP_DIR/trufflehog_activity.txt"
+        done
 
-    # HIGH PRIORITY: Credential patterns with exfiltration indicators
-    fast_grep_files "(AWS_ACCESS_KEY|GITHUB_TOKEN|NPM_TOKEN).*(webhook\.site|curl|https\.request)" \
-        < "$TEMP_DIR/trufflehog_scan_files.txt" | \
-        { grep -v "/node_modules/\|\.d\.ts$" || true; } | while read -r file; do
-        [[ -n "$file" ]] && echo "$file:HIGH:Credential patterns with potential exfiltration" >> "$TEMP_DIR/trufflehog_activity.txt"
-    done
+        # HIGH PRIORITY: TruffleHog credential harvesting patterns
+        fast_grep_files_i "TruffleHog.*scan.*credential|trufflehog.*env|trufflehog.*AWS|trufflehog.*NPM_TOKEN" \
+            < "$TEMP_DIR/trufflehog_scan_files.txt" | while read -r file; do
+            [[ -n "$file" ]] && echo "$file:HIGH:TruffleHog credential scanning pattern detected" >> "$TEMP_DIR/trufflehog_activity.txt"
+        done
+    fi
 
-    # MEDIUM PRIORITY: Trufflehog references in source code (not node_modules/docs)
-    fast_grep_files_i "trufflehog|TruffleHog" \
-        < "$TEMP_DIR/trufflehog_scan_files.txt" | \
-        { grep -v "/node_modules/\|\.md$\|/docs/\|\.d\.ts$" || true; } | while read -r file; do
-        # Check if already flagged as HIGH
-        if [[ -n "$file" ]] && ! grep -qF "$file:" "$TEMP_DIR/trufflehog_activity.txt" 2>/dev/null; then
-            echo "$file:MEDIUM:Contains trufflehog references in source code" >> "$TEMP_DIR/trufflehog_activity.txt"
-        fi
-    done
+    if [[ "$has_cred_var" == "true" ]]; then
+        # HIGH PRIORITY: Credential patterns with exfiltration indicators
+        fast_grep_files "(AWS_ACCESS_KEY|GITHUB_TOKEN|NPM_TOKEN).*(webhook\.site|curl|https\.request)" \
+            < "$TEMP_DIR/trufflehog_scan_files.txt" | \
+            { grep -v "/node_modules/\|\.d\.ts$" || true; } | while read -r file; do
+            [[ -n "$file" ]] && echo "$file:HIGH:Credential patterns with potential exfiltration" >> "$TEMP_DIR/trufflehog_activity.txt"
+        done
+    fi
 
-    # MEDIUM PRIORITY: Credential scanning patterns (not in type definitions)
-    fast_grep_files "AWS_ACCESS_KEY|GITHUB_TOKEN|NPM_TOKEN" \
-        < "$TEMP_DIR/trufflehog_scan_files.txt" | \
-        { grep -v "/node_modules/\|\.d\.ts$\|/docs/" || true; } | while read -r file; do
-        # Check if already flagged
-        if [[ -n "$file" ]] && ! grep -qF "$file:" "$TEMP_DIR/trufflehog_activity.txt" 2>/dev/null; then
-            echo "$file:MEDIUM:Contains credential scanning patterns" >> "$TEMP_DIR/trufflehog_activity.txt"
-        fi
-    done
+    if [[ "$has_trufflehog" == "true" ]]; then
+        # MEDIUM PRIORITY: Trufflehog references in source code (not node_modules/docs)
+        fast_grep_files_i "trufflehog|TruffleHog" \
+            < "$TEMP_DIR/trufflehog_scan_files.txt" | \
+            { grep -v "/node_modules/\|\.md$\|/docs/\|\.d\.ts$" || true; } | while read -r file; do
+            # Check if already flagged as HIGH
+            if [[ -n "$file" ]] && ! grep -qF "$file:" "$TEMP_DIR/trufflehog_activity.txt" 2>/dev/null; then
+                echo "$file:MEDIUM:Contains trufflehog references in source code" >> "$TEMP_DIR/trufflehog_activity.txt"
+            fi
+        done
+    fi
+
+    if [[ "$has_cred_var" == "true" ]]; then
+        # MEDIUM PRIORITY: Credential scanning patterns (not in type definitions)
+        fast_grep_files "AWS_ACCESS_KEY|GITHUB_TOKEN|NPM_TOKEN" \
+            < "$TEMP_DIR/trufflehog_scan_files.txt" | \
+            { grep -v "/node_modules/\|\.d\.ts$\|/docs/" || true; } | while read -r file; do
+            # Check if already flagged
+            if [[ -n "$file" ]] && ! grep -qF "$file:" "$TEMP_DIR/trufflehog_activity.txt" 2>/dev/null; then
+                echo "$file:MEDIUM:Contains credential scanning patterns" >> "$TEMP_DIR/trufflehog_activity.txt"
+            fi
+        done
+    fi
 
     # LOW PRIORITY: Environment variable scanning with suspicious patterns
     fast_grep_files_i "(process\.env|os\.environ|getenv).*(scan|harvest|steal|exfiltrat)" \
