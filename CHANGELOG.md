@@ -5,6 +5,17 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.14.1] - 2026-08-04
+
+### Added
+- **keyv/cacheable wave C2 fallback domain `npm-cache[.]com`** (`check_keyv_indicators`): the August 4 wave's primary exfiltration is via GitHub dead-drop repos, but it also has a network fallback endpoint, `npm-cache[.]com:443/router`. The 3.14.0 entry deferred adding this "pending corroboration," citing GitHub-only exfil — that rationale was incorrect: **Wiz, Socket (which documents a `DomainSender` component resolving destinations via DNS), and Aikido all report the domain.** It is now flagged as a HIGH content IoC. The check matches only the full domain (`npm-cache.com` / defanged `npm-cache[.]com`), never bare `npm-cache`, to avoid false positives from legitimate npm cache paths.
+  - **Caveat:** the attacker rotates C2 via an Ethereum smart contract without changing the payload, so this specific domain may already be dead. It is a genuine documented IoC, but version-pinned and hash-based detection remain the durable signals for this wave.
+- **Test coverage:** `test-cases/keyv-shai-hulud-attack/` gains an inert `c2_inert.js` (the domain string in a comment/const only — no payload), and `run-tests.sh` gains one assertion for the C2 finding. Suite: 237 → 238 checks.
+
+### Changed
+- **`shai-hulud-detector.sh`**: added `check_keyv_indicators` (wired into temp-file init, the file collector, the advanced-detection stage, the HIGH-risk report, and `--json`); `SCRIPT_VERSION` 3.14.0 → 3.14.1.
+- **`README.md`**: tests badge/count 237 → 238.
+
 ## [3.14.0] - 2026-08-04
 
 ### Added
