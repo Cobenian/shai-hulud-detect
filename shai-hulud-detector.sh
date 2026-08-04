@@ -29,7 +29,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPROMISED_PACKAGES_FILE="$SCRIPT_DIR/compromised-packages.txt"
 
 # Tool version (surfaced in --json output for downstream consumers)
-SCRIPT_VERSION="3.14.0"
+SCRIPT_VERSION="3.14.1"
 
 # Global temp directory for file-based storage
 TEMP_DIR=""
@@ -127,6 +127,7 @@ create_temp_dir() {
     touch "$TEMP_DIR/durabletask_indicators.txt"
     touch "$TEMP_DIR/hades_miasma_indicators.txt"
     touch "$TEMP_DIR/easy_day_js_indicators.txt"
+    touch "$TEMP_DIR/keyv_indicators.txt"
     touch "$TEMP_DIR/trapdoor_indicators.txt"
     touch "$TEMP_DIR/laravel_lang_indicators.txt"
     touch "$TEMP_DIR/node_ipc_indicators.txt"
@@ -2974,6 +2975,44 @@ check_easy_day_js_indicators() {
     fi
 }
 
+# Function: check_keyv_indicators
+# Purpose: Detect the fallback C2 / exfil domain of the August 4, 2026 Shai-Hulud
+#          "Here We Go Again" keyv/cacheable wave. The wave's primary exfil is via
+#          GitHub dead-drop repos (caught by the version list, the "node setup.mjs"
+#          preinstall hook, the payload hashes, and the "Shai-Hulud: Here We Go
+#          Again" repo-description marker); this adds the network fallback endpoint
+#          npm-cache[.]com, corroborated by Wiz, Socket (DomainSender), and Aikido.
+#          NOTE: the attacker rotates C2 via an Ethereum smart contract without
+#          changing the payload, so this specific domain may be short-lived — it is
+#          a genuine documented IoC but hash/version detection is the durable signal.
+# Args: $1 = scan_dir
+# Modifies: $TEMP_DIR/keyv_indicators.txt
+check_keyv_indicators() {
+    local scan_dir=$1
+    print_status "$BLUE" "   Checking for keyv/cacheable C2 domain IOCs (Aug 4, 2026 'Here We Go Again' wave)..."
+
+    if [[ -s "$TEMP_DIR/code_files.txt" ]]; then
+        # Match the FULL domain only (plain + defanged). Never match bare
+        # "npm-cache", which appears in legitimate tooling (npm cache dirs,
+        # .npm/_cacache, package names) and would false-positive heavily.
+        local kv_domain
+        for kv_domain in \
+            "npm-cache.com" \
+            "npm-cache[.]com"
+        do
+            fast_grep_files_fixed "$kv_domain" < "$TEMP_DIR/code_files.txt" | \
+                while IFS= read -r file; do
+                    echo "$file:keyv/cacheable wave C2 fallback domain ($kv_domain)" >> "$TEMP_DIR/keyv_indicators.txt"
+                done
+        done
+    fi
+
+    # Deduplicate
+    if [[ -s "$TEMP_DIR/keyv_indicators.txt" ]]; then
+        sort -u "$TEMP_DIR/keyv_indicators.txt" -o "$TEMP_DIR/keyv_indicators.txt"
+    fi
+}
+
 # Function: check_trapdoor_indicators
 # Purpose: Detect the May 22-25, 2026 TrapDoor crypto-stealer campaign (TeamPCP /
 #          UNC6780) — 34 packages / 384+ versions across npm + PyPI + Crates.io.
@@ -4979,6 +5018,7 @@ write_log_file() {
         [[ -s "$TEMP_DIR/durabletask_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/durabletask_indicators.txt" || true
         [[ -s "$TEMP_DIR/hades_miasma_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/hades_miasma_indicators.txt" || true
         [[ -s "$TEMP_DIR/easy_day_js_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/easy_day_js_indicators.txt" || true
+        [[ -s "$TEMP_DIR/keyv_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/keyv_indicators.txt" || true
         [[ -s "$TEMP_DIR/trapdoor_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/trapdoor_indicators.txt" || true
         [[ -s "$TEMP_DIR/laravel_lang_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/laravel_lang_indicators.txt" || true
         [[ -s "$TEMP_DIR/node_ipc_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/node_ipc_indicators.txt" || true
@@ -5175,6 +5215,7 @@ write_json_file() {
         _jf_pathmsg HIGH "$TEMP_DIR/durabletask_indicators.txt"
         _jf_pathmsg HIGH "$TEMP_DIR/hades_miasma_indicators.txt"
         _jf_pathmsg HIGH "$TEMP_DIR/easy_day_js_indicators.txt"
+        _jf_pathmsg HIGH "$TEMP_DIR/keyv_indicators.txt"
         _jf_pathmsg HIGH "$TEMP_DIR/trapdoor_indicators.txt"
         _jf_pathmsg HIGH "$TEMP_DIR/laravel_lang_indicators.txt"
         _jf_pathmsg HIGH "$TEMP_DIR/node_ipc_indicators.txt"
@@ -5540,6 +5581,24 @@ generate_report() {
         print_status "$RED" "                         2026-06-17, delete setup.cjs and ~/.pkg_history / ~/.pkg_logs,"
         print_status "$RED" "                         block C2 hosts 23.254.164.92 / 23.254.164.123, rotate developer"
         print_status "$RED" "                         credentials, and check browser crypto-wallet extensions for theft."
+    fi
+
+    if [[ -s "$TEMP_DIR/keyv_indicators.txt" ]]; then
+        print_status "$RED" "🚨 HIGH RISK: August 4, 2026 keyv/cacheable 'Here We Go Again' C2 domain detected:"
+        print_status "$RED" "    ⚠️  Fallback exfiltration endpoint for the keyv/cacheable Shai-Hulud wave. The"
+        print_status "$RED" "        primary channel is GitHub dead-drop repos; this is the network fallback."
+        while IFS= read -r line; do
+            local file="${line%%:*}"
+            local reason="${line#*:}"
+            echo "   - $file"
+            echo "     Reason: $reason"
+            show_file_preview "$file" "HIGH RISK: keyv/cacheable wave C2 domain"
+            high_risk=$((high_risk+1))
+        done < "$TEMP_DIR/keyv_indicators.txt"
+        print_status "$RED" "    📋 IMMEDIATE ACTION: Treat the host as compromised — remove any keyv/cacheable-wave"
+        print_status "$RED" "                         package (see compromised-packages.txt), delete the setup.mjs"
+        print_status "$RED" "                         loader and gh-token-monitor persistence, and rotate credentials"
+        print_status "$RED" "                         from a known-clean host (the dead-man's switch fires on revocation)."
     fi
 
     if [[ -s "$TEMP_DIR/polymarket_indicators.txt" ]]; then
@@ -7040,6 +7099,7 @@ main() {
     check_durabletask_indicators "$scan_dir"
     check_hades_miasma_indicators "$scan_dir"
     check_easy_day_js_indicators "$scan_dir"
+    check_keyv_indicators "$scan_dir"
     check_trapdoor_indicators "$scan_dir"
     check_laravel_lang_indicators "$scan_dir"
     check_node_ipc_indicators "$scan_dir"
