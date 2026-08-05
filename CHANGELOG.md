@@ -5,6 +5,21 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.18.0] - 2026-08-05
+
+### Fixed
+- **A compromised package sitting on disk was invisible unless something declared it as a dependency.** `check_packages` extracted only `dependencies` / `devDependencies` blocks, so a `package.json`'s own `name` + `version` was never matched against the compromised list. `npm i -g keyv@6.0.0` produced `✅ No indicators of Shai-Hulud compromise detected` — the payload was installed, but no manifest pointed at it. The same blind spot covers any `node_modules` tree whose lockfile is absent, stale, or was regenerated after the fact.
+  - This mattered most for the one directory people scan deliberately: `$(npm root -g)` is *nothing but* installed packages with no parent manifest, so the check that should catch a compromised global CLI was the check that could not run.
+  - Manifests now contribute their own identity to the dependency set. Only the top-level `name`/`version` are used — nesting depth is tracked so a dependency literally called `name` or `version` cannot be mistaken for the manifest's own.
+- **An ecosystem whose only markers live in an excluded directory is now detected.** `ECOSYSTEM_EXCLUDE_PATHS[npm]="node_modules"` stops vendored dependencies from activating npm for a project that does not use it — sensible when the project has manifests elsewhere. But when the *only* markers in the tree are inside the excluded directory, the exclusion removed the entire basis for detection and every npm check was skipped. Again this is precisely `$(npm root -g)`: users had to know to pass `--ecosystem npm`, and without it got a green result that meant nothing. Detection now falls back to the excluded paths when they are all there is. Projects with their own manifests are unaffected — the fallback only fires when the first pass finds nothing.
+
+### Added
+- **`test-cases/global-install-attack/`** (HIGH: a compromised package with no declaring manifest) and **`test-cases/global-install-clean/`** (same shape, last-known-good version — the identity match must not fire on the package name alone). Neither has a top-level `package.json`, so they also exercise the ecosystem-detection fallback. Plus assertions for the identity match and for npm activating on a `node_modules`-only root. Suite: 238 → 242 checks.
+
+### Changed
+- **`shai-hulud-detector.sh`**: `SCRIPT_VERSION` 3.14.1 → 3.18.0.
+- **`README.md`**: tests badge/count 238 → 242.
+
 ## [3.14.1] - 2026-08-04
 
 ### Added

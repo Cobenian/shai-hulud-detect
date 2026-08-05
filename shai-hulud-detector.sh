@@ -29,7 +29,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPROMISED_PACKAGES_FILE="$SCRIPT_DIR/compromised-packages.txt"
 
 # Tool version (surfaced in --json output for downstream consumers)
-SCRIPT_VERSION="3.14.1"
+SCRIPT_VERSION="3.18.0"
 
 # Global temp directory for file-based storage
 TEMP_DIR=""
@@ -413,6 +413,24 @@ detect_ecosystems() {
         # paths that contain ecosystem-irrelevant directories.
         if grep -E "/($markers)$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null | \
            grep -vE "/($exclude)/" 2>/dev/null | head -n1 | grep -q .; then
+            ACTIVE_ECOSYSTEMS+=("$eco")
+            continue
+        fi
+
+        # Fall back to the excluded paths when they are ALL there is.
+        #
+        # The exclusions exist so that vendored dependencies do not activate an
+        # ecosystem the project does not actually use — reasonable when the project
+        # has its own manifests elsewhere. But when the ONLY markers in the tree are
+        # inside the excluded directories, the exclusion removes the entire basis for
+        # detection and the ecosystem's checks never run at all.
+        #
+        # That is exactly the shape of a global package root: `$(npm root -g)` is
+        # nothing but `node_modules/`, so scanning the directory that holds every
+        # globally installed CLI silently skipped the npm package check and reported
+        # clean. Users had to know to pass --ecosystem npm to get any result.
+        if [[ -n "$exclude" ]] && \
+           grep -E "/($markers)$" "$TEMP_DIR/all_files_raw.txt" 2>/dev/null | head -n1 | grep -q .; then
             ACTIVE_ECOSYSTEMS+=("$eco")
         fi
     done
@@ -3898,8 +3916,38 @@ check_packages() {
                 gsub(/,/, "\n", buf)
                 n = split(buf, lines, "\n")
                 flag = 0
+                depth = 0
+                self_name = ""
+                self_ver = ""
                 for (i = 1; i <= n; i++) {
                     line = lines[i]
+
+                    # Track object nesting. The explode step above guarantees each
+                    # brace sits alone on its line, so this is exact. Used only by the
+                    # self-identity capture below; the dependency logic is unchanged.
+                    if (line ~ /^[[:space:]]*\{[[:space:]]*$/) { depth++ }
+                    else if (line ~ /^[[:space:]]*\}[[:space:]]*$/) { depth-- }
+
+                    # A manifest also identifies ITS OWN package. Capture the top-level
+                    # (depth 1) name/version so an installed package is matched by
+                    # identity, not only when some parent manifest happens to list it
+                    # as a dependency. Without this, `npm i -g <compromised>` and any
+                    # node_modules tree whose lockfile is absent or stale went
+                    # undetected: the payload was on disk, but nothing declared it.
+                    # Checked before the dependency block because that block "continue"s.
+                    if (depth == 1 && line ~ /^[[:space:]]*"name"[[:space:]]*:[[:space:]]*"/) {
+                        v = line
+                        sub(/^[[:space:]]*"name"[[:space:]]*:[[:space:]]*"/, "", v)
+                        sub(/".*$/, "", v)
+                        if (length(v) > 0) self_name = v
+                    }
+                    if (depth == 1 && line ~ /^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"/) {
+                        v = line
+                        sub(/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"/, "", v)
+                        sub(/".*$/, "", v)
+                        if (length(v) > 0) self_ver = v
+                    }
+
                     # Only the dependencies / devDependencies objects (match original scope).
                     if (line ~ /"(dependencies|devDependencies)"[[:space:]]*:/) { flag = 1; continue }
                     if (line ~ /^[[:space:]]*\}/) { flag = 0; continue }
@@ -3909,6 +3957,7 @@ check_packages() {
                         if (length(name) > 0 && length(ver) > 0) print FILENAME "|" name ":" ver
                     }
                 }
+                if (self_name != "" && self_ver != "") print FILENAME "|" self_name ":" self_ver
             }
         ' > "$TEMP_DIR/all_deps.txt" 2>/dev/null
 
