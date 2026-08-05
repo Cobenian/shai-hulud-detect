@@ -11,7 +11,7 @@
 
 <img src="shai_hulu_detector.jpg" alt="sshd" width="80%" />
 
-A Bash script that scans a project — or many projects at once — for known traces of the September 2025 → August 2026 npm, PyPI, Composer, Crates, Go, Hex, and RubyGems supply-chain attacks. Cross-checks 5,240+ confirmed bad package versions and a library of content-pattern IoCs (file hashes, C2 domains, dead-man's-switch artifacts, wipe-threat strings, AI-assistant config droppers, etc.).
+A Bash script that scans a project — or many projects at once — for known traces of the September 2025 → August 2026 npm, PyPI, Composer, Crates, Go, Hex, and RubyGems supply-chain attacks. Cross-checks 5,699 confirmed bad package versions and a library of content-pattern IoCs (file hashes, C2 domains, dead-man's-switch artifacts, wipe-threat strings, AI-assistant config droppers, etc.).
 
 ## Quick Start
 
@@ -36,7 +36,7 @@ chmod +x shai-hulud-detector.sh
 
 The detector looks for two kinds of evidence on disk:
 
-1. **Compromised package versions** — every `package.json`, lockfile, `pyproject.toml`, `requirements.txt`, `Pipfile`, `poetry.lock`, `uv.lock`, etc. is parsed and the resolved versions are checked against the 5,240+-entry list in [`compromised-packages.txt`](compromised-packages.txt). Transitive deps inside `node_modules/` are checked too, not skipped.
+1. **Compromised package versions** — every `package.json`, lockfile, `pyproject.toml`, `requirements.txt`, `Pipfile`, `poetry.lock`, `uv.lock`, etc. is parsed and the resolved versions are checked against the 5,699-entry list in [`compromised-packages.txt`](compromised-packages.txt). Transitive deps inside `node_modules/` are checked too, not skipped.
 2. **Content-pattern IoCs** — known-malicious file hashes, payload filenames, C2 domains, dead-man's-switch artifacts, marker repo names, malicious workflow files, forged orphan-commit references, suspicious lifecycle hooks, and threat-actor publisher fingerprints. These don't depend on the package list and fire even if the bad package has been uninstalled but the dropper traces remain.
 
 | Wave | Date | Scope |
