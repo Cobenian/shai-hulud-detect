@@ -48,6 +48,7 @@ declare -A EXPECTED=(
     ["false-positive-project"]="2|no|yes|no"   # MEDIUM: potential false positives
     ["github-actions-runners"]="1|yes|no|no"   # HIGH: malicious runners
     ["gitlab-false-positive"]="0|no|no|no"    # Clean: non-.github YAML files (issue #83)
+    ["secret-scanner-mention"]="2|no|yes|no"  # MEDIUM: bare trufflehog reference - pins severity attribution in --save-log/--json
     ["hash-verification"]="1|yes|no|no"        # HIGH: known malicious hashes (was timeout in orig)
     ["infected-lockfile"]="2|no|yes|no"        # MEDIUM: lockfile issues
     ["infected-lockfile-pnpm"]="2|no|yes|no"   # MEDIUM: pnpm lockfile issues
@@ -646,6 +647,46 @@ for helper in fast_grep_files fast_grep_files_i fast_grep_files_fixed; do
     fi
 done
 rm -rf "$XARGS_TMP"
+
+# ============================================================
+#  trufflehog findings must keep their own severity in --save-log / --json
+# ============================================================
+# trufflehog_activity.txt stores "path:SEVERITY:message" and mixes HIGH/MEDIUM/LOW.
+# The --save-log and --json writers dumped the WHOLE file as HIGH, so a file that
+# merely mentions trufflehog (a MEDIUM finding) was recorded as HIGH. Under --bulk this
+# produced self-contradicting rows: "MEDIUM RISK (H:4 M:0 L:0)" - the label comes from
+# the child exit code (correctly MEDIUM), the counts from the log (wrongly HIGH).
+TH_FIX="$SCRIPT_DIR/test-cases/secret-scanner-mention"
+TH_LOG=$(mktemp)
+
+((total++))
+"$BASH_CMD" "$DETECTOR" --save-log "$TH_LOG" "$TH_FIX" >/dev/null 2>&1
+TH_HIGH=$(awk '$0=="# HIGH"{s=1;next} /^# /{s=0} s&&length($0)>0{c++} END{print c+0}' "$TH_LOG")
+TH_MED=$(awk '$0=="# MEDIUM"{s=1;next} /^# /{s=0} s&&length($0)>0{c++} END{print c+0}' "$TH_LOG")
+if [[ "$TH_HIGH" -eq 0 && "$TH_MED" -ge 1 ]]; then
+    echo -e "${GREEN}PASS${NC}: MEDIUM trufflehog finding is logged as MEDIUM, not HIGH"
+    ((passed++))
+else
+    echo -e "${RED}FAIL${NC}: trufflehog severity mis-graded in --save-log (HIGH=$TH_HIGH MEDIUM=$TH_MED)"
+    ((failed++))
+fi
+rm -f "$TH_LOG"
+
+if command -v jq >/dev/null 2>&1; then
+    ((total++))
+    TH_JSON=$(mktemp)
+    "$BASH_CMD" "$DETECTOR" --json "$TH_JSON" "$TH_FIX" >/dev/null 2>&1
+    if [[ "$(jq -r '[.findings[]|select(.message|test("trufflehog"))|.severity]|unique|join(",")' "$TH_JSON" 2>/dev/null)" == "MEDIUM" ]]; then
+        echo -e "${GREEN}PASS${NC}: MEDIUM trufflehog finding is MEDIUM in --json too"
+        ((passed++))
+    else
+        echo -e "${RED}FAIL${NC}: trufflehog severity mis-graded in --json"
+        ((failed++))
+    fi
+    rm -f "$TH_JSON"
+else
+    echo -e "${YELLOW}SKIP${NC}: trufflehog --json severity (jq not installed)"
+fi
 
 # ============================================================
 #  Paranoid-mode confusable-substring regression

@@ -29,7 +29,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPROMISED_PACKAGES_FILE="$SCRIPT_DIR/compromised-packages.txt"
 
 # Tool version (surfaced in --json output for downstream consumers)
-SCRIPT_VERSION="3.14.1"
+SCRIPT_VERSION="3.20.0"
 
 # Global temp directory for file-based storage
 TEMP_DIR=""
@@ -5041,7 +5041,7 @@ write_log_file() {
         [[ -s "$TEMP_DIR/compromised_found.txt" ]] && cut -d: -f1 "$TEMP_DIR/compromised_found.txt" || true
 
         # Trufflehog activity (extract file path before colon)
-        [[ -s "$TEMP_DIR/trufflehog_activity.txt" ]] && cut -d: -f1 "$TEMP_DIR/trufflehog_activity.txt" || true
+        _trufflehog_by_severity HIGH || true
 
         # Shai-Hulud repos
         [[ -s "$TEMP_DIR/shai_hulud_repos.txt" ]] && cat "$TEMP_DIR/shai_hulud_repos.txt" || true
@@ -5055,6 +5055,8 @@ write_log_file() {
     # MEDIUM RISK files
     echo "# MEDIUM" >> "$log_file"
     {
+        # Trufflehog rows graded MEDIUM (see _trufflehog_by_severity)
+        _trufflehog_by_severity MEDIUM || true
         # Suspicious packages (extract file path)
         # Note: Using || true to prevent pipefail from causing non-zero exit on empty files
         [[ -s "$TEMP_DIR/suspicious_found.txt" ]] && cut -d: -f1 "$TEMP_DIR/suspicious_found.txt" || true
@@ -5101,6 +5103,8 @@ write_log_file() {
 
         # Namespace warnings (has full paths in format: /path/to/file:namespace_info)
         [[ -s "$TEMP_DIR/namespace_warnings.txt" ]] && cut -d: -f1 "$TEMP_DIR/namespace_warnings.txt" || true
+        # Trufflehog rows graded LOW (see _trufflehog_by_severity)
+        _trufflehog_by_severity LOW || true
     } | sort -u >> "$log_file"
 
     print_status "$GREEN" "Log saved to: $log_file"
@@ -5155,6 +5159,29 @@ _jf_path() {
 
 # _jf_pathmsg SEVERITY FILE  -> each line is "path:reason"; split on FIRST colon
 # (mirrors `cut -d: -f1` for the path, but keeps the reason as the message).
+# Function: _trufflehog_by_severity
+# Purpose: trufflehog_activity.txt stores entries as "path:SEVERITY:message" and mixes
+#          HIGH, MEDIUM and LOW in one file. Emit only the rows of one severity.
+# Args: $1 = "HIGH" | "MEDIUM" | "LOW"; $2 = "paths" (default) or "pathmsg"
+# Note: The --save-log and --json writers used to dump the WHOLE file as HIGH, so a
+#       file that merely mentions trufflehog — a MEDIUM finding — was recorded as HIGH.
+#       In --bulk that produced rows like "🟡 MEDIUM RISK (H:4 M:0 L:0)": the label
+#       comes from the child exit code (correctly MEDIUM) while the counts come from
+#       the log (wrongly HIGH). The crypto_patterns writer already filtered this way.
+_trufflehog_by_severity() {
+    local want="$1" mode="${2:-paths}"
+    [[ -s "$TEMP_DIR/trufflehog_activity.txt" ]] || return 0
+    awk -F: -v want="$want" -v mode="$mode" '
+        $2 == want {
+            if (mode == "paths") { print $1; next }
+            rest = $0
+            sub(/^[^:]*:[^:]*:/, "", rest)
+            print $1 ":" rest
+        }
+    ' "$TEMP_DIR/trufflehog_activity.txt"
+    return 0
+}
+
 _jf_pathmsg() {
     local sev="$1" f="$2" line path msg
     [[ -s "$f" ]] || return 0
@@ -5228,7 +5255,9 @@ write_json_file() {
         _jf_path    HIGH "Shai-Hulud runner reference"                     "$TEMP_DIR/github_sha1hulud_runners.txt"
         _jf_path    HIGH "Known malicious repository description marker"    "$TEMP_DIR/malicious_repo_descriptions.txt"
         _jf_pathmsg HIGH "$TEMP_DIR/compromised_found.txt"
-        _jf_pathmsg HIGH "$TEMP_DIR/trufflehog_activity.txt"
+        _trufflehog_by_severity HIGH   pathmsg | _jf_pathmsg_stdin HIGH
+        _trufflehog_by_severity MEDIUM pathmsg | _jf_pathmsg_stdin MEDIUM
+        _trufflehog_by_severity LOW    pathmsg | _jf_pathmsg_stdin LOW
         _jf_path    HIGH "Shai-Hulud marker repository"                    "$TEMP_DIR/shai_hulud_repos.txt"
         [[ -s "$TEMP_DIR/crypto_patterns.txt" ]] && \
             grep -E "(HIGH RISK|Known attacker wallet)" "$TEMP_DIR/crypto_patterns.txt" 2>/dev/null | _jf_pathmsg_stdin HIGH || true
