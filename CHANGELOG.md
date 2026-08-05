@@ -5,6 +5,22 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.14.2] - 2026-08-05
+
+### Added
+- **keyv/cacheable wave list re-sync: +453 malicious versions across 301 packages.** The August 4 section was built from the Wiz IoC CSV as of upstream commit #31 (2026-08-04 12:55 UTC, 434 packages / 1,782 versions). Wiz kept enumerating the wave after publication; commit #32 (2026-08-04 16:45 UTC) grew the list to **443 packages / 2,235 versions**. Our keyv section now matches that snapshot exactly.
+  - **9 newly listed package names**, all in a scope absent from the earlier snapshot: `@umacloud/cli-{darwin-arm64,darwin-x64,linux-arm64,linux-musl-arm64,linux-musl-x64,linux-x64,win32-x64}`, `@umacloud/knowledge`, and `umadev`.
+  - The other **292 packages were already listed** and gained additional malicious versions — mostly late-numbered patch releases the worm published as it continued republishing (`@ornikar` +158, `@servicetitan` +141, `@or-sdk` +67, `@onereach` +27, unscoped +50, `@thiennq` +2).
+  - Source (a moving target — re-pull before each sync): `wiz-sec-public/wiz-research-iocs`, `reports/keyv-packages.csv`.
+  - Verified: zero duplicate entries file-wide, every added line matches the canonical `package:version` form, and every CSV entry is now covered by the list.
+
+### Changed
+- **`compromised-packages.txt`**: 5,246 → **5,699** entries; header count corrected from the stale `5,240+` to the exact total; keyv section header updated to 443 packages / 2,235 versions.
+- **`shai-hulud-detector.sh`**: `SCRIPT_VERSION` 3.14.1 → 3.14.2.
+
+### Notes
+- Detection-only change; no logic was touched. A missing entry can only cause a missed detection of an already-public bad version, never a false positive.
+
 ## [3.14.1] - 2026-08-04
 
 ### Added
