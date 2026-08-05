@@ -5,7 +5,7 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.14.2] - 2026-08-05
+## [3.14.3] - 2026-08-05
 
 ### Added
 - **keyv/cacheable wave list re-sync: +453 malicious versions across 301 packages.** The August 4 section was built from the Wiz IoC CSV as of upstream commit #31 (2026-08-04 12:55 UTC, 434 packages / 1,782 versions). Wiz kept enumerating the wave after publication; commit #32 (2026-08-04 16:45 UTC) grew the list to **443 packages / 2,235 versions**. Our keyv section now matches that snapshot exactly.
@@ -16,10 +16,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **`compromised-packages.txt`**: 5,246 → **5,699** entries; header count corrected from the stale `5,240+` to the exact total; keyv section header updated to 443 packages / 2,235 versions.
-- **`shai-hulud-detector.sh`**: `SCRIPT_VERSION` 3.14.1 → 3.14.2.
+- **`shai-hulud-detector.sh`**: `SCRIPT_VERSION` 3.14.2 → 3.14.3.
 
 ### Notes
 - Detection-only change; no logic was touched. A missing entry can only cause a missed detection of an already-public bad version, never a false positive.
+
+## [3.14.2] - 2026-08-05
+
+### Fixed
+- **The `git-grep` backend silently returned no matches, disabling every content-pattern check.** `git grep --no-index` only accepts pathspecs inside the directory tree it runs from and rejects absolute paths outright (`fatal: '…' is outside the directory tree` / `is outside repository`). `main()` resolves the scan directory to an absolute path (`scan_dir=$(cd "$scan_dir" && pwd)`), so every path handed to the `fast_grep_*` helpers was absolute. Those helpers discard git's stderr (`2>/dev/null || true`), so the failure surfaced as *zero findings* rather than an error.
+  - **Impact:** git-grep is auto-selected whenever `git` is installed, i.e. the default on virtually every developer machine and CI runner. All ~20 content-matching checks — `check_keyv_indicators`, `check_network_exfiltration`, `check_crypto_theft_patterns`, `check_trufflehog_activity`, `check_destructive_patterns`, `check_ai_assistant_dropper`, `check_mini_shai_hulud_indicators`, and every other campaign-specific `check_*_indicators` (84 call sites) — reported clean on infected trees. Package-list, lockfile, hash and preinstall-hook detection were unaffected, as they use awk/bash lookups rather than the grep helpers.
+  - The bug only stayed hidden because CWD-inside-a-git-repo-containing-the-target is the one case git grep accepts, which is exactly how the test suite invokes the detector (fixtures live under the detector's own repository). Running the documented `cd shai-hulud-detect && ./shai-hulud-detector.sh ~/project` lost the checks.
+  - **Fix:** the git-grep backend now runs as `git -C "$GREP_BASE" grep` with paths relativized against the scan root (`grep_paths_to_base`) and re-absolutized on output (`grep_paths_from_base`), so callers keep receiving the absolute paths the reports, `--save-log` and `--json` contracts assume. Verified that explicit pathspecs are still searched regardless of `.gitignore`, so `node_modules/` coverage is retained.
+  - Relativized pathspecs are emitted with a `./` prefix. Without it a scanned file literally named `:!<something>` would be parsed as git **pathspec magic** — `:!` is the exclude prefix — letting a malicious package ship one extra file to silently drop another from every content search. `./` forces literal interpretation.
+  - The scan root reaches `awk` through the environment, not `awk -v`. `-v` assignments undergo escape-sequence processing, so a scan path containing a backslash (`/tmp/we\ird`) arrived as `/tmp/weird`, matched nothing, and degraded every search back to the original bug.
+  - A scan root of `/` (reachable via `--bulk /`, a mounted volume root, or a container scan) no longer produces a `//` prefix that matches nothing.
+- **`--check-host` could not read `$HOME/.claude/settings.json` on the git-grep backend.** The Nx Console persistence marker lives outside the scan root and is not addressable as a git pathspec at all, so the check silently never fired. `fast_grep_quiet` now falls back to plain grep for paths outside the base. The batch helpers divert such paths to a plain-grep pass as well: git aborts the entire invocation on the first unusable pathspec, so a single out-of-base path in a batch would discard results for every other file batched with it. No batch list contains one today — every entry comes from `find "$scan_dir"` — but the diversion keeps that from becoming a silent failure if one ever does.
+- **Auto-selection now verifies the backend before trusting it.** `select_grep_tool` probes git grep against the actual scan root once per run (`git_grep_backend_works`) — searching one real file for a sentinel that cannot match, so exit 1 means "works" and 128 means "cannot address this tree" — and falls back to ripgrep/grep otherwise. Probing the scan root rather than a scratch directory is what makes pathspec-addressability failures visible at all. An explicit `--use-git-grep` is verified too and downgraded with a printed note: silently reporting a compromised tree as clean is worse than not honouring the flag.
+
+### Added
+- **Backend-parity regression tests** (`run-tests.sh`): scan out-of-tree fixtures in `$TMPDIR` from a neutral working directory and assert that all four backends (auto, `--use-git-grep`, `--use-ripgrep`, `--use-grep`) report the `npm-cache.com` C2 domain, that a `:!`-prefixed decoy file cannot suppress a finding, that a backslash in the scan path does not disable content checks, and that `--check-host` still reads `$HOME`. The block asserts its own precondition (`$TMPDIR` outside any git repository) and skips rather than passing vacuously, since that arrangement is exactly what hid the bug. All five git-grep assertions fail on the unpatched code. Suite: 238 → 245 checks.
+
+### Changed
+- **`shai-hulud-detector.sh`**: `SCRIPT_VERSION` 3.14.1 → 3.14.2.
+- **`README.md`**: tests badge/count 238 → 245.
+
+### Notes
+- **Backend timings after the fix** (macOS, warm cache). Large trees still favour git-grep, which is why it remains the auto-selected default; small trees are dominated by per-invocation process startup, where git is the heaviest of the three. Measured on a 3,001-file tree: git-grep 32.4 s, ripgrep 40.1 s, grep 42.2 s. On a 2-file tree: grep 2.0 s, ripgrep 2.5 s, git-grep 3.2 s. The small-tree ordering is not a regression introduced here — the previous git-grep path was "fast" only because it aborted without searching anything.
 
 ## [3.14.1] - 2026-08-04
 

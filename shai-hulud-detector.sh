@@ -29,7 +29,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPROMISED_PACKAGES_FILE="$SCRIPT_DIR/compromised-packages.txt"
 
 # Tool version (surfaced in --json output for downstream consumers)
-SCRIPT_VERSION="3.14.2"
+SCRIPT_VERSION="3.14.3"
 
 # Global temp directory for file-based storage
 TEMP_DIR=""
@@ -205,6 +205,17 @@ fi
 # Values: "git-grep", "ripgrep", "grep"
 GREP_TOOL=""
 
+# Directory the fast_grep_* helpers resolve their file arguments against, and the cached
+# prefix that relativizes a path against it. Both are set together by set_grep_base(),
+# called from main() with the resolved scan root (--bulk child scans re-invoke this
+# script, so each gets its own). `git grep --no-index` REFUSES absolute pathspecs — it
+# only accepts paths inside the directory tree it is run from — so the git-grep backend
+# runs as `git -C "$GREP_BASE" grep` with paths relativized against this base, and its
+# output re-absolutized. Empty disables relativization, which is what the unit-style
+# tests in run-tests.sh that source the helpers directly rely on.
+GREP_BASE=""
+GREP_BASE_PREFIX=""
+
 # Semver range checking (opt-in via --check-semver-ranges flag)
 CHECK_SEMVER_RANGES=false
 
@@ -212,19 +223,64 @@ CHECK_SEMVER_RANGES=false
 # Purpose: Auto-select the best available grep tool (git-grep > ripgrep > grep)
 # Called after argument parsing to allow --use-* flags to override
 select_grep_tool() {
-    # If user specified a tool via flag, use that (already set in GREP_TOOL)
+    # If the user specified a tool via flag, honour it (already set in GREP_TOOL) —
+    # except that an explicit --use-git-grep is still verified against the scan root.
+    # Silently reporting a compromised tree as clean is a worse outcome than not
+    # honouring the flag, so warn and fall through to auto-selection instead.
     if [[ -n "$GREP_TOOL" ]]; then
-        return
+        if [[ "$GREP_TOOL" == "git-grep" ]] && ! git_grep_backend_works; then
+            print_status "$YELLOW" "   Note: git grep cannot search '$GREP_BASE' in this environment; falling back to another tool."
+            GREP_TOOL=""
+        else
+            # Explicit `return 0`: a bare `return` yields the status of the preceding
+            # test, which is non-zero here and would abort the script under `set -e`.
+            return 0
+        fi
     fi
 
     # Auto-select: git-grep > ripgrep > grep
-    if [[ "$HAS_GIT_GREP" == "true" ]]; then
+    if [[ "$HAS_GIT_GREP" == "true" ]] && git_grep_backend_works; then
         GREP_TOOL="git-grep"
     elif [[ "$HAS_RIPGREP" == "true" ]]; then
         GREP_TOOL="ripgrep"
     else
         GREP_TOOL="grep"
     fi
+}
+
+# Function: git_grep_backend_works
+# Purpose: Verify that git grep can actually search GREP_BASE in THIS environment before
+#          the backend is used. Searches one real file under the scan root for a sentinel
+#          that cannot occur: a working git exits 1 ("no match"), a git that cannot
+#          address the tree exits 128.
+# Args: None (reads GREP_BASE)
+# Returns: 0 if git grep ran successfully, 1 otherwise
+# Note: A git grep that cannot search the given paths exits non-zero and prints to
+#       stderr, which the fast_grep_* helpers discard (`2>/dev/null || true`) — so the
+#       failure surfaces as "no findings" rather than an error, i.e. a scan that
+#       silently reports clean. Anything that makes git grep unusable — pathspec
+#       addressability rules, an unexpectedly old git, a tree it cannot read — must
+#       downgrade the backend, never the results. Probing the scan root rather than a
+#       scratch directory is what makes those cases visible; it costs one `find` and
+#       one `git` per run.
+git_grep_backend_works() {
+    [[ -n "$GREP_BASE" && -d "$GREP_BASE" ]] || return 1
+
+    # Any regular file will do; -quit stops at the first hit so this stays cheap even
+    # on huge trees. An empty tree has nothing to search, so the backend is moot.
+    local probe_file
+    probe_file=$(find "$GREP_BASE" -type f -print -quit 2>/dev/null) || true
+    [[ -n "$probe_file" ]] || return 1
+
+    # Explicit rc capture: `set -e` must not see the expected non-zero exit, and the
+    # distinction between the exit codes is the whole point of the probe.
+    local rc=0
+    git -C "$GREP_BASE" grep -q --no-index -F \
+        "__shai_hulud_grep_probe_no_match__" -- "$(grep_path_to_base "$probe_file")" \
+        >/dev/null 2>&1 || rc=$?
+
+    # 1 = ran fine, found nothing (expected). 128 = cannot address the tree.
+    [[ $rc -eq 1 ]]
 }
 
 # Known malicious file hashed (source: https://socket.dev/blog/ongoing-supply-chain-attack-targets-crowdstrike-npm-packages)
@@ -848,6 +904,115 @@ print_status() {
 # These helper functions provide a clean abstraction over grep tools.
 # GREP_TOOL is set by select_grep_tool() based on auto-detection or --use-* flags.
 
+# Function: set_grep_base
+# Purpose: Anchor the git-grep backend at a scan root, caching the prefix that turns an
+#          absolute path into a path relative to it.
+# Args: $1 = absolute scan root ("" to disable relativization)
+# Modifies: GREP_BASE, GREP_BASE_PREFIX
+# Note: The prefix is normally "$1/", but a root of "/" (a filesystem or volume root,
+#       reachable via `--bulk /`) must not become "//". Caching it keeps the hot single
+#       path helpers below fork-free — they run inside per-file loops.
+set_grep_base() {
+    GREP_BASE="$1"
+    if [[ -z "$GREP_BASE" ]]; then
+        GREP_BASE_PREFIX=""
+    elif [[ "$GREP_BASE" == "/" ]]; then
+        GREP_BASE_PREFIX="/"
+    else
+        GREP_BASE_PREFIX="$GREP_BASE/"
+    fi
+}
+
+# Function: grep_paths_to_base
+# Purpose: Rewrite an absolute path list on stdin into NUL-delimited, "./"-prefixed
+#          pathspecs relative to GREP_BASE, ready to pipe straight into `xargs -0`.
+# Args: $1 = optional file to divert out-of-base paths into
+#       (stdin = absolute path list, one per line; reads GREP_BASE_PREFIX)
+# Returns: NUL-delimited pathspecs on stdout
+# Note:
+#   - `git grep --no-index` rejects absolute pathspecs ("is outside the directory tree"
+#     / "is outside repository") and every path the detector collects is absolute,
+#     because main() resolves the scan directory with `cd … && pwd`.
+#   - The "./" prefix is REQUIRED, not cosmetic. git parses a leading ":" as pathspec
+#     magic, so a scanned file literally named ":!evil.js" would otherwise be read as
+#     the exclude pattern ":!evil.js" — letting a malicious package ship one extra file
+#     to silently remove another from the search. "./" forces literal interpretation.
+#   - GREP_BASE_PREFIX is passed through the environment rather than `awk -v`, because
+#     -v assignments undergo escape-sequence processing: a scan path containing a
+#     backslash (e.g. /tmp/we\ird) would arrive at awk as /tmp/weird, match nothing,
+#     and silently degrade every search back to the bug this exists to fix.
+#   - Out-of-base paths cannot be expressed as a pathspec, so they are diverted to $1
+#     (see fast_grep_* — they are searched with plain grep instead). git aborts the
+#     ENTIRE invocation on the first unusable pathspec, so leaving one in the list
+#     would silently discard results for every other file in the same xargs batch.
+#   - This emits NUL itself rather than piping through `tr`, keeping the added cost of
+#     relativization to roughly one process per call.
+grep_paths_to_base() {
+    GREP_BASE_PREFIX="$GREP_BASE_PREFIX" \
+    GREP_OUTSIDE_FILE="${1:-}" \
+    awk '
+        BEGIN {
+            prefix  = ENVIRON["GREP_BASE_PREFIX"]
+            outside = ENVIRON["GREP_OUTSIDE_FILE"]
+        }
+        index($0, prefix) == 1 { printf "./%s%c", substr($0, length(prefix) + 1), 0; next }
+        outside != ""          { print > outside }
+    '
+}
+
+# Function: grep_paths_from_base
+# Purpose: Re-absolutize the relative paths git grep prints, so callers keep seeing the
+#          absolute paths they passed in (reports, `[[ -f ]]` checks and the --save-log
+#          / --json contracts all assume absolute).
+# Args: $1 = git grep output (newline-separated relative paths)
+# Returns: Absolute path list on stdout
+# Note: Pure bash, no subprocess — git grep prints only the files that MATCHED, which is
+#       nearly always zero and never more than a handful, so a read loop is cheaper than
+#       a fork. git strips the "./" added by grep_paths_to_base, so entries arrive bare.
+grep_paths_from_base() {
+    [[ -n "$1" ]] || return 0
+    local line
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        if [[ "$line" == /* ]]; then
+            printf '%s\n' "$line"
+        else
+            printf '%s\n' "$GREP_BASE_PREFIX$line"
+        fi
+    done <<< "$1"
+}
+
+# Function: grep_path_in_base
+# Purpose: Is this single path inside GREP_BASE (and therefore expressible as a git
+#          pathspec)?
+# Args: $1 = absolute path
+# Returns: 0 if inside GREP_BASE, 1 otherwise (including when GREP_BASE is unset)
+grep_path_in_base() {
+    [[ -n "$GREP_BASE_PREFIX" && "$1" == "$GREP_BASE_PREFIX"* ]]
+}
+
+# Function: grep_path_to_base
+# Purpose: Single-path form of grep_paths_to_base. Callers must check grep_path_in_base()
+#          first; this assumes the path is inside the base.
+# Args: $1 = absolute path
+# Returns: Echoes the "./"-prefixed relative pathspec
+grep_path_to_base() {
+    printf './%s' "${1#"$GREP_BASE_PREFIX"}"
+}
+
+# Function: grep_outside_file
+# Purpose: Allocate a scratch file for grep_paths_to_base to divert out-of-base paths
+#          into. Callers must remove it.
+# Args: None
+# Returns: Echoes the path, or nothing when there is no base or no temp dir (in which
+#          case grep_paths_to_base simply drops out-of-base paths rather than feeding
+#          git a pathspec that would abort the whole batch)
+grep_outside_file() {
+    [[ -n "$GREP_BASE" && -n "${TEMP_DIR:-}" && -d "${TEMP_DIR:-}" ]] || return 0
+    local f="$TEMP_DIR/_grep_outside.$$.$RANDOM"
+    : > "$f" && printf '%s' "$f"
+}
+
 # Function: fast_grep_files
 # Purpose: Find files matching a pattern (case-sensitive)
 # Args: $1 = pattern (stdin = list of files to search)
@@ -863,8 +1028,22 @@ fast_grep_files() {
     case "$GREP_TOOL" in
         git-grep)
             # git grep uses DFA-based regex (no backtracking) - safe for complex patterns
-            # --no-index allows searching files not managed by git
-            printf '%s\n' "$input" | tr '\n' '\0' | xargs -0 git grep -l --no-index -E "$pattern" -- 2>/dev/null || true
+            # --no-index allows searching files not managed by git.
+            # Paths must be relative to GREP_BASE — see grep_paths_to_base().
+            local outside matched
+            outside="$(grep_outside_file)"
+            matched=$(printf '%s\n' "$input" | grep_paths_to_base "$outside" | \
+                xargs -0 git -C "${GREP_BASE:-.}" grep -l --no-index -E "$pattern" -- 2>/dev/null) || true
+            grep_paths_from_base "$matched"
+            if [[ -n "$outside" ]]; then
+                # Paths outside GREP_BASE are not expressible as a git pathspec, so
+                # grep_paths_to_base diverted them here. Search them with plain grep
+                # rather than dropping them.
+                if [[ -s "$outside" ]]; then
+                    tr '\n' '\0' < "$outside" | xargs -0 grep -lE "$pattern" 2>/dev/null || true
+                fi
+                rm -f "$outside"
+            fi
             ;;
         ripgrep)
             printf '%s\n' "$input" | tr '\n' '\0' | xargs -0 rg -l --no-messages -e "$pattern" 2>/dev/null || true
@@ -887,7 +1066,18 @@ fast_grep_files_i() {
     [[ -z "$input" ]] && return 0
     case "$GREP_TOOL" in
         git-grep)
-            printf '%s\n' "$input" | tr '\n' '\0' | xargs -0 git grep -li --no-index -E "$pattern" -- 2>/dev/null || true
+            local outside matched
+            outside="$(grep_outside_file)"
+            matched=$(printf '%s\n' "$input" | grep_paths_to_base "$outside" | \
+                xargs -0 git -C "${GREP_BASE:-.}" grep -li --no-index -E "$pattern" -- 2>/dev/null) || true
+            grep_paths_from_base "$matched"
+            if [[ -n "$outside" ]]; then
+                # See fast_grep_files() — out-of-base paths fall back to plain grep.
+                if [[ -s "$outside" ]]; then
+                    tr '\n' '\0' < "$outside" | xargs -0 grep -liE "$pattern" 2>/dev/null || true
+                fi
+                rm -f "$outside"
+            fi
             ;;
         ripgrep)
             printf '%s\n' "$input" | tr '\n' '\0' | xargs -0 rg -li --no-messages -e "$pattern" 2>/dev/null || true
@@ -910,7 +1100,18 @@ fast_grep_files_fixed() {
     [[ -z "$input" ]] && return 0
     case "$GREP_TOOL" in
         git-grep)
-            printf '%s\n' "$input" | tr '\n' '\0' | xargs -0 git grep -l --no-index -F "$pattern" -- 2>/dev/null || true
+            local outside matched
+            outside="$(grep_outside_file)"
+            matched=$(printf '%s\n' "$input" | grep_paths_to_base "$outside" | \
+                xargs -0 git -C "${GREP_BASE:-.}" grep -l --no-index -F "$pattern" -- 2>/dev/null) || true
+            grep_paths_from_base "$matched"
+            if [[ -n "$outside" ]]; then
+                # See fast_grep_files() — out-of-base paths fall back to plain grep.
+                if [[ -s "$outside" ]]; then
+                    tr '\n' '\0' < "$outside" | xargs -0 grep -lF "$pattern" 2>/dev/null || true
+                fi
+                rm -f "$outside"
+            fi
             ;;
         ripgrep)
             printf '%s\n' "$input" | tr '\n' '\0' | xargs -0 rg -l --no-messages --fixed-strings "$pattern" 2>/dev/null || true
@@ -930,7 +1131,16 @@ fast_grep_quiet() {
     local file="$2"
     case "$GREP_TOOL" in
         git-grep)
-            git grep -q --no-index -E "$pattern" -- "$file" 2>/dev/null
+            # Not every caller passes a path under the scan root: --check-host probes
+            # $HOME/.claude/settings.json for the Nx Console persistence marker. git
+            # grep cannot address those at all, and its failure is indistinguishable
+            # from "no match" here, so fall back to plain grep instead.
+            if grep_path_in_base "$file"; then
+                git -C "${GREP_BASE:-.}" grep -q --no-index -E "$pattern" \
+                    -- "$(grep_path_to_base "$file")" 2>/dev/null
+            else
+                grep -qE "$pattern" "$file" 2>/dev/null
+            fi
             ;;
         ripgrep)
             rg -q "$pattern" "$file" 2>/dev/null
@@ -7017,6 +7227,10 @@ main() {
         print_status "$RED" "Error: Unable to access directory '$scan_dir' or convert to absolute path."
         exit 1
     fi
+
+    # Anchor the fast_grep_* helpers at the resolved scan root. Must happen before
+    # select_grep_tool so the git-grep probe and every later search share one base.
+    set_grep_base "$scan_dir"
 
     # Select grep tool (auto-detect or use flag override)
     select_grep_tool

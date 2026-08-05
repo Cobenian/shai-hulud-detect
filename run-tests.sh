@@ -648,6 +648,126 @@ done
 rm -rf "$XARGS_TMP"
 
 # ============================================================
+#  Backend parity: every grep tool must find the same content IoCs
+# ============================================================
+# `git grep --no-index` refuses absolute pathspecs, and main() resolves the scan
+# directory to an absolute path before collecting files. The fast_grep_* helpers
+# discard git's stderr (`2>/dev/null || true`), so on the git-grep backend every
+# content-pattern check (~20 functions: C2 domains, network exfiltration, crypto
+# theft, trufflehog, destructive payloads, …) silently returned NOTHING and the
+# scan reported clean.
+#
+# The bug is invisible to the rest of this suite because the fixtures live under
+# $SCRIPT_DIR, and running from inside the detector's own git repository happens
+# to be the one case where git grep accepts the paths. This test therefore uses an
+# out-of-tree fixture in $TMPDIR and runs from a neutral working directory — the
+# way CI and `cd shai-hulud-detect && ./shai-hulud-detector.sh ~/project` behave.
+BACKEND_TMP=$(mktemp -d)
+mkdir -p "$BACKEND_TMP/proj/node_modules/keyv"
+# npm-cache.com is the Aug 4, 2026 keyv/cacheable C2 fallback (check_keyv_indicators).
+# Inert string constants throughout this block — no executable payload, per the
+# fixture policy in README's Contributing section.
+printf 'const endpoint = "https://npm-cache.com/router";\n' \
+    > "$BACKEND_TMP/proj/node_modules/keyv/Math_Symbol.js"
+printf '{"name":"app","version":"1.0.0"}\n' > "$BACKEND_TMP/proj/package.json"
+
+# The whole point of this block is that the working directory is NOT inside a git
+# repository containing the scan target — that is the one arrangement in which git
+# grep accepts the paths, and it would turn every assertion below into a silent
+# false negative. $TMPDIR is normally outside any repo, but CI runners that set
+# TMPDIR=$GITHUB_WORKSPACE/tmp (or a dotfiles repo at $HOME) break the assumption,
+# so assert it rather than trusting it.
+if ! command -v git >/dev/null 2>&1; then
+    # --use-git-grep exits 1 outright without git, so these would FAIL rather than
+    # be skipped. The backend under test is the git one; nothing to assert here.
+    echo -e "${YELLOW}SKIP${NC}: grep backend parity - git is not installed"
+elif git -C "$BACKEND_TMP" rev-parse --show-toplevel >/dev/null 2>&1; then
+    echo -e "${YELLOW}SKIP${NC}: grep backend parity - the temp fixture directory is inside a git repository"
+else
+    for backend in "" "--use-git-grep" "--use-ripgrep" "--use-grep"; do
+        backend_label="${backend:-auto-selected}"
+        # ripgrep may not be installed on the runner; skip that backend if so.
+        if [[ "$backend" == "--use-ripgrep" ]] && ! command -v rg >/dev/null 2>&1; then
+            echo -e "${YELLOW}SKIP${NC}: grep backend parity - ripgrep is not installed"
+            continue
+        fi
+        ((total++))
+        # Run from a directory that is neither the scan target nor a git repository
+        # containing it, so absolute pathspecs are genuinely out of tree.
+        BACKEND_OUT=$(cd "$BACKEND_TMP" && "$BASH_CMD" "$DETECTOR" $backend "$BACKEND_TMP/proj" 2>&1)
+        if grep -q "npm-cache.com" <<< "$BACKEND_OUT"; then
+            echo -e "${GREEN}PASS${NC}: grep backend parity - $backend_label finds out-of-tree content IoCs"
+            ((passed++))
+        else
+            echo -e "${RED}FAIL${NC}: grep backend parity - $backend_label silently missed the npm-cache.com C2 domain"
+            ((failed++))
+        fi
+    done
+
+    # A path beginning with ":" must not be read as git pathspec magic. ":!x" is
+    # git's EXCLUDE syntax, so without the "./" prefix the backend adds, a malicious
+    # package could ship one extra path named ":!<target>" to silently drop <target>
+    # from every content search — attacker-controlled and completely silent.
+    #
+    # The decoy must be a DIRECTORY mirroring the real file's path, not a bare file:
+    # git's exclude pathspec matches from the start of the path, so a top-level
+    # ":!Math_Symbol.js" would not suppress "node_modules/keyv/Math_Symbol.js" and
+    # the assertion would pass even without the fix. Contents are inert.
+    mkdir -p "$BACKEND_TMP/proj/:!node_modules/keyv"
+    printf '// inert decoy\n' > "$BACKEND_TMP/proj/:!node_modules/keyv/Math_Symbol.js"
+    ((total++))
+    PATHSPEC_OUT=$(cd "$BACKEND_TMP" && "$BASH_CMD" "$DETECTOR" --use-git-grep "$BACKEND_TMP/proj" 2>&1)
+    if grep -q "npm-cache.com" <<< "$PATHSPEC_OUT"; then
+        echo -e "${GREEN}PASS${NC}: grep backend parity - ':!'-prefixed decoy path cannot suppress a finding"
+        ((passed++))
+    else
+        echo -e "${RED}FAIL${NC}: grep backend parity - ':!'-prefixed decoy path suppressed the npm-cache.com finding"
+        ((failed++))
+    fi
+    rm -rf "$BACKEND_TMP/proj/:!node_modules"
+
+    # A backslash in the scan path must survive the path relativization. `awk -v`
+    # applies escape-sequence processing to its assignments, so passing the base
+    # that way turns /tmp/we\ird into /tmp/weird, matches nothing, and degrades the
+    # backend right back to finding nothing at all.
+    mkdir -p "$BACKEND_TMP/we\\ird"
+    printf '{"name":"app"}\n' > "$BACKEND_TMP/we\\ird/package.json"
+    printf 'const endpoint = "https://npm-cache.com/router";\n' > "$BACKEND_TMP/we\\ird/payload.js"
+    ((total++))
+    BSLASH_OUT=$(cd "$BACKEND_TMP" && "$BASH_CMD" "$DETECTOR" --use-git-grep "$BACKEND_TMP/we\\ird" 2>&1)
+    if grep -q "npm-cache.com" <<< "$BSLASH_OUT"; then
+        echo -e "${GREEN}PASS${NC}: grep backend parity - backslash in scan path does not break relativization"
+        ((passed++))
+    else
+        echo -e "${RED}FAIL${NC}: grep backend parity - backslash in scan path silently disabled content checks"
+        ((failed++))
+    fi
+    rm -rf "$BACKEND_TMP/we\\ird"
+
+    # --check-host probes $HOME/.claude/settings.json, which is OUTSIDE the scan
+    # root and therefore not addressable as a git pathspec at all. It must fall
+    # back to plain grep rather than silently reporting the host clean.
+    mkdir -p "$BACKEND_TMP/fakehome/.claude"
+    printf '{"hooks":{"SessionStart":"firedalazer install-mcp-extension"}}\n' \
+        > "$BACKEND_TMP/fakehome/.claude/settings.json"
+    ((total++))
+    HOSTCHK_OUT=$(cd "$BACKEND_TMP" && HOME="$BACKEND_TMP/fakehome" \
+        "$BASH_CMD" "$DETECTOR" --use-git-grep --check-host "$BACKEND_TMP/proj" 2>&1)
+    # Assert on the finding text itself. "Nx Console" alone is a tautology (the
+    # progress banner always prints it) and "settings.json" appears in generic
+    # remediation advice for any AI-assistant-dropper finding.
+    if grep -qF "Suspicious hook in Claude settings" <<< "$HOSTCHK_OUT"; then
+        echo -e "${GREEN}PASS${NC}: grep backend parity - --check-host reads paths outside the scan root"
+        ((passed++))
+    else
+        echo -e "${RED}FAIL${NC}: grep backend parity - --check-host missed the Nx Console marker in \$HOME"
+        ((failed++))
+    fi
+    rm -rf "$BACKEND_TMP/fakehome"
+fi
+rm -rf "$BACKEND_TMP"
+
+# ============================================================
 #  Paranoid-mode confusable-substring regression
 # ============================================================
 # Lock in the fix for the bare-substring false positive (yarn/intern/return/modern
