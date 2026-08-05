@@ -3,7 +3,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Shell](https://img.shields.io/badge/shell-Bash%205.0%2B-blue)](#requirements)
 [![Status](https://img.shields.io/badge/status-Active-success)](../../)
-[![Tests](https://img.shields.io/badge/tests-238%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-249%20passing-brightgreen)](#testing)
 [![Packages](https://img.shields.io/badge/compromised%20packages-3%2C460%2B-red)](compromised-packages.txt)
 [![Type](https://img.shields.io/badge/type-Security%20Tool-red)](#what-it-catches)
 [![Contributions](https://img.shields.io/badge/contributions-Welcome-orange)](#contributing)
@@ -253,7 +253,7 @@ To add new packages from a fresh advisory: append entries in that format, run `.
 ## Testing
 
 ```bash
-./run-tests.sh                          # full suite, 238 checks
+./run-tests.sh                          # full suite, 249 checks
 ./shai-hulud-detector.sh test-cases/<fixture-name>   # run one fixture manually
 ```
 

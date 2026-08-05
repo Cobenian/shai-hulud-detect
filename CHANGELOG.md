@@ -5,6 +5,29 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.0] - 2026-08-05
+
+### Fixed
+- **`yarn.lock` was never parsed.** It was collected into the lockfile inventory and counted as an npm ecosystem marker, but `check_package_integrity`'s parser only understands JSON (`"node_modules/<pkg>":` blocks), so neither Yarn dialect matched anything. **A Yarn project pinning a compromised version reported `✅ No indicators of Shai-Hulud compromise detected`**, both directly and under `--bulk`. For a Rails / Shakapacker codebase that is most of the tree, and a clean bulk report was not evidence of anything.
+  - `transform_yarn_lock` converts both dialects into the pseudo-`package-lock.json` shape the shared parser already consumes — the same approach `pnpm-lock.yaml` has used since 3.4.0. Both formats share the structure this needs: an entry header at column 0 ending in `:`, followed by an indented `version` line.
+    - Yarn v1: `keyv@^6.0.0:` → `version "6.0.0"`
+    - Yarn Berry: `"keyv@npm:6.0.0":` → `version: 6.0.0`
+  - Multi-descriptor headers (`keyv@^6.0.0, keyv@^6.1.0:`) take the first descriptor, since they all resolve to the block's single version. Scoped names survive because the package name is everything before the *last* `@` (`@or-sdk/auth@^0.38.2` → `@or-sdk/auth`). Berry preamble blocks (`__metadata:`) have no `@` and are skipped.
+- **The first package entry of every `pnpm-lock.yaml` was dropped.** `transform_pnpm_yaml` emitted bare `"<pkg>": {` keys, and the shared parser's legacy branch for that shape filters out structural JSON keys by an allow-list that does not include `packages` — so the pseudo-lockfile's own `"packages": {` wrapper was consumed as a package, swallowing entry #1. A lockfile whose only compromised package sorted first reported clean; adding any earlier entry made it appear. Both transforms now emit the unambiguous `"node_modules/<pkg>":` form.
+
+- **A `yarn.lock` pin was reported as SAFE under `--check-semver-ranges`, not merely missed.** `get_lockfile_version` read the version off the entry *header* (`keyv@^6.0.0:`) with `sed 's/.*@\([^"]*\).*/\1/'`, which returns the requested range plus a colon — `^6.0.0:`. That was then compared against the compromised version, did not match, and the package was emitted as `ℹ️ LOW RISK: Packages with safe lockfile versions … (locked to ^6.0.0:, could match 6.0.0)` with exit 0. The identical project with a `package-lock.json` returned MEDIUM / exit 2. Resolution now goes through `transform_yarn_lock`, so the resolved version is read from the block's `version` line.
+- **`npm-shrinkwrap.json` was never collected, so never parsed.** It is byte-compatible with `package-lock.json` and the parser already handles the format — it was simply absent from the file inventory and the lockfile filter. Added to both.
+
+### Added
+- **Five fixtures**: `yarn-lock-attack/` (Yarn v1, multi-descriptor header + scoped `@or-sdk/auth@0.38.2`), `yarn-berry-attack/` (Berry `name@npm:version` descriptors), `yarn-lock-clean/` (last-known-good version — a name-only match must not fire), `pnpm-first-entry-attack/` (compromised package first in the lockfile), and `npm-shrinkwrap-attack/`. Plus assertions pinning each finding and one guarding the `--check-semver-ranges` regression. All fail on the unpatched code. Suite: 238 → 249 checks.
+
+### Changed
+- **`shai-hulud-detector.sh`**: `SCRIPT_VERSION` 3.14.1 → 3.17.0.
+- **`README.md`**: tests badge/count 238 → 249.
+
+### Notes
+- Lockfile matches are reported as MEDIUM (`Package integrity issues detected`), not HIGH — that is the existing severity for lockfile findings and is unchanged here. Worth knowing when triaging this wave, since a pinned compromised version in `yarn.lock` will not produce a red HIGH banner.
+
 ## [3.14.1] - 2026-08-04
 
 ### Added

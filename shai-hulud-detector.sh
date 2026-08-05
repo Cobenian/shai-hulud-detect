@@ -29,7 +29,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPROMISED_PACKAGES_FILE="$SCRIPT_DIR/compromised-packages.txt"
 
 # Tool version (surfaced in --json output for downstream consumers)
-SCRIPT_VERSION="3.14.1"
+SCRIPT_VERSION="3.17.0"
 
 # Global temp directory for file-based storage
 TEMP_DIR=""
@@ -1021,7 +1021,7 @@ collect_all_files() {
             -name "*.py" -o -name "*.sh" -o -name "*.bat" -o -name "*.ps1" -o -name "*.cmd" -o \
             -name "*.php" -o \
             -name "package.json" -o \
-            -name "package-lock.json" -o -name "yarn.lock" -o -name "pnpm-lock.yaml" -o \
+            -name "package-lock.json" -o -name "npm-shrinkwrap.json" -o -name "yarn.lock" -o -name "pnpm-lock.yaml" -o \
             -name "shai-hulud-workflow.yml" -o \
             -name "setup_bun.js" -o -name "bun_environment.js" -o \
             -name "bun_installer.js" -o -name "environment_source.js" -o \
@@ -1101,7 +1101,7 @@ collect_all_files() {
     grep "\.\(js\|ts\|json\|mjs\|cjs\)$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/code_files.txt" 2>/dev/null || touch "$TEMP_DIR/code_files.txt"
     grep "\.\(yml\|yaml\)$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/yaml_files.txt" 2>/dev/null || touch "$TEMP_DIR/yaml_files.txt"
     grep "\.\(py\|sh\|bat\|ps1\|cmd\|php\)$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/script_files.txt" 2>/dev/null || touch "$TEMP_DIR/script_files.txt"
-    grep "\(package-lock\.json\|yarn\.lock\|pnpm-lock\.yaml\)$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/lockfiles.txt" 2>/dev/null || touch "$TEMP_DIR/lockfiles.txt"
+    grep "\(package-lock\.json\|npm-shrinkwrap\.json\|yarn\.lock\|pnpm-lock\.yaml\)$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/lockfiles.txt" 2>/dev/null || touch "$TEMP_DIR/lockfiles.txt"
     grep "shai-hulud-workflow\.yml$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/workflow_files_found.txt" 2>/dev/null || touch "$TEMP_DIR/workflow_files_found.txt"
     grep "\(setup_bun\.js\|bun_installer\.js\)$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/setup_bun_files.txt" 2>/dev/null || touch "$TEMP_DIR/setup_bun_files.txt"
     grep "\(bun_environment\.js\|environment_source\.js\)$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/bun_environment_files.txt" 2>/dev/null || touch "$TEMP_DIR/bun_environment_files.txt"
@@ -3669,6 +3669,77 @@ check_file_hashes() {
     done < "$TEMP_DIR/file_hashes.txt"
 }
 
+# Function: transform_yarn_lock
+# Purpose: Convert yarn.lock (Yarn v1 AND Yarn Berry / v2+) to pseudo-package-lock.json
+#          for the shared package-lock parser in check_package_integrity.
+# Args: $1 = lockfile (path to yarn.lock)
+# Modifies: None
+# Returns: Outputs JSON to stdout with a packages structure compatible with the
+#          package-lock parser
+# Note: yarn.lock was collected into the lockfile inventory but never parsed — the
+#       parser only understands JSON / "node_modules/<pkg>": blocks, so a yarn project
+#       pinning a compromised version reported clean. That is most of a Rails or
+#       Shakapacker stack.
+#
+#       Both yarn formats share the shape this relies on: an entry header at column 0
+#       that ends in ":", followed by an indented "version" line. The differences are
+#       only in spelling, and both are handled:
+#
+#         Yarn v1                        Yarn Berry
+#         keyv@^6.0.0:                   "keyv@npm:6.0.0":
+#           version "6.0.0"                version: 6.0.0
+#
+#       Headers may carry several comma-separated descriptors (`keyv@^6.0.0, keyv@^6.1.0:`);
+#       the first is enough, since they all resolve to the one version in the block.
+#       The package name is everything before the LAST "@" in the descriptor, which
+#       keeps scoped names intact (@scope/pkg@^1.0.0 -> @scope/pkg).
+transform_yarn_lock() {
+    local lockfile=$1
+
+    echo "{"
+    echo "  \"packages\": {"
+
+    awk '
+        # Entry header: starts at column 0, is not a comment, and ends with ":".
+        /^[^[:space:]#]/ && /:[[:space:]]*$/ {
+            hdr = $0
+            sub(/:[[:space:]]*$/, "", hdr)
+
+            # First descriptor only.
+            split(hdr, descriptors, ",")
+            d = descriptors[1]
+            gsub(/^[[:space:]]*"?/, "", d)
+            gsub(/"?[[:space:]]*$/, "", d)
+
+            # Name = up to the last "@", ignoring a leading "@" on scoped names.
+            name = ""
+            for (i = length(d); i > 1; i--) {
+                if (substr(d, i, 1) == "@") { name = substr(d, 1, i - 1); break }
+            }
+
+            # Berry preamble blocks (__metadata:, etc.) have no "@" and are skipped.
+            current = name
+            next
+        }
+
+        # Indented version line, in either dialect.
+        current != "" && /^[[:space:]]+"?version"?[[:space:]]*:?[[:space:]]/ {
+            v = $0
+            sub(/^[[:space:]]+"?version"?[[:space:]]*:?[[:space:]]*/, "", v)
+            gsub(/"/, "", v)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
+            if (v != "") {
+                printf "    \"node_modules/%s\": {\n      \"version\": \"%s\"\n    },\n", current, v
+            }
+            current = ""
+            next
+        }
+    ' "$lockfile"
+
+    echo "  }"
+    echo "}"
+}
+
 # Function: transform_pnpm_yaml
 # Purpose: Convert pnpm-lock.yaml to pseudo-package-lock.json format for parsing
 # Args: $1 = packages_file (path to pnpm-lock.yaml)
@@ -3728,7 +3799,14 @@ transform_pnpm_yaml() {
         version=${key##*@}
         version=${version##*( )}
 
-        echo "    \"${name}\": {"
+        # Emit the "node_modules/<pkg>" key shape rather than a bare "<pkg>".
+        # The shared parser has two branches: an unambiguous one for
+        # "node_modules/<pkg>": and a legacy one for a bare "<pkg>": { that filters
+        # out structural JSON keys by name. "packages" is not in that filter list, so
+        # the pseudo-lockfile's own `"packages": {` wrapper was consumed as if it were
+        # a package, swallowing the FIRST real entry of every pnpm lockfile. A lockfile
+        # whose only compromised entry came first therefore reported clean.
+        echo "    \"node_modules/${name}\": {"
         echo "      \"version\": \"${version}\""
         echo "    },"
 
@@ -4300,9 +4378,23 @@ get_lockfile_version() {
 
         # Check for yarn.lock
         if [[ -f "$current_dir/yarn.lock" ]]; then
-            # Yarn.lock format: package-name@version:
+            # Resolve through transform_yarn_lock rather than reading the entry header.
+            # The header carries the REQUESTED RANGE, not the resolved version
+            # (`keyv@^6.0.0:`), and the previous `sed 's/.*@\([^"]*\).*/\1/'` returned
+            # "^6.0.0:" — range plus colon. Under --check-semver-ranges that was then
+            # compared against the compromised version, did not match, and the package
+            # was reported as "safe lockfile version" (LOW). So a yarn.lock pinning a
+            # compromised version did not merely go unnoticed, it was affirmatively
+            # cleared. The resolved version only exists on the block's `version` line.
             local found_version
-            found_version=$(grep "^\"\\?$package_name@" "$current_dir/yarn.lock" 2>/dev/null | head -1 | sed 's/.*@\([^"]*\).*/\1/' 2>/dev/null || true)
+            found_version=$(transform_yarn_lock "$current_dir/yarn.lock" 2>/dev/null | \
+                awk -v pkg="node_modules/$package_name" '
+                    $0 ~ "\"" pkg "\":" { want = 1; next }
+                    want && /"version"/ {
+                        split($0, parts, "\"")
+                        for (i in parts) if (parts[i] ~ /^[0-9]/) { print parts[i]; exit }
+                    }
+                ' 2>/dev/null || true)
             if [[ -n "$found_version" ]]; then
                 echo "$found_version"
                 return
@@ -4481,11 +4573,18 @@ check_package_integrity() {
         if [[ -f "$lockfile" && -r "$lockfile" ]]; then
             org_file="$lockfile"
 
-            # Transform pnpm-lock.yaml into pseudo-package-lock
-            if [[ "$(basename "$org_file")" == "pnpm-lock.yaml" ]]; then
-                lockfile=$(mktemp "${TMPDIR:-/tmp}/lockfile.XXXXXXXX")
-                transform_pnpm_yaml "$org_file" > "$lockfile"
-            fi
+            # Transform non-JSON lockfiles into a pseudo-package-lock the shared
+            # parser below understands.
+            case "$(basename "$org_file")" in
+                pnpm-lock.yaml)
+                    lockfile=$(mktemp "${TMPDIR:-/tmp}/lockfile.XXXXXXXX")
+                    transform_pnpm_yaml "$org_file" > "$lockfile"
+                    ;;
+                yarn.lock)
+                    lockfile=$(mktemp "${TMPDIR:-/tmp}/lockfile.XXXXXXXX")
+                    transform_yarn_lock "$org_file" > "$lockfile"
+                    ;;
+            esac
 
             # Extract all package:version pairs from lockfile using AWK block parser
             # This handles the JSON structure where name and version are on different lines
@@ -4536,10 +4635,10 @@ check_package_integrity() {
                 echo "$org_file:Lockfile contains @ctrl packages (potential worm activity)" >> "$TEMP_DIR/integrity_issues.txt"
             fi
 
-            # Cleanup temp lockfile for pnpm
-            if [[ "$(basename "$org_file")" == "pnpm-lock.yaml" ]]; then
-                rm -f "$lockfile"
-            fi
+            # Cleanup the temp lockfile written by the transforms above
+            case "$(basename "$org_file")" in
+                pnpm-lock.yaml|yarn.lock) rm -f "$lockfile" ;;
+            esac
         fi
     done < <(tr '\n' '\0' < "$TEMP_DIR/lockfiles.txt")
 }
