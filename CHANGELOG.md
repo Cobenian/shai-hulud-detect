@@ -5,6 +5,18 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.16.0] - 2026-08-05
+
+### Added
+- **C2-rotation channel of the August 4, 2026 keyv/cacheable wave** (`check_keyv_indicators`). The 3.14.1 entry that added `npm-cache[.]com` noted its own weakness: *"the attacker rotates C2 via an Ethereum smart contract without changing the payload, so this specific domain may be short-lived."* The rotation mechanism itself was never matched. It now is:
+  - **Contract `0xE1f2395ee43e45A1556EC6438a88c31B83493103`** — the address the payload reads its current exfil host from. Matched on its own (both the EIP-55 checksummed and all-lowercase forms, since Ethereum addresses are case-insensitive outside checksumming): a 40-hex address has no benign reason to appear in a dependency tree. This is the durable half of the indicator — it survives any number of domain rotations, where `npm-cache[.]com` does not.
+  - **`eth-mainnet.nodereal[.]io`** — the RPC endpoint used to read the contract. **Reported only alongside another wave marker** (the contract address, `npm-cache[.]com`, `Shai-Hulud`, `Math_Symbol`, `math_init`). NodeReal is a legitimate infrastructure provider and this is an ordinary public Ethereum RPC endpoint used by real dapps and wallet tooling; matching it bare would flag benign web3 projects. The disclosed IoC is specifically an `eth-mainnet.nodereal[.]io` request *containing* `0xE1f2395e…`, i.e. the combination, so that is what is matched.
+- **`test-cases/keyv-c2-rotation-attack/`** (HIGH: contract in both cases + corroborated RPC endpoint) and **`test-cases/keyv-c2-rotation-clean/`** (legitimate NodeReal RPC usage — must stay clean), plus four assertions in `run-tests.sh` pinning each IoC and the false-positive guard. Both fixtures are inert string constants. Suite: 238 → 244 checks.
+
+### Changed
+- **`shai-hulud-detector.sh`**: `SCRIPT_VERSION` 3.14.1 → 3.16.0; `check_keyv_indicators`' header rewritten to describe all three network indicators rather than only the fallback domain.
+- **`README.md`**: tests badge/count 238 → 244.
+
 ## [3.14.1] - 2026-08-04
 
 ### Added

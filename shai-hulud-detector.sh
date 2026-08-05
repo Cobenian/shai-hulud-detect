@@ -29,7 +29,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPROMISED_PACKAGES_FILE="$SCRIPT_DIR/compromised-packages.txt"
 
 # Tool version (surfaced in --json output for downstream consumers)
-SCRIPT_VERSION="3.14.1"
+SCRIPT_VERSION="3.16.0"
 
 # Global temp directory for file-based storage
 TEMP_DIR=""
@@ -2976,15 +2976,20 @@ check_easy_day_js_indicators() {
 }
 
 # Function: check_keyv_indicators
-# Purpose: Detect the fallback C2 / exfil domain of the August 4, 2026 Shai-Hulud
-#          "Here We Go Again" keyv/cacheable wave. The wave's primary exfil is via
-#          GitHub dead-drop repos (caught by the version list, the "node setup.mjs"
-#          preinstall hook, the payload hashes, and the "Shai-Hulud: Here We Go
-#          Again" repo-description marker); this adds the network fallback endpoint
-#          npm-cache[.]com, corroborated by Wiz, Socket (DomainSender), and Aikido.
-#          NOTE: the attacker rotates C2 via an Ethereum smart contract without
-#          changing the payload, so this specific domain may be short-lived — it is
-#          a genuine documented IoC but hash/version detection is the durable signal.
+# Purpose: Detect the network IoCs of the August 4, 2026 Shai-Hulud "Here We Go Again"
+#          keyv/cacheable wave. The wave's primary exfil is via GitHub dead-drop repos
+#          (caught by the version list, the "node setup.mjs" preinstall hook, the
+#          payload hashes, and the "Shai-Hulud: Here We Go Again" repo-description
+#          marker). This covers three network indicators:
+#            1. the fallback exfil domain npm-cache[.]com (Wiz, Socket DomainSender,
+#               Aikido),
+#            2. the C2-rotation contract 0xE1f2395e… , and
+#            3. the eth-mainnet.nodereal[.]io RPC endpoint used to read it, matched
+#               only alongside another wave marker (see IOC 3 for why).
+#          NOTE: the attacker rotates C2 via that Ethereum contract without changing
+#          the payload, so npm-cache[.]com specifically may be short-lived. The
+#          contract address is the more durable network indicator, but hash and
+#          version detection remain the strongest signals for this wave.
 # Args: $1 = scan_dir
 # Modifies: $TEMP_DIR/keyv_indicators.txt
 check_keyv_indicators() {
@@ -3003,6 +3008,50 @@ check_keyv_indicators() {
             fast_grep_files_fixed "$kv_domain" < "$TEMP_DIR/code_files.txt" | \
                 while IFS= read -r file; do
                     echo "$file:keyv/cacheable wave C2 fallback domain ($kv_domain)" >> "$TEMP_DIR/keyv_indicators.txt"
+                done
+        done
+
+        # IOC 2: the C2-rotation channel itself.
+        #
+        # The function header already notes that the attacker rotates C2 through an
+        # Ethereum smart contract without changing the payload, which is what makes
+        # npm-cache[.]com short-lived. The rotation contract is the durable half of
+        # that mechanism, so it is worth matching directly: the payload reads the
+        # current C2 from contract 0xE1f2395ee43e45A1556EC6438a88c31B83493103 over the
+        # eth-mainnet.nodereal[.]io RPC endpoint.
+        #
+        # The address is a 40-hex string with no benign reason to appear in a
+        # dependency tree, so it is matched on its own.
+        local kv_contract
+        for kv_contract in \
+            "0xE1f2395ee43e45A1556EC6438a88c31B83493103" \
+            "0xe1f2395ee43e45a1556ec6438a88c31b83493103"
+        do
+            fast_grep_files_fixed "$kv_contract" < "$TEMP_DIR/code_files.txt" | \
+                while IFS= read -r file; do
+                    echo "$file:keyv/cacheable wave C2-rotation contract address ($kv_contract)" >> "$TEMP_DIR/keyv_indicators.txt"
+                done
+        done
+
+        # IOC 3: the RPC endpoint, reported only alongside another wave marker.
+        #
+        # NodeReal is a legitimate infrastructure provider and eth-mainnet.nodereal.io
+        # is an ordinary public Ethereum RPC endpoint used by real dapps and wallet
+        # tooling. Matching it bare would flag benign web3 projects — the same mistake
+        # that made the durabletask check fire on every AI SDK. The disclosed IoC is
+        # specifically an "eth-mainnet.nodereal[.]io request containing
+        # 0xE1f2395e…", i.e. the combination, so that is what is matched here.
+        local kv_rpc_corroboration='0[xX][eE]1[fF]2395[eE][eE]43[eE]45[aA]1556[eE][cC]6438[aA]88[cC]31[bB]83493103|npm-cache\[?\.\]?com|Shai-Hulud|Math_Symbol|math_init'
+        local kv_rpc
+        for kv_rpc in \
+            "eth-mainnet.nodereal.io" \
+            "eth-mainnet.nodereal[.]io"
+        do
+            fast_grep_files_fixed "$kv_rpc" < "$TEMP_DIR/code_files.txt" | \
+                while IFS= read -r file; do
+                    if fast_grep_quiet "$kv_rpc_corroboration" "$file"; then
+                        echo "$file:keyv/cacheable wave C2-rotation RPC endpoint ($kv_rpc) alongside another wave marker" >> "$TEMP_DIR/keyv_indicators.txt"
+                    fi
                 done
         done
     fi
