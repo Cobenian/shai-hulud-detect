@@ -29,7 +29,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPROMISED_PACKAGES_FILE="$SCRIPT_DIR/compromised-packages.txt"
 
 # Tool version (surfaced in --json output for downstream consumers)
-SCRIPT_VERSION="3.14.1"
+SCRIPT_VERSION="3.15.1"
 
 # Global temp directory for file-based storage
 TEMP_DIR=""
@@ -2764,14 +2764,40 @@ check_durabletask_indicators() {
         for dt_indicator in \
             "check.git-service.com" \
             "check.git-service[.]com" \
-            "/api/public/version" \
-            "/v1/models" \
-            "/rope.pyz" \
-            "/audio.mp3"
+            "/rope.pyz"
         do
             fast_grep_files_fixed "$dt_indicator" < "$TEMP_DIR/_durabletask_search_files.txt" | \
                 while IFS= read -r file; do
                     echo "$file:durabletask C2 reference ($dt_indicator)" >> "$TEMP_DIR/durabletask_indicators.txt"
+                done
+        done
+
+        # IOC 1b: The campaign's C2 endpoint paths, which are only reported when the
+        # same file carries another campaign marker.
+        #
+        # These are ordinary URL paths that occur constantly in benign code —
+        # /v1/models is the standard OpenAI- and Gemini-compatible inference endpoint,
+        # so it appears in every AI SDK and in vendored typings for them. Matching them
+        # bare reported HIGH RISK ("rotate AWS/GCP/Azure/Kubernetes/Vault/GitHub
+        # credentials") on any machine with an AI CLI installed; @google/gemini-cli's
+        # bundled googleapis typings are enough to trigger it. A signal that fires on
+        # essentially every developer machine carries no information, and sending teams
+        # into credential rotation over it is worse than not having it.
+        #
+        # Requiring corroboration keeps the case a bare match would otherwise have
+        # caught and the host literal above would not: a variant that rotates the C2
+        # domain while keeping the endpoints. Known residual gap — a rotated host with
+        # no other marker anywhere in the same file is not reported here; the wave's
+        # rope.pyz hash, persistence artifacts, beacon strings and pinned package
+        # versions all still apply.
+        local dt_corroboration='check\.git-service|t\.m-kosche|rope\.pyz|pgmonitor|pgsql-monitor|sys-update-check|FIRESCALE|BABA-YAGA-KOSCHEI|PUSH UR T3MPRR|durabletask'
+        local dt_endpoint
+        for dt_endpoint in "/api/public/version" "/v1/models" "/audio.mp3"; do
+            fast_grep_files_fixed "$dt_endpoint" < "$TEMP_DIR/_durabletask_search_files.txt" | \
+                while IFS= read -r file; do
+                    if fast_grep_quiet "$dt_corroboration" "$file"; then
+                        echo "$file:durabletask C2 endpoint ($dt_endpoint) alongside another campaign marker" >> "$TEMP_DIR/durabletask_indicators.txt"
+                    fi
                 done
         done
 

@@ -5,6 +5,21 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.15.1] - 2026-08-05
+
+### Fixed
+- **`check_durabletask_indicators` reported HIGH RISK on any machine with an AI CLI installed.** The May 19, 2026 durabletask campaign fetches its stage-2 payload from `check.git-service.com` using the endpoints `/api/public/version`, `/v1/models` and `/audio.mp3`, and 3.5.0 matched those paths as **bare literals**. They are ordinary URL paths: `/v1/models` is the standard OpenAI- and Gemini-compatible inference endpoint, so it appears in every AI SDK and in vendored typings for them.
+  - Observed on a stock developer machine: scanning `npm root -g` flagged `@google/gemini-cli`'s bundled `googleapis` typings (`build/src/apis/ml/v1.d.ts`) as a durabletask C2 reference, attaching the campaign's remediation text — *"rotate AWS/GCP/Azure/Kubernetes/Vault/GitHub credentials, audit AWS SSM + kubectl exec history for lateral movement"*. A signal that fires on essentially every developer machine carries no information, and sending teams into credential rotation over it is worse than not having the check.
+  - **The endpoints are now reported only when the same file carries another campaign marker** (`check.git-service`, `t.m-kosche`, `rope.pyz`, `pgmonitor`, `pgsql-monitor`, `sys-update-check`, one of the three beacon strings, or `durabletask`). This deliberately preserves the one case a bare match caught and the C2 host literal does not: a variant that **rotates the C2 domain** while keeping the endpoints.
+  - **Known residual gap:** a rotated C2 host with no other campaign marker anywhere in the same file is no longer reported by this check. The wave's `rope.pyz` hash, `pgsql-monitor.service` / `pgmonitor.py` / `~/.cache/.sys-update-check*` persistence artifacts, beacon strings and pinned `durabletask` versions all still apply, so the campaign remains covered by five independent signals.
+
+### Added
+- **`test-cases/durabletask-endpoint-fp/`**: benign AI SDK client code using `/v1/models`, `/api/public/version` and `/audio.mp3`, which must stay clean. Plus an inline assertion in `run-tests.sh` covering the corroborated case (rotated C2 host + endpoint + campaign marker in one file), so the false-positive fix cannot silently become a false-negative. Suite: 238 → 241 checks.
+
+### Changed
+- **`shai-hulud-detector.sh`**: `SCRIPT_VERSION` 3.14.1 → 3.15.1.
+- **`README.md`**: tests badge/count 238 → 241.
+
 ## [3.14.1] - 2026-08-04
 
 ### Added
