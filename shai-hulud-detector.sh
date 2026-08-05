@@ -3644,12 +3644,11 @@ check_file_hashes() {
     # hashing (they are still matched by name elsewhere). Hashing is content-based, so
     # restricting it by extension buys nothing.
     #
-    # The exclusion was a performance guard. It costs real time — on a 37,905-file
-    # project the hash phase goes from ~9.6s (235 files) to ~17.7s (all of them),
-    # measured on macOS with -P 8 — but that is bounded and small next to the content
-    # checks, and it is the difference between the hash IoCs working and not working.
-    # Making it affordable required fixing the intersection below, which used to spawn
-    # one grep per hashed file; on this list that alone ran for over ten minutes.
+    # The exclusion was a performance guard, and it does cost real time to remove: on a
+    # 37,905-file project the hash phase goes from ~1.9s (235 files hashed) to ~6.1s
+    # (all of them), measured on macOS with -P 8. That is the price of the hash IoCs
+    # working at all, and it stays bounded because of the intersection rewrite below —
+    # with the old grep-per-hashed-file loop the same sweep took ~216s.
     print_status "$BLUE" "   Preparing files for hash checking..."
     sort -u "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/priority_files.txt" 2>/dev/null || \
         touch "$TEMP_DIR/priority_files.txt"
@@ -3681,10 +3680,10 @@ check_file_hashes() {
 
     # Set intersection in a single awk pass.
     #
-    # This used to run `grep -qF` once per hashed file — one subprocess per file. That
-    # was tolerable only because the sweep skipped node_modules; over a full tree it
-    # dominates everything. On a real 37,679-file project the per-file loop took over
-    # nine minutes, versus well under a second here.
+    # This used to run `grep -qF` once per hashed file — one subprocess per file, about
+    # 3.5ms each. That was tolerable only because the sweep skipped node_modules; over a
+    # full tree it dominates everything. Measured on a real 37,905-file project: ~216s
+    # for the per-file loop, versus ~0.14s for the single pass below.
     #
     # Checksum lines are "<hash>  <name>" (GNU/BSD text mode) or "<hash> *<name>"
     # (binary mode), and <name> may contain spaces, so the filename is everything after
