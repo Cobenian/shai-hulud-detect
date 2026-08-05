@@ -29,7 +29,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPROMISED_PACKAGES_FILE="$SCRIPT_DIR/compromised-packages.txt"
 
 # Tool version (surfaced in --json output for downstream consumers)
-SCRIPT_VERSION="3.14.1"
+SCRIPT_VERSION="3.19.0"
 
 # Global temp directory for file-based storage
 TEMP_DIR=""
@@ -6228,11 +6228,23 @@ _bulk_is_in_output_dir() {
 _bulk_resolve_abs() {
     local p="$1"
     [[ -z "$p" ]] && return 0
-    if [[ "$p" == /* ]]; then
-        printf '%s\n' "$p"
-    else
-        printf '%s/%s\n' "$PWD" "$p"
-    fi
+    [[ "$p" == /* ]] || p="$PWD/$p"
+
+    # Resolve symlinks, so this is comparable with discovery output — which uses
+    # `pwd -P`. Without this the output directory is not recognised as being inside a
+    # scan root and gets scanned as if it were a project: on macOS `mktemp -d` hands
+    # back /var/folders/… while the physical path is /private/var/folders/…, so the
+    # string comparison never matched.
+    #
+    # The directory usually does not exist yet, so resolve the deepest existing
+    # ancestor and re-append the part that does not exist.
+    local head="$p" tail=""
+    while [[ "$head" != "/" && -n "$head" && ! -d "$head" ]]; do
+        tail="$(basename "$head")${tail:+/$tail}"
+        head="$(dirname "$head")"
+    done
+    [[ -d "$head" ]] && head="$(cd "$head" && pwd -P)"
+    printf '%s\n' "${head%/}${tail:+/$tail}"
 }
 
 # Function: _bulk_collect_unreadable
@@ -6624,7 +6636,7 @@ run_bulk_scan() {
             print_status "$YELLOW" "⚠️  Skipping parent '$root' — not a directory."
             continue
         fi
-        root="$(cd "$root" && pwd)"
+        root="$(cd "$root" && pwd -P)"   # -P: resolve symlinks, see main()
         local _child_orig
         while IFS= read -r child; do
             [[ -d "$child" ]] || continue                       # follows symlinks; drops broken links
@@ -6722,7 +6734,7 @@ run_bulk_scan() {
     local resolved_roots="" r
     for r in "${roots[@]}"; do
         [[ -d "$r" ]] || continue
-        resolved_roots+="${resolved_roots:+, }$(cd "$r" && pwd)"
+        resolved_roots+="${resolved_roots:+, }$(cd "$r" && pwd -P)"
     done
 
     print_status "$GREEN" "Bulk scan: ${#targets[@]} project director$([[ ${#targets[@]} -eq 1 ]] && echo "y" || echo "ies") to process."
@@ -7012,8 +7024,19 @@ main() {
         exit 1
     fi
 
-    # Convert to absolute path
-    if ! scan_dir=$(cd "$scan_dir" && pwd); then
+    # Convert to an absolute, symlink-resolved path.
+    #
+    # `pwd -P` (physical), not the default logical `pwd`: `find` does not descend into
+    # a start path that is itself a symlink, and the logical form preserves the
+    # symlink. Scanning `/work` (a symlink to `/Volumes/Work`) collected ZERO files and
+    # reported "No indicators of Shai-Hulud compromise detected" — a clean bill of
+    # health for a tree that was never opened. A trailing slash happens to make `find`
+    # resolve it, but the logical `pwd` strips that too, so `/work/` failed identically.
+    #
+    # Symlinked scan roots are ordinary: /work -> /Volumes/Work, /opt/<x> -> elsewhere,
+    # macOS /tmp -> /private/tmp, and any bind-mount-style layout. Resolving here means
+    # every downstream consumer (find, GREP_BASE, the reports) sees a real path.
+    if ! scan_dir=$(cd "$scan_dir" && pwd -P); then
         print_status "$RED" "Error: Unable to access directory '$scan_dir' or convert to absolute path."
         exit 1
     fi

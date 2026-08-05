@@ -5,6 +5,22 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.19.0] - 2026-08-05
+
+### Fixed
+- **A symlinked scan root scanned nothing and reported clean.** `find` does not descend a start path that is itself a symlink, and both `main()` and `run_bulk_scan` normalised paths with the default **logical** `pwd`, which preserves the symlink. The result was the worst failure mode this tool has: a full pass, exit 0, `✅ No indicators of Shai-Hulud compromise detected` — for a tree that was never opened.
+  - Measured on a real machine where `/work` is a symlink to `/Volumes/Work`: `--bulk --bulk-list /work` reported **`No projects found under: /work — nothing to do`**. After the fix the same command discovers **698 projects**. A plain scan of a path under `/work` likewise collected zero files.
+  - Passing a trailing slash (`/work/`) does make `find` resolve the link, but the logical `pwd` strips it again, so that workaround failed identically — there was no way to scan such a root correctly.
+  - Symlinked roots are ordinary, not exotic: `/work -> /Volumes/Work` and `/opt/<x> -> …` in corporate layouts, macOS's own `/tmp -> /private/tmp`, and anything bind-mount-shaped. `pwd -P` is now used at all three normalisation sites, so `find`, `GREP_BASE` and the reports all see a real path.
+- **`--bulk-output` inside a scan root was scanned as a project again.** `_bulk_resolve_abs` did not resolve symlinks, so once discovery returned physical paths the two could no longer be compared — on macOS `mktemp -d` yields `/var/folders/…` while the physical path is `/private/var/folders/…`. It now resolves the deepest existing ancestor, since the output directory usually does not exist yet. Caught by the existing hardening test from 3.2.1.
+
+### Added
+- **Two assertions** covering a symlinked root for both a plain scan and `--bulk` discovery, using an inert generated fixture. Both fail on the unpatched code. Suite: 238 → 240 checks.
+
+### Changed
+- **`shai-hulud-detector.sh`**: `SCRIPT_VERSION` 3.14.1 → 3.19.0. Scan targets and bulk roots are reported as their resolved physical paths.
+- **`README.md`**: tests badge/count 238 → 240.
+
 ## [3.14.1] - 2026-08-04
 
 ### Added
