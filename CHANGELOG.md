@@ -5,6 +5,25 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.15.0] - 2026-08-05
+
+### Fixed
+- **The SHA-256 hash sweep skipped `node_modules/`, where npm payloads actually land.** `check_file_hashes` hashed only files *outside* `node_modules` plus an allowlist of known malicious basenames (`setup_bun.js`, `bun_environment.js`, `node-ipc.cjs`, `trap-core.js`, …). Since an npm supply-chain payload arrives inside `node_modules` by definition, the one place `MALICIOUS_HASHLIST` matters most was the one place it was not computed.
+  - **Impact, Aug 4 2026 keyv/cacheable wave:** of its three payload hashes, only the `.claude`/`.vscode` loader variant (`fd3ca400…`) was reachable, because that one lands in the repository. The `setup.mjs` shipped in the npm tarball (`54dc7ea5…`) and the `Math_Symbol.js` / `math_init.js` Bun payload it drops (`9fc2570b…`) both live under `node_modules/<pkg>/` and were never hashed. Measured on the new fixture: 1 of 4 collected files hashed before, 4 of 4 after.
+  - The allowlist could not have fixed this in general. Several waves stamp their payload into generically-named files — `index.js`, `main.js`, `package.json`, `.claude/settings.json`, `.vscode/tasks.json` — which cannot be matched by basename without matching most of the tree.
+  - **The sweep also drew from `code_files.txt`, which is filtered to `js|ts|json|mjs|cjs`.** That silently made the allowlist's non-JS entries unreachable: `rope.pyz` carries a hash in `MALICIOUS_HASHLIST` that could never match, and `kitty-monitor.sh` / `cat.py` / `pgmonitor.py` were excluded from hashing too (they are still matched by name elsewhere). Hashing is content-based, so restricting it by extension buys nothing; the source is now `all_files_raw.txt`.
+  - Note this closes a *hash* gap only. Compromised-version detection already covered `node_modules` (transitive deps are parsed from lockfiles and nested `package.json` files), and the `"preinstall": "node setup.mjs"` hook check already read `node_modules` `package.json` files.
+- **The hash intersection spawned one `grep` per hashed file.** With the sweep restricted to a couple of hundred files this was merely wasteful; over a full tree it is fatal. Replaced with a single `awk` pass. Measured on a real 37,905-file project: the per-file loop ran for **over ten minutes** on that list, against well under a second for the single pass.
+  - Net effect on that project, hash phase end to end: **~9.6 s before (235 files hashed) → ~17.7 s after (37,905 files hashed)**, macOS, `-P 8`. Bounded, and small next to the content checks.
+  - This also fixes filename truncation: the old `awk '{print $1, $2}'` cut every checksum line at the first space, so a finding in `my file.js` was reported as `my`. Checksum output is now split as "first field is the hash, the rest is the name", handling both the `<hash>  <name>` and `<hash> *<name>` forms.
+
+### Added
+- **`test-cases/hash-in-node-modules/`**: inert placeholder files under `node_modules/keyv/` mirroring where the keyv wave drops its payload, plus a coverage assertion in `run-tests.sh`. A fixture cannot carry a real malicious hash, so the test asserts that the hash sweep reaches every collected file rather than matching a particular hash. Fails on the unpatched code. Suite: 238 → 240 checks.
+
+### Changed
+- **`shai-hulud-detector.sh`**: `SCRIPT_VERSION` 3.14.1 → 3.15.0. The progress line now reads `Checking <n> files for known malicious content (of <m> collected)` — previously `<n> priority files … (filtered from <m> total)`, which is no longer accurate now that nothing is filtered out.
+- **`README.md`**: tests badge/count 238 → 240.
+
 ## [3.14.1] - 2026-08-04
 
 ### Added

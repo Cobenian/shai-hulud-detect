@@ -49,6 +49,7 @@ declare -A EXPECTED=(
     ["github-actions-runners"]="1|yes|no|no"   # HIGH: malicious runners
     ["gitlab-false-positive"]="0|no|no|no"    # Clean: non-.github YAML files (issue #83)
     ["hash-verification"]="1|yes|no|no"        # HIGH: known malicious hashes (was timeout in orig)
+    ["hash-in-node-modules"]="0|no|no|no"      # Clean: inert files under node_modules/ — asserts the hash sweep covers them (see the coverage assertion below)
     ["infected-lockfile"]="2|no|yes|no"        # MEDIUM: lockfile issues
     ["infected-lockfile-pnpm"]="2|no|yes|no"   # MEDIUM: pnpm lockfile issues
     ["infected-project"]="1|yes|yes|no"        # HIGH: multiple indicators
@@ -646,6 +647,33 @@ for helper in fast_grep_files fast_grep_files_i fast_grep_files_fixed; do
     fi
 done
 rm -rf "$XARGS_TMP"
+
+# ============================================================
+#  Hash sweep must cover node_modules
+# ============================================================
+# npm supply-chain payloads land inside node_modules by definition, but
+# check_file_hashes used to hash only files OUTSIDE it plus an allowlist of known
+# malicious basenames. Two of the Aug 4, 2026 keyv/cacheable wave's three payload
+# hashes were therefore unreachable: the tarball's setup.mjs and the Math_Symbol.js
+# it drops both live under node_modules/<pkg>/.
+#
+# A fixture cannot carry a real malicious hash, so this asserts coverage instead:
+# every collected file must reach the hash sweep. The detector prints
+# "Checking <n> files for known malicious content (of <m> collected)"; n must
+# equal m, and m must exceed the number of files outside node_modules.
+((total++))
+HASHCOV_OUT=$("$BASH_CMD" "$DETECTOR" "$SCRIPT_DIR/test-cases/hash-in-node-modules" 2>&1)
+HASHCOV_LINE=$(grep -o 'Checking *[0-9]* files for known malicious content (of *[0-9]* collected)' <<< "$HASHCOV_OUT")
+HASHCOV_N=$(sed -E 's/Checking *([0-9]+) .*/\1/' <<< "$HASHCOV_LINE")
+HASHCOV_M=$(sed -E 's/.*\(of *([0-9]+) collected\)/\1/' <<< "$HASHCOV_LINE")
+# The fixture has 4 collected files, 3 of them under node_modules/.
+if [[ -n "$HASHCOV_LINE" && "$HASHCOV_N" == "$HASHCOV_M" && "$HASHCOV_M" -ge 4 ]]; then
+    echo -e "${GREEN}PASS${NC}: hash sweep covers node_modules ($HASHCOV_N of $HASHCOV_M files hashed)"
+    ((passed++))
+else
+    echo -e "${RED}FAIL${NC}: hash sweep skipped files (hashed '$HASHCOV_N' of '$HASHCOV_M' collected)"
+    ((failed++))
+fi
 
 # ============================================================
 #  Paranoid-mode confusable-substring regression
