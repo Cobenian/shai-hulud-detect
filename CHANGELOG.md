@@ -5,7 +5,7 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.21.0] - 2026-08-06
+## [3.14.4] - 2026-08-06
 
 ### Fixed
 - **`check_destructive_patterns` flagged ordinary scoped removals below `/home/` as destructive payloads.** The `/home/` alternative of `basic_destructive_regex` had no tail constraint, so it matched **any** path under `/home/`. A legitimate deployment line such as `rm -rf /home/myapp/.deployer` — the case that surfaced this — was reported as `🚨 CRITICAL: Destructive payload patterns detected`, which escalates the entire scan to HIGH RISK and exit code 1. The same applied to `rm -rf /home/user/project/node_modules`, `rm -rf /home/ci/workspace/build` and `find /home/app/logs -mtime +30 -delete`. `$HOME` was over-matched the same way (`rm -rf $HOME/.cache/foo`, `rm -rf $HOME/project/build`).
