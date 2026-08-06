@@ -5,6 +5,22 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.14.4] - 2026-08-06
+
+### Added
+- **`@nebula.js/cli-serve:7.1.2` — one keyv/cacheable-wave version the list was missing.** The August 4 section and the August 5 re-sync were both built from `wiz-sec-public/wiz-research-iocs`, `reports/keyv-packages.csv`, which does not list this package at all, so the `@nebula.js` block covered 21 of the scope's 22 trojanized packages.
+  - Confirmed independently of Wiz by OSV `MAL-2026-11568` / `GHSA-p6mm-86xq-m5x4`, whose affected set is exactly `["7.1.2"]`, and by the npm registry, which still records `time["7.1.2"] = 2026-08-04T10:46:39.018Z` while no longer serving the version (`dist-tags.latest` is back to `7.1.1`). That timestamp falls inside the same 10:46:37-10:46:39 UTC burst that published `@nebula.js/cli-build`, `cli-sense`, `cli` and `stardust` at `7.1.2`.
+  - Recorded as a dated addendum block at the end of `compromised-packages.txt`, following the 2026-08-05 re-sync convention; the original `# @nebula.js (Qlik)` block is left as written.
+  - Before this change, a project pinning `@nebula.js/cli-serve@7.1.2` scanned clean — `@nebula.js` has no namespace-level fallback, so an exact version match is the only path to detection.
+
+### Changed
+- **`compromised-packages.txt`**: 5,699 → **5,700** entries; keyv section header updated to 444 packages / 2,236 versions.
+- **`shai-hulud-detector.sh`**: `SCRIPT_VERSION` 3.14.3 → 3.14.4.
+- **`run-tests.sh` / `test-cases/keyv-shai-hulud-attack`**: the fixture now pins `@nebula.js/cli-serve@7.1.2` and the suite asserts it is flagged. Suite: 245 → 246 checks.
+
+### Notes
+- Detection-only change; no detector logic was touched. A missing entry can only cause a missed detection of an already-public bad version, never a false positive.
+
 ## [3.14.3] - 2026-08-05
 
 ### Added

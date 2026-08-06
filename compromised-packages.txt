@@ -1,6 +1,6 @@
 # Shai-Hulud Supply Chain Attack - Compromised Packages List
 #
-# This file contains 5,699 confirmed compromised package versions from
+# This file contains 5,700 confirmed compromised package versions from
 # multiple supply chain attacks between September 2025 and August 2026.
 # The campaigns were self-replicating, so new compromised packages may still be discovered.
 #
@@ -3968,7 +3968,7 @@ go:github.com/verana-labs/verana-blockchain:v0.10.1-dev.20
 
 # ========================================================================
 # AUGUST 4, 2026 - SHAI-HULUD "Here We Go Again" - keyv / cacheable wave
-# (443 npm packages, 2,235 versions; re-synced 2026-08-05, see block at end)
+# (444 npm packages, 2,236 versions; re-synced 2026-08-05 and 2026-08-06, see blocks at end)
 #
 # The largest npm supply-chain wave to date by install volume: >2 billion
 # monthly installs. Entry point was the compromised GitHub account of the
@@ -6307,3 +6307,21 @@ tslint-folder-schema:1.0.21
 umadev:1.0.74
 verdaccio-okta-oauth:38.1.16
 verdaccio-tarball-local-storage:38.1.16
+
+# ------------------------------------------------------------------------
+# ADDENDUM 2026-08-06 — one keyv-wave version the Wiz IoC CSV does not list.
+# @nebula.js/cli-serve@7.1.2 was trojanized in the same 2026-08-04
+# 10:46:37-10:46:39 UTC publish burst as the rest of the @nebula.js scope
+# (cli-build .237, cli-sense .262, cli .284, cli-serve 10:46:39.018,
+# stardust .344), but the package is absent from reports/keyv-packages.csv
+# entirely, so neither the 2026-08-04 section nor the 2026-08-05 re-sync
+# above picked it up. Confirmed by OSV MAL-2026-11568 /
+# GHSA-p6mm-86xq-m5x4, whose affected set is exactly ["7.1.2"], and by the
+# npm registry, which still records time["7.1.2"] =
+# 2026-08-04T10:46:39.018Z while no longer serving the version
+# (dist-tags.latest is back to 7.1.1). keyv-wave @nebula.js coverage is now
+# 22 packages / 22 versions.
+# ------------------------------------------------------------------------
+
+# @nebula.js — additional version (1 package, 1 version)
+@nebula.js/cli-serve:7.1.2
