@@ -5,6 +5,31 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.21.0] - 2026-08-06
+
+### Fixed
+- **`check_destructive_patterns` flagged ordinary scoped removals below `/home/` as destructive payloads.** The `/home/` alternative of `basic_destructive_regex` had no tail constraint, so it matched **any** path under `/home/`. A legitimate deployment line such as `rm -rf /home/myapp/.deployer` — the case that surfaced this — was reported as `🚨 CRITICAL: Destructive payload patterns detected`, which escalates the entire scan to HIGH RISK and exit code 1. The same applied to `rm -rf /home/user/project/node_modules`, `rm -rf /home/ci/workspace/build` and `find /home/app/logs -mtime +30 -delete`. `$HOME` was over-matched the same way (`rm -rf $HOME/.cache/foo`, `rm -rf $HOME/project/build`).
+  - **Impact:** false CRITICAL on any repository that documents or scripts a scoped cleanup under a home directory — deployment scripts, CI cleanup steps, Dockerfiles, runbooks. CRITICAL findings are the one class of result the tool tells users to act on immediately ("Quarantine these files"), so a false positive here is expensive.
+- **The same regex silently MISSED the most common real home-directory wipes.** The `~` alternative was `~[^a-zA-Z0-9_/]`: it excluded `/`, could not match at end-of-line, allowed no leading quote and had no brace-expansion form. Measured against the old pattern, **7 of 21** genuine wipe spellings were not detected: `rm -rf ~`, `rm -rf ~/`, `rm -rf ~/*`, `rm -rf "$HOME"`, `rm -rf ${HOME}`, `rm -rf ~bob`, `rm -rf "/home/bob"`.
+  - `rm -rf ~/*` is literally `PATTERN_2` of `test-cases/destructive-patterns/cleanup.sh`. That fixture only ever passed because of its *other* lines, so the gap was invisible to the suite.
+  - Combined, the old pattern got **13 of 30** measured cases wrong (7 false negatives, 6 false positives).
+
+### Changed
+- **`basic_destructive_regex` now bounds the path tail.** After `$HOME` / `${HOME}` / `~` / `~user` / `/home/` the pattern accepts **at most one** path component, optionally followed by `/` or `/*`, and then requires a non-path character or end-of-line (`([^a-zA-Z0-9._$~{}*/-]|$)`). Two levels deep is a scoped subdirectory removal, not a home wipe. An optional leading `["']` and a `\$\{?HOME\}?` alternative were added, and the bare-`~` form now accepts `~[a-zA-Z0-9._-]*`. The same construction is applied to the `find … -exec rm` and `find … -delete` alternatives; the `del /s /q` and `Remove-Item -Recurse` alternatives gained the optional quote only.
+  - **Newly detected:** `rm -rf ~`, `rm -rf ~/`, `rm -rf ~/*`, `rm -rf "$HOME"`, `rm -rf ${HOME}`, `rm -rf ~bob`, `rm -rf "/home/bob"`.
+  - **Newly excluded:** `rm -rf /home/myapp/.deployer`, `rm -rf /home/user/project/node_modules`, `rm -rf /home/ci/workspace/build`, `rm -rf $HOME/.cache/foo`, `rm -rf $HOME/project/build`, `find /home/app/logs -mtime +30 -delete`.
+  - **Unchanged verdicts:** all 21 true-positive spellings still fire (`rm -rf $HOME`, `$HOME/`, `$HOME/*`, `/home/`, `/home/*`, `/home/bob`, `/home/bob/`, `/home/bob/*`, `/home/$USER`, `find $HOME … -delete`, `find ~ -exec rm`, `del /s /q %USERPROFILE%`, `Remove-Item -Recurse $HOME`, …), and the existing `test-cases/destructive-patterns` and `test-cases/minified-false-positives` fixtures keep their exact pre-change findings and risk counts.
+  - Verified case-by-case (30 cases × 3 backends) under `grep -E`, `git grep -E --no-index` and `rg`, all with `-i`, matching production's `fast_grep_files_i`; results are identical across all three.
+
+### Added
+- **`test-cases/destructive-home-subdir-fp/`** — inert fixture whose `deploy.sh` holds the nine scoped removals above as string variables. Expected verdict: clean, exit 0. Fails on the unpatched code.
+- **`test-cases/destructive-home-wipe/`** — inert fixture whose `wiper.sh` holds the seven previously-missed whole-home wipes. Expected verdict: CRITICAL destructive payload, exit 1. Fails on the unpatched code.
+- **Two dedicated assertions in `run-tests.sh`** (before the paranoid-mode confusable block) asserting that `rm -rf /home/myapp/.deployer` is *not* flagged and `rm -rf "$HOME"` *is*. Both fixtures are in-tree rather than in `$TMPDIR` so the assertions hold on the git-grep backend too, which can only address paths under the scan root. Suite: 245 → **249** checks.
+
+### Changed (metadata)
+- **`shai-hulud-detector.sh`**: `SCRIPT_VERSION` → 3.21.0.
+- **`README.md`**: tests badge and suite count 245 → 249.
+
 ## [3.14.3] - 2026-08-05
 
 ### Added

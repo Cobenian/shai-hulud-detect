@@ -1,0 +1,7 @@
+{
+  "name": "destructive-home-wipe",
+  "version": "1.0.0",
+  "description": "Fixture: quoted/braced home-directory wipes must be flagged as destructive",
+  "private": true,
+  "license": "MIT"
+}

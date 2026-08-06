@@ -1,0 +1,7 @@
+{
+  "name": "destructive-home-subdir-fp",
+  "version": "1.0.0",
+  "description": "Fixture: scoped removals below a home directory must not be flagged as destructive",
+  "private": true,
+  "license": "MIT"
+}
