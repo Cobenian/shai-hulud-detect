@@ -29,7 +29,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPROMISED_PACKAGES_FILE="$SCRIPT_DIR/compromised-packages.txt"
 
 # Tool version (surfaced in --json output for downstream consumers)
-SCRIPT_VERSION="3.14.7"
+SCRIPT_VERSION="3.15.0"
 
 # Global temp directory for file-based storage
 TEMP_DIR=""
@@ -3843,26 +3843,42 @@ check_malicious_repo_descriptions() {
 check_file_hashes() {
     local scan_dir=$1
     local totalFiles
-    totalFiles=$(wc -l < "$TEMP_DIR/code_files.txt" 2>/dev/null || echo "0")
+    totalFiles=$(wc -l < "$TEMP_DIR/all_files_raw.txt" 2>/dev/null || echo "0")
 
-    # FAST FILTER: Use single find command for recently modified non-node_modules files
-    # This is much faster than looping through every file with stat
-    print_status "$BLUE" "   Filtering files for hash checking..."
-
-    # Priority files: recently modified (30 days) OR known malicious patterns
-    {
-        # Priority 1: Known malicious file patterns (always check). Includes May 19 atool
-        # wave indicators (cat.py — kitty-monitor dead-drop fetcher, index.js — preinstall payload).
-        grep -E "(setup_bun\.js|bun_environment\.js|actionsSecrets\.json|trufflehog|router_init\.js|tanstack_runner\.js|kitty-monitor\.sh|cat\.py|49554fde7424c31c\.js|rope\.pyz|template-web\.js|pgmonitor\.py|node-ipc\.cjs|bw1\.js|trap-core\.js)" "$TEMP_DIR/code_files.txt" 2>/dev/null || true
-
-        # Priority 2: Non-node_modules files (fast grep filter)
-        grep -v "/node_modules/" "$TEMP_DIR/code_files.txt" 2>/dev/null || true
-    } | sort | uniq > "$TEMP_DIR/priority_files.txt"
+    # Hash EVERY collected file, node_modules included.
+    #
+    # This used to hash only files outside node_modules, plus an allowlist of known
+    # malicious basenames. That inverted the threat model: an npm supply-chain payload
+    # arrives inside node_modules by definition, so the one place the hashes matter
+    # most was the one place they were not computed. Of the Aug 4, 2026 keyv/cacheable
+    # wave's three payload hashes, only the .claude/.vscode loader variant was
+    # reachable — the setup.mjs shipped in the tarball and the Math_Symbol.js /
+    # math_init.js Bun payload it drops both land under node_modules/<pkg>/ and were
+    # never hashed. The allowlist could not fix this in general either: several waves
+    # stamp their payload into generically-named files (index.js, main.js,
+    # package.json, settings.json, tasks.json) that cannot be matched by name without
+    # matching most of the tree.
+    #
+    # The source is now all_files_raw.txt rather than code_files.txt. The latter is
+    # filtered to js|ts|json|mjs|cjs, which silently made the allowlist's non-JS
+    # entries unreachable: rope.pyz has a hash in MALICIOUS_HASHLIST that could never
+    # match, and kitty-monitor.sh / cat.py / pgmonitor.py were likewise excluded from
+    # hashing (they are still matched by name elsewhere). Hashing is content-based, so
+    # restricting it by extension buys nothing.
+    #
+    # The exclusion was a performance guard, and it does cost real time to remove: on a
+    # 37,905-file project the hash phase goes from ~1.9s (235 files hashed) to ~6.1s
+    # (all of them), measured on macOS with -P 8. That is the price of the hash IoCs
+    # working at all, and it stays bounded because of the intersection rewrite below —
+    # with the old grep-per-hashed-file loop the same sweep took ~216s.
+    print_status "$BLUE" "   Preparing files for hash checking..."
+    sort -u "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/priority_files.txt" 2>/dev/null || \
+        touch "$TEMP_DIR/priority_files.txt"
 
     local filesCount
     filesCount=$(wc -l < "$TEMP_DIR/priority_files.txt" 2>/dev/null || echo "0")
 
-    print_status "$BLUE" "   Checking $filesCount priority files for known malicious content (filtered from $totalFiles total)..."
+    print_status "$BLUE" "   Checking $filesCount files for known malicious content (of $totalFiles collected)..."
 
     # BATCH HASH: Calculate all hashes in parallel using xargs
     # Create hash lookup file with format: hash filename
@@ -3875,20 +3891,38 @@ check_file_hashes() {
     fi
     # Use -n 100 to batch files and avoid "argument list too long" on large repos (issue #94)
     # Use null-delimited input to handle filenames with spaces (issue #92)
+    # Keep the checksum output verbatim; the intersection below splits it. The previous
+    # `awk '{print $1, $2}'` truncated any filename at its first space.
     tr '\n' '\0' < "$TEMP_DIR/priority_files.txt" | \
-        xargs -0 -n 100 -P "$PARALLELISM" $hash_cmd 2>/dev/null | \
-        awk '{print $1, $2}' > "$TEMP_DIR/file_hashes.txt"
+        xargs -0 -n 100 -P "$PARALLELISM" $hash_cmd 2>/dev/null \
+        > "$TEMP_DIR/file_hashes.txt"
 
-    # Create malicious hash lookup pattern for grep
+    # Create malicious hash lookup
     printf '%s\n' "${MALICIOUS_HASHLIST[@]}" > "$TEMP_DIR/malicious_patterns.txt"
 
-    # Fast set intersection: find matching hashes
+    # Set intersection in a single awk pass.
+    #
+    # This used to run `grep -qF` once per hashed file — one subprocess per file, about
+    # 3.5ms each. That was tolerable only because the sweep skipped node_modules; over a
+    # full tree it dominates everything. Measured on a real 37,905-file project: ~216s
+    # for the per-file loop, versus ~0.14s for the single pass below.
+    #
+    # Checksum lines are "<hash>  <name>" (GNU/BSD text mode) or "<hash> *<name>"
+    # (binary mode), and <name> may contain spaces, so the filename is everything after
+    # the hash rather than field 2.
     print_status "$BLUE" "   Checking against known malicious hashes..."
-    while IFS=' ' read -r hash file; do
-        if grep -qF "$hash" "$TEMP_DIR/malicious_patterns.txt" 2>/dev/null; then
-            echo "$file:$hash" >> "$TEMP_DIR/malicious_hashes.txt"
-        fi
-    done < "$TEMP_DIR/file_hashes.txt"
+    awk '
+        NR == FNR { if ($0 != "") bad[$0] = 1; next }
+        {
+            hash = $1
+            if (hash in bad) {
+                name = substr($0, length(hash) + 1)
+                sub(/^[[:space:]*]+/, "", name)
+                print name ":" hash
+            }
+        }
+    ' "$TEMP_DIR/malicious_patterns.txt" "$TEMP_DIR/file_hashes.txt" \
+        >> "$TEMP_DIR/malicious_hashes.txt"
 }
 
 # Function: transform_pnpm_yaml
