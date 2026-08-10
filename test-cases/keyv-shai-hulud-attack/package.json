@@ -11,6 +11,7 @@
     "flat-cache": "6.1.24",
     "file-entry-cache": "11.1.6",
     "cacheable-request": "13.0.20",
-    "@or-sdk/auth": "0.38.2"
+    "@or-sdk/auth": "0.38.2",
+    "@nebula.js/cli-serve": "7.1.2"
   }
 }

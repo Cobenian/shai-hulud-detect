@@ -453,6 +453,7 @@ for keyv_check in \
     "flat-cache compromised version flagged|flat-cache@6.1.24" \
     "file-entry-cache compromised version flagged|file-entry-cache@11.1.6" \
     "scoped @or-sdk/auth compromised version flagged|@or-sdk/auth@0.38.2" \
+    "scoped @nebula.js/cli-serve compromised version flagged|@nebula.js/cli-serve@7.1.2" \
     "node setup.mjs preinstall hook flagged|Fake Bun preinstall patterns detected" \
     "npm-cache.com C2 fallback domain flagged|keyv/cacheable wave C2 fallback domain"
 do
