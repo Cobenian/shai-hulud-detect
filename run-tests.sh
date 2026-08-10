@@ -43,6 +43,8 @@ declare -A EXPECTED=(
     ["comprehensive-test"]="0|no|no|no"        # Clean
     ["debug-js"]="0|no|no|no"                  # Clean
     ["destructive-patterns"]="1|no|yes|no"     # MEDIUM: secret scanning (not HIGH)
+    ["destructive-home-subdir-fp"]="0|no|no|no" # Clean: scoped removals BELOW a home dir (rm -rf /home/myapp/.deployer, $HOME/.cache/foo, ~/tmp/build) must not fire the destructive-payload check
+    ["destructive-home-wipe"]="1|no|no|no"     # CRITICAL: whole-home wipes the old regex missed (rm -rf "$HOME", rm -rf ${HOME}, rm -rf ~, ~/, ~bob, "/home/bob")
     ["discussion-workflows"]="1|yes|no|no"     # HIGH: malicious workflows
     ["edge-case-project"]="0|no|no|no"         # Clean (no detections)
     ["false-positive-project"]="2|no|yes|no"   # MEDIUM: potential false positives
@@ -767,6 +769,42 @@ else
     rm -rf "$BACKEND_TMP/fakehome"
 fi
 rm -rf "$BACKEND_TMP"
+
+# ============================================================
+#  Destructive-payload home-directory scoping regression
+# ============================================================
+# Lock in the basic_destructive_regex fix in check_destructive_patterns.
+#
+# Over-match: the old "/home/" alternative matched ANY path below /home/, so a
+# legitimate deployment line "rm -rf /home/myapp/.deployer" was reported as
+# "CRITICAL: Destructive payload patterns detected".
+#
+# Under-match: the old "~[^a-zA-Z0-9_/]" alternative excluded "/", could not
+# match at end-of-line and allowed neither a leading quote nor ${HOME}, so the
+# real wipes 'rm -rf "$HOME"', "rm -rf ${HOME}", "rm -rf ~", "rm -rf ~/" and
+# "rm -rf ~/*" were all MISSED.
+#
+# The fixtures are in-tree (NOT $TMPDIR) so the assertions also hold on the
+# git-grep backend, which can only address paths under the scan root.
+DESTR_FP_OUT=$("$BASH_CMD" "$DETECTOR" "$SCRIPT_DIR/test-cases/destructive-home-subdir-fp" 2>&1)
+((total++))
+if grep -qF "Destructive payload patterns detected" <<< "$DESTR_FP_OUT"; then
+    echo -e "${RED}FAIL${NC}: destructive-home-subdir-fp wrongly flagged a scoped removal (rm -rf /home/myapp/.deployer) as destructive"
+    ((failed++))
+else
+    echo -e "${GREEN}PASS${NC}: destructive-home-subdir-fp does NOT flag 'rm -rf /home/myapp/.deployer' as destructive"
+    ((passed++))
+fi
+
+DESTR_WIPE_OUT=$("$BASH_CMD" "$DETECTOR" "$SCRIPT_DIR/test-cases/destructive-home-wipe" 2>&1)
+((total++))
+if grep -qF "Destructive payload patterns detected" <<< "$DESTR_WIPE_OUT"; then
+    echo -e "${GREEN}PASS${NC}: destructive-home-wipe flags the quoted home wipe (rm -rf \"\$HOME\") as destructive"
+    ((passed++))
+else
+    echo -e "${RED}FAIL${NC}: destructive-home-wipe did NOT flag 'rm -rf \"\$HOME\"' (the home-wipe regex is broken)"
+    ((failed++))
+fi
 
 # ============================================================
 #  Paranoid-mode confusable-substring regression

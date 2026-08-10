@@ -29,7 +29,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPROMISED_PACKAGES_FILE="$SCRIPT_DIR/compromised-packages.txt"
 
 # Tool version (surfaced in --json output for downstream consumers)
-SCRIPT_VERSION="3.14.4"
+SCRIPT_VERSION="3.14.5"
 
 # Global temp directory for file-based storage
 TEMP_DIR=""
@@ -3677,7 +3677,19 @@ check_destructive_patterns() {
     # Basic destructive patterns - ONLY flag when targeting user directories ($HOME, ~, /home/)
     # Standalone rimraf/unlinkSync/rmSync removed to reduce false positives (GitHub issue #74)
     # Standalone glob patterns ($HOME/*, ~/*) removed - they match comments/docs (GitHub issue #105)
-    local basic_destructive_regex="rm -rf[[:space:]]+(\\\$HOME|~[^a-zA-Z0-9_/]|/home/)|del /s /q[[:space:]]+(%USERPROFILE%|\\\$HOME)|Remove-Item -Recurse[[:space:]]+(\\\$HOME|~[^a-zA-Z0-9_/])|find[[:space:]]+(\\\$HOME|~[^a-zA-Z0-9_/]|/home/).*-exec rm|find[[:space:]]+(\\\$HOME|~[^a-zA-Z0-9_/]|/home/).*-delete"
+    #
+    # Home-directory targets are matched with a bounded tail: after $HOME / ${HOME} / ~ / /home/
+    # we allow AT MOST ONE path component, optionally followed by "/" or "/*", and then require a
+    # non-path character or end-of-line. Rationale:
+    #   (a) The old "/home/" alternative matched ANY path below /home/, so a legitimate deployment
+    #       doc line such as "rm -rf /home/myapp/.deployer" was reported as a destructive payload.
+    #       Two levels deep is a subdirectory removal, not a home-directory wipe, so the tail
+    #       terminator ([^a-zA-Z0-9._$~{}*/-]|$) now excludes it.
+    #   (b) The old "~[^a-zA-Z0-9_/]" alternative excluded "/" and could not match at end-of-line,
+    #       and there was no allowance for quotes or brace expansion. As a result the real wipes
+    #       "rm -rf ~", "rm -rf ~/", "rm -rf ~/*", 'rm -rf "$HOME"' and "rm -rf ${HOME}" were all
+    #       MISSED. The optional leading ["'] plus \$\{?HOME\}? and ~[a-zA-Z0-9._-]* now cover them.
+    local basic_destructive_regex="rm -rf[[:space:]]+[\"']?((\\\$\\{?HOME\\}?|~[a-zA-Z0-9._-]*)(/[*]?)?([^a-zA-Z0-9._\$~{}*/-]|\$)|/home/([a-zA-Z0-9._\$~{}*-]+(/[*]?)?)?([^a-zA-Z0-9._\$~{}*/-]|\$))|del /s /q[[:space:]]+[\"']?(%USERPROFILE%|\\\$HOME)|Remove-Item -Recurse[[:space:]]+[\"']?(\\\$HOME|~[^a-zA-Z0-9_/])|find[[:space:]]+[\"']?((\\\$\\{?HOME\\}?|~[a-zA-Z0-9._-]*)(/[*]?)?([^a-zA-Z0-9._\$~{}*/-]|\$)|/home/([a-zA-Z0-9._\$~{}*-]+(/[*]?)?)?([^a-zA-Z0-9._\$~{}*/-]|\$)).*-exec rm|find[[:space:]]+[\"']?((\\\$\\{?HOME\\}?|~[a-zA-Z0-9._-]*)(/[*]?)?([^a-zA-Z0-9._\$~{}*/-]|\$)|/home/([a-zA-Z0-9._\$~{}*-]+(/[*]?)?)?([^a-zA-Z0-9._\$~{}*/-]|\$)).*-delete"
 
     # Shai-Hulud 2.0 wiper patterns - SPECIFIC signatures from actual malware (Koi Security disclosure)
     # These tight patterns eliminate false positives on TypeScript/minified JS (GitHub issue #105)
