@@ -1,0 +1,11 @@
+{
+  "name": "npm-shrinkwrap-attack",
+  "lockfileVersion": 3,
+  "requires": true,
+  "packages": {
+    "node_modules/keyv": {
+      "version": "6.0.0",
+      "resolved": "https://registry.npmjs.org/keyv/-/keyv-6.0.0.tgz"
+    }
+  }
+}

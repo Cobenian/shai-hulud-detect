@@ -53,6 +53,11 @@ declare -A EXPECTED=(
     ["secret-scanner-mention"]="2|no|yes|no"  # MEDIUM: bare trufflehog reference - pins severity attribution in --save-log/--json
     ["hash-verification"]="1|yes|no|no"        # HIGH: known malicious hashes (was timeout in orig)
     ["hash-in-node-modules"]="0|no|no|no"      # Clean: inert files under node_modules/ — asserts the hash sweep covers them (see the coverage assertion below)
+    ["npm-shrinkwrap-attack"]="2|no|yes|no"  # MEDIUM: npm-shrinkwrap.json (same format as package-lock) was never collected, so never parsed
+    ["yarn-lock-attack"]="2|no|yes|no"       # MEDIUM: Yarn v1 lockfile pinning keyv@6.0.0 + scoped @or-sdk/auth@0.38.2 (yarn.lock was never parsed before)
+    ["yarn-berry-attack"]="2|no|yes|no"      # MEDIUM: Yarn Berry lockfile pinning flat-cache@6.1.24 (name@npm:version descriptors)
+    ["yarn-lock-clean"]="0|no|no|no"         # Clean: last-known-good keyv in a Yarn v1 lockfile — name match alone must not fire
+    ["pnpm-first-entry-attack"]="2|no|yes|no" # MEDIUM: compromised entry is the FIRST package in the pnpm lockfile (entry #1 used to be swallowed)
     ["infected-lockfile"]="2|no|yes|no"        # MEDIUM: lockfile issues
     ["infected-lockfile-pnpm"]="2|no|yes|no"   # MEDIUM: pnpm lockfile issues
     ["infected-project"]="1|yes|yes|no"        # HIGH: multiple indicators
@@ -846,6 +851,59 @@ if grep -qF "Destructive payload patterns detected" <<< "$DESTR_WIPE_OUT"; then
     ((passed++))
 else
     echo -e "${RED}FAIL${NC}: destructive-home-wipe did NOT flag 'rm -rf \"\$HOME\"' (the home-wipe regex is broken)"
+    ((failed++))
+fi
+
+# ============================================================
+#  yarn.lock parsing (Yarn v1 + Berry) and the pnpm first-entry fix
+# ============================================================
+# yarn.lock was collected into the lockfile inventory but never parsed — the shared
+# parser only understands JSON. A yarn project pinning a compromised version reported
+# clean, which covers most of a Rails / Shakapacker stack. Pin each dialect and the
+# scoped-name case, plus the pnpm lockfile whose compromised entry comes first.
+for lock_check in \
+    "yarn-lock-attack|Compromised package in lockfile: keyv@6.0.0|Yarn v1 lockfile" \
+    "yarn-lock-attack|Compromised package in lockfile: @or-sdk/auth@0.38.2|Yarn v1 scoped name" \
+    "yarn-berry-attack|Compromised package in lockfile: flat-cache@6.1.24|Yarn Berry lockfile" \
+    "pnpm-first-entry-attack|Compromised package in lockfile: keyv@6.0.0|pnpm first entry"
+do
+    lock_fixture="${lock_check%%|*}"
+    lock_rest="${lock_check#*|}"
+    lock_pattern="${lock_rest%%|*}"
+    lock_label="${lock_rest#*|}"
+    ((total++))
+    LOCK_OUT=$("$BASH_CMD" "$DETECTOR" "$SCRIPT_DIR/test-cases/$lock_fixture" 2>&1)
+    if grep -qF "$lock_pattern" <<< "$LOCK_OUT"; then
+        echo -e "${GREEN}PASS${NC}: lockfile parsing - $lock_label"
+        ((passed++))
+    else
+        echo -e "${RED}FAIL${NC}: lockfile parsing - $lock_label (looked for: '$lock_pattern')"
+        ((failed++))
+    fi
+done
+
+# A yarn.lock pin must not be cleared as "safe" under --check-semver-ranges.
+# get_lockfile_version used to read the ENTRY HEADER (`keyv@^6.0.0:`), yielding the
+# requested range plus a colon rather than the resolved version — so the comparison
+# failed and the package was affirmatively reported as a safe lockfile version.
+# That is worse than the parsing gap: a compromised pin was cleared, not just missed.
+((total++))
+YARNSEM_OUT=$("$BASH_CMD" "$DETECTOR" --check-semver-ranges "$SCRIPT_DIR/test-cases/yarn-lock-attack" 2>&1)
+if grep -qF "safe lockfile versions" <<< "$YARNSEM_OUT"; then
+    echo -e "${RED}FAIL${NC}: yarn.lock pin cleared as a safe lockfile version under --check-semver-ranges"
+    ((failed++))
+else
+    echo -e "${GREEN}PASS${NC}: yarn.lock pin is not cleared as safe under --check-semver-ranges"
+    ((passed++))
+fi
+
+((total++))
+SHRINK_OUT=$("$BASH_CMD" "$DETECTOR" "$SCRIPT_DIR/test-cases/npm-shrinkwrap-attack" 2>&1)
+if grep -qF "Compromised package in lockfile: keyv@6.0.0" <<< "$SHRINK_OUT"; then
+    echo -e "${GREEN}PASS${NC}: lockfile parsing - npm-shrinkwrap.json"
+    ((passed++))
+else
+    echo -e "${RED}FAIL${NC}: lockfile parsing - npm-shrinkwrap.json was not parsed"
     ((failed++))
 fi
 
