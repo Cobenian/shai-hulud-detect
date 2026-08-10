@@ -5,6 +5,23 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.19.2] - 2026-08-10
+
+### Added
+- **Go modules from the keyv/cacheable wave: 3 modules, 82 versions.** Wiz extended `reports/keyv-packages.csv` to cover Go modules on 2026-08-06 (upstream snapshot 14:16 UTC); the August 4 section and the 2026-08-05 re-sync were npm-only because the CSV was npm-only at the time. A Go project pinning any of these scanned clean until now.
+  - `github.com/juxtaposition1/v.a.p.e` (76 versions), `github.com/adieuu-llc/adieuu-2026` (5), `github.com/evilgodfahim/kal` (1).
+  - Versions keep the canonical leading `v` (go.mod / go.sum form), matching the existing `go:` entry.
+  - **The npm side is unchanged.** A full re-diff against the 2026-08-06 snapshot found zero npm entries missing, so the drift was entirely the new ecosystem.
+  - Verified: zero duplicates file-wide, every added line matches the canonical `go:<module>:<version>` form, every CSV entry now covered, and a `go.mod` pinning `github.com/adieuu-llc/adieuu-2026@v0.4.10` is flagged HIGH while `@v0.3.0` stays clean.
+
+### Changed
+- **`compromised-packages.txt`**: 5,700 to **5,782** entries; keyv section header now records the Go modules alongside the npm counts.
+- **`README.md`**: the compromised-packages badge said `3,460+`, which had been stale for several releases — corrected to **5,782**, along with the two other counts in the text.
+- **`shai-hulud-detector.sh`**: `SCRIPT_VERSION` 3.19.1 to 3.19.2.
+
+### Notes
+- Detection-only change; no logic was touched. Source (a moving target — re-pull before each sync): `wiz-sec-public/wiz-research-iocs`, `reports/keyv-packages.csv`.
+
 ## [3.19.1] - 2026-08-10
 
 ### Changed

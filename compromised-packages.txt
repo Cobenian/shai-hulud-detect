@@ -1,6 +1,6 @@
 # Shai-Hulud Supply Chain Attack - Compromised Packages List
 #
-# This file contains 5,700 confirmed compromised package versions from
+# This file contains 5,782 confirmed compromised package versions from
 # multiple supply chain attacks between September 2025 and August 2026.
 # The campaigns were self-replicating, so new compromised packages may still be discovered.
 #
@@ -3968,7 +3968,8 @@ go:github.com/verana-labs/verana-blockchain:v0.10.1-dev.20
 
 # ========================================================================
 # AUGUST 4, 2026 - SHAI-HULUD "Here We Go Again" - keyv / cacheable wave
-# (444 npm packages, 2,236 versions; re-synced 2026-08-05 and 2026-08-06, see blocks at end)
+# (444 npm packages / 2,236 versions, plus 3 Go modules / 82 versions;
+# re-synced 2026-08-05, 2026-08-06 and 2026-08-10, see blocks at end)
 #
 # The largest npm supply-chain wave to date by install volume: >2 billion
 # monthly installs. Entry point was the compromised GitHub account of the
@@ -6325,3 +6326,103 @@ verdaccio-tarball-local-storage:38.1.16
 
 # @nebula.js — additional version (1 package, 1 version)
 @nebula.js/cli-serve:7.1.2
+
+# ------------------------------------------------------------------------
+# RE-SYNC 2026-08-10 — Go modules added to the Wiz IoC CSV on 2026-08-06.
+# Upstream snapshot: 2026-08-06 14:16 UTC. The August 4 section and the
+# 2026-08-05 re-sync above were npm-only because the CSV was npm-only at the
+# time; Wiz has since extended it to Go modules caught in the same wave.
+# The npm side is unchanged — a full re-diff against this snapshot found zero
+# npm entries missing, so only the Go modules below are new.
+#
+# 3 modules, 82 versions. Versions keep the canonical leading "v"
+# (go.mod / go.sum form), matching the existing go: entry above.
+# ------------------------------------------------------------------------
+
+# github.com/juxtaposition1/v.a.p.e (76 versions)
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805081246-648cd8543c4f
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805084238-a34d6435a226
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805085748-6b70acca383d
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805091749-3577fc492f9c
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805094244-a5ad050e5764
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805095815-e2821268cb56
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805102734-fa13efcb0021
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805103721-6c35385e306e
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805105744-2e3821fe0134
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805112245-3e6a394afda3
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805114232-76b7500ec99e
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805121229-0c330a3d16cd
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805122728-bfb00c75aa48
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805125426-65fa5b7ba144
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805125931-566d41742f4c
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805131702-56e7d684a7a6
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805135237-28a7c47d4017
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805135941-e95c44f99bb9
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805141432-e1b9b59e611a
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805143749-f2b2c421e37c
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805150258-2dd8de5f8b82
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805153012-03817d9dcb06
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805155541-6e200f48bed4
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805160440-cae1af004815
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805162144-8a5792ca59b4
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805164404-c27e2a0b2ed0
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805170738-4a03dad0af5b
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805172240-5402ee6af6d0
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805173922-b4e09c7b0ae7
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805175512-3d32000f14a1
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805182343-a1bcaf99c97c
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805183840-851084b92f8b
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805185339-f12d833172c1
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805190902-09f55a08f8a7
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805193709-50587cb98197
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805195833-428363c0e2c5
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805200518-ab6dc8c4446c
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805202517-5c862603d9f5
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805204037-ca48947f8a31
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805211042-0b0f2f67c57a
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805211124-e77887f58b93
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805213530-744cc0dd3ef3
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805215606-597f6f6481a0
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805222601-98582ceab7dd
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805224049-cc6ae51f5de1
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805231847-085f8dfc81e3
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260805234047-cbf5253ac558
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260806000746-9b2e17a0848f
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260806002542-b347e6b696b4
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260806004040-e8e99338dbfc
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260806005540-a0731ec7b451
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260806011031-914d19a0a708
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260806014057-af12bf53eb16
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260806015918-32bd78818d72
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260806023252-4db2eb1a7954
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260806025838-528f91597058
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260806031328-23fce7ca2be4
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260806034831-0b830950925e
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260806035836-837ee11a4674
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260806041330-0a41580a4823
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260806042832-d8137245c046
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260806045914-059a503366ea
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260806051440-a8eacd308e3e
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260806055049-3b933ad0d43d
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260806061600-1f9c1f1a8316
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260806063112-12a180ea9dfb
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260806070155-d8559dbbb0ba
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260806072501-177df800e270
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260806074653-eeb0c44624db
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260806081758-f0978eaf84f0
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260806083709-55eb26fa9f3e
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260806090334-bbfbbfcf1262
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260806091959-ae0b39dcc70f
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260806093409-c5c5fcc4e0b1
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260806094957-43d505694256
+go:github.com/juxtaposition1/v.a.p.e:v0.0.0-20260806100501-bde6a26bd440
+
+# github.com/adieuu-llc/adieuu-2026 (5 versions)
+go:github.com/adieuu-llc/adieuu-2026:v0.0.0-20260805040439-27421527967b
+go:github.com/adieuu-llc/adieuu-2026:v0.4.10
+go:github.com/adieuu-llc/adieuu-2026:v0.4.11
+go:github.com/adieuu-llc/adieuu-2026:v0.4.12
+go:github.com/adieuu-llc/adieuu-2026:v0.4.9
+
+# github.com/evilgodfahim/kal (1 versions)
+go:github.com/evilgodfahim/kal:v0.0.0-20260805062327-23dc26d5459b
