@@ -807,6 +807,44 @@ else
 fi
 
 # ============================================================
+#  Symlinked scan root must be resolved, not scanned as a symlink
+# ============================================================
+# `find` does not descend a start path that is itself a symlink, and main() used the
+# default LOGICAL `pwd`, which preserves the symlink. Scanning /work (a symlink to
+# /Volumes/Work) collected zero files and printed "No indicators of Shai-Hulud
+# compromise detected" — a clean bill of health for a tree that was never opened.
+# --bulk was hit the same way: "No projects found". A trailing slash makes `find`
+# resolve the link, but the logical `pwd` strips it, so `/work/` failed identically.
+# Symlinked roots are ordinary: /work -> /Volumes/Work, macOS /tmp -> /private/tmp.
+SYMROOT_TMP=$(mktemp -d)
+mkdir -p "$SYMROOT_TMP/real/proj"
+# Inert: a compromised version string in a manifest, nothing executable.
+printf '{"name":"p","version":"1.0.0","dependencies":{"keyv":"6.0.0"}}\n' \
+    > "$SYMROOT_TMP/real/proj/package.json"
+ln -s "$SYMROOT_TMP/real" "$SYMROOT_TMP/link"
+
+((total++))
+SYMROOT_OUT=$("$BASH_CMD" "$DETECTOR" "$SYMROOT_TMP/link" 2>&1)
+if grep -qF "keyv@6.0.0" <<< "$SYMROOT_OUT"; then
+    echo -e "${GREEN}PASS${NC}: symlinked scan root is resolved (plain scan)"
+    ((passed++))
+else
+    echo -e "${RED}FAIL${NC}: symlinked scan root scanned nothing and reported clean (plain scan)"
+    ((failed++))
+fi
+
+((total++))
+SYMROOT_BULK=$("$BASH_CMD" "$DETECTOR" --bulk --bulk-list "$SYMROOT_TMP/link" 2>&1)
+if grep -q "/proj$" <<< "$SYMROOT_BULK"; then
+    echo -e "${GREEN}PASS${NC}: symlinked scan root is resolved (--bulk discovery)"
+    ((passed++))
+else
+    echo -e "${RED}FAIL${NC}: --bulk found no projects under a symlinked root"
+    ((failed++))
+fi
+rm -rf "$SYMROOT_TMP"
+
+# ============================================================
 #  Paranoid-mode confusable-substring regression
 # ============================================================
 # Lock in the fix for the bare-substring false positive (yarn/intern/return/modern

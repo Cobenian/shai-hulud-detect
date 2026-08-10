@@ -5,6 +5,20 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.14.7] - 2026-08-10
+
+### Fixed
+- **A symlinked scan root was never opened, and the scan reported clean.** `find` does not descend a start path that is itself a symlink, and `main()` normalised the scan directory with the default *logical* `pwd`, which preserves the symlink. Scanning `/work` (a symlink to `/Volumes/Work`) collected **zero** files and printed `No indicators of Shai-Hulud compromise detected` with exit 0 — a clean bill of health for a tree that was never read. `--bulk` failed the same way, reporting `No projects found`. Reproduced here against a symlinked root containing `keyv@6.0.0`: flagged 0 findings before, 1 after.
+  - Symlinked roots are ordinary rather than exotic: `/work -> /Volumes/Work`, `/opt/<x> -> …` in corporate layouts, macOS's own `/tmp -> /private/tmp`, and any bind-mount-shaped path.
+  - **Fix:** the file collectors and `--bulk` discovery now pass the scan root to `find` with a trailing slash (`"${scan_dir%/}/"`, `"${root%/}/"`), which makes `find` resolve the link.
+
+### Changed
+- **Reported paths are unchanged — they remain the path you passed.** The scan root is still normalised with the logical `pwd`, so `--save-log`, `--json` and the console reports show `/work/foo`, not `/Volumes/Work/foo`. (PR #164 proposed `pwd -P` at three sites, which fixed the scan but rewrote every reported path into its physical form; the trailing-slash approach fixes the same bug without that user-visible change. `_bulk_resolve_abs` is consequently left as it was, since discovery output stays logical and remains directly comparable with `--bulk-output`.)
+- **`shai-hulud-detector.sh`**: `SCRIPT_VERSION` 3.14.6 → 3.14.7.
+
+### Added
+- **Two assertions in `run-tests.sh`** covering a symlinked root for both a plain scan and `--bulk` discovery, using an inert generated fixture (a manifest carrying a compromised version string, nothing executable). Both fail on the unpatched code. Suite: 250 → 252 checks.
+
 ## [3.14.6] - 2026-08-10
 
 ### Fixed

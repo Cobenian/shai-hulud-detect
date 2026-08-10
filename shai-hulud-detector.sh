@@ -29,7 +29,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPROMISED_PACKAGES_FILE="$SCRIPT_DIR/compromised-packages.txt"
 
 # Tool version (surfaced in --json output for downstream consumers)
-SCRIPT_VERSION="3.14.6"
+SCRIPT_VERSION="3.14.7"
 
 # Global temp directory for file-based storage
 TEMP_DIR=""
@@ -1201,7 +1201,7 @@ SCAN_ROOT_REAL=""      # physical path of the scan root
 # Purpose: True when a find-emitted path resolves to (or under) the detector's own
 #          installation directory, so callers can skip it. No-op unless the detector
 #          actually lives inside the scan tree.
-# Args: $1 = path as emitted by `find "$scan_dir" ...`; $2 = the scan_dir argument used
+# Args: $1 = path as emitted by `find "${scan_dir%/}/" ...`; $2 = the scan_dir argument used
 path_under_detector() {
     [[ -z "$DETECTOR_SELF_DIR" ]] && return 1
     local p="$1" scan_arg="$2" rel abs
@@ -1225,7 +1225,7 @@ collect_all_files() {
 
     # Single comprehensive find operation for all file types needed (silent)
     {
-        find "$scan_dir" \( \
+        find "${scan_dir%/}/" \( \
             -name "*.js" -o -name "*.ts" -o -name "*.json" -o -name "*.mjs" -o -name "*.cjs" -o \
             -name "*.yml" -o -name "*.yaml" -o \
             -name "*.py" -o -name "*.sh" -o -name "*.bat" -o -name "*.ps1" -o -name "*.cmd" -o \
@@ -1266,11 +1266,11 @@ collect_all_files() {
 
     # Also collect directories in a separate operation (silent)
     {
-        find "$scan_dir" -name ".git" -type d 2>/dev/null || true | sed 's|/.git$||'
+        find "${scan_dir%/}/" -name ".git" -type d 2>/dev/null || true | sed 's|/.git$||'
     } > "$TEMP_DIR/git_repos.txt"
 
     {
-        find "$scan_dir" -type d \( -name ".dev-env" -o -name "*shai*hulud*" \) 2>/dev/null || true
+        find "${scan_dir%/}/" -type d \( -name ".dev-env" -o -name "*shai*hulud*" \) 2>/dev/null || true
     } > "$TEMP_DIR/suspicious_dirs.txt"
 
     # Self-exclusion (issue #146): never treat the detector's OWN installation
@@ -1588,7 +1588,7 @@ check_axios_attack_indicators() {
     local -a artifact_names=("com.apple.act.mond" "ld.py")
     local artifact
     for artifact in "${artifact_names[@]}"; do
-        find "$scan_dir" -name "$artifact" -type f 2>/dev/null | while IFS= read -r file; do
+        find "${scan_dir%/}/" -name "$artifact" -type f 2>/dev/null | while IFS= read -r file; do
             echo "$file:Axios attack filesystem artifact ($artifact)" >> "$TEMP_DIR/axios_attack_indicators.txt"
         done
     done
@@ -3631,7 +3631,7 @@ check_github_runners() {
         fi
 
         # Single find operation combining all patterns with timeout protection
-        timeout 10 find "$scan_dir" -type d \( \
+        timeout 10 find "${scan_dir%/}/" -type d \( \
             -name ".dev-env" -o \
             -name "actions-runner" -o \
             -name ".runner" -o \
@@ -3793,7 +3793,7 @@ check_malicious_repo_descriptions() {
         git_repos_source="$TEMP_DIR/git_repos.txt"
     else
         # Fallback with timeout protection
-        timeout 10 find "$scan_dir" -type d -name ".git" 2>/dev/null | sed 's|/.git$||' > "$TEMP_DIR/git_repos_fallback.txt" || true
+        timeout 10 find "${scan_dir%/}/" -type d -name ".git" 2>/dev/null | sed 's|/.git$||' > "$TEMP_DIR/git_repos_fallback.txt" || true
         git_repos_source="$TEMP_DIR/git_repos_fallback.txt"
     fi
 
@@ -4387,7 +4387,7 @@ check_git_branches() {
         done < "$TEMP_DIR/git_repos.txt"
     else
         # Fallback: quick search with timeout to prevent hanging
-        timeout 5 find "$scan_dir" -name ".git" -type d 2>/dev/null | head -20 | while IFS= read -r git_dir; do
+        timeout 5 find "${scan_dir%/}/" -name ".git" -type d 2>/dev/null | head -20 | while IFS= read -r git_dir; do
             local repo_dir
             repo_dir=$(dirname "$git_dir")
             if [[ -d "$git_dir/refs/heads" ]]; then
@@ -4653,7 +4653,7 @@ check_shai_hulud_repos() {
         git_repos_source="$TEMP_DIR/git_repos.txt"
     else
         # Fallback with timeout protection
-        timeout 10 find "$scan_dir" -name ".git" -type d 2>/dev/null | sed 's|/.git$||' > "$TEMP_DIR/git_repos_fallback.txt" || true
+        timeout 10 find "${scan_dir%/}/" -name ".git" -type d 2>/dev/null | sed 's|/.git$||' > "$TEMP_DIR/git_repos_fallback.txt" || true
         git_repos_source="$TEMP_DIR/git_repos_fallback.txt"
     fi
 
@@ -6873,7 +6873,7 @@ run_bulk_scan() {
                 _seen["$tgt"]=1
                 targets+=("$tgt")
             done <<< "$discovered"
-        done < <(find "$root" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) 2>>"$BULK_UNREADABLE_LOG" | LC_ALL=C sort)
+        done < <(find "${root%/}/" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) 2>>"$BULK_UNREADABLE_LOG" | LC_ALL=C sort)
     done
 
     # Hardening (a): collect the list of paths that find couldn't read so we can
@@ -7234,7 +7234,18 @@ main() {
         exit 1
     fi
 
-    # Convert to absolute path
+    # Convert to an absolute path, keeping it LOGICAL (default `pwd`, not `pwd -P`) so
+    # every report, --save-log and --json path is the path the user actually passed.
+    #
+    # The symlink hazard is handled at the `find` calls instead: `find` does not descend
+    # a start path that is itself a symlink, so scanning `/work` (a symlink to
+    # /Volumes/Work) collected ZERO files and reported "No indicators of Shai-Hulud
+    # compromise detected" — a clean bill of health for a tree that was never opened.
+    # A TRAILING SLASH makes find resolve the link while still printing the path as
+    # given, so the collectors below use "${scan_dir%/}/" and paths stay logical.
+    #
+    # Symlinked scan roots are ordinary: /work -> /Volumes/Work, /opt/<x> -> elsewhere,
+    # macOS /tmp -> /private/tmp, and any bind-mount-style layout.
     if ! scan_dir=$(cd "$scan_dir" && pwd); then
         print_status "$RED" "Error: Unable to access directory '$scan_dir' or convert to absolute path."
         exit 1
