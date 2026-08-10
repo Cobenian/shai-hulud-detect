@@ -29,7 +29,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPROMISED_PACKAGES_FILE="$SCRIPT_DIR/compromised-packages.txt"
 
 # Tool version (surfaced in --json output for downstream consumers)
-SCRIPT_VERSION="3.19.0"
+SCRIPT_VERSION="3.19.1"
 
 # Global temp directory for file-based storage
 TEMP_DIR=""
@@ -1140,6 +1140,56 @@ fast_grep_files_fixed() {
     esac
 }
 
+# Function: grep_cached_pathspecs
+# Purpose: Relativize a path-list file ONCE per run and reuse it.
+# Args: $1 = path list file
+# Returns: echoes the path of a NUL-delimited pathspec file; a sibling ".outside"
+#          file holds any paths that fall outside GREP_BASE
+# Note: The bucket lists (code_files.txt et al) are written once by collect_all_files
+#       and then searched dozens of times — code_files.txt alone is read ~48 times in a
+#       scan. Each read previously cost a `cat` subshell plus an awk pass to relativize
+#       the same content again. Caching keyed on the list path is safe because the
+#       buckets are immutable for the life of TEMP_DIR, and TEMP_DIR is per-run.
+#       Adapted from the _fgrep_read_list idea in PR #157.
+grep_cached_pathspecs() {
+    local list="$1"
+    local key="${list##*/}"
+    local cache="$TEMP_DIR/_psc_${key}.nul"
+    if [[ ! -f "$cache" ]]; then
+        grep_paths_to_base "$TEMP_DIR/_psc_${key}.outside" < "$list" > "$cache" 2>/dev/null
+        [[ -f "$TEMP_DIR/_psc_${key}.outside" ]] || : > "$TEMP_DIR/_psc_${key}.outside"
+    fi
+    printf '%s' "$cache"
+}
+
+# Function: fast_grep_files_fixed_list
+# Purpose: fast_grep_files_fixed, but reading the path list from a FILE so the
+#          relativized pathspecs can be cached across calls.
+# Args: $1 = path list file; $2 = fixed pattern
+# Returns: matching absolute paths on stdout
+fast_grep_files_fixed_list() {
+    local list="$1" pattern="$2"
+    [[ -s "$list" ]] || return 0
+    case "$GREP_TOOL" in
+        git-grep)
+            local cache outside matched
+            cache="$(grep_cached_pathspecs "$list")"
+            outside="${cache%.nul}.outside"
+            matched=$(xargs -0 git -C "${GREP_BASE:-.}" grep -l --no-index -F "$pattern" -- < "$cache" 2>/dev/null) || true
+            grep_paths_from_base "$matched"
+            if [[ -s "$outside" ]]; then
+                tr '\n' '\0' < "$outside" | xargs -0 grep -lF "$pattern" 2>/dev/null || true
+            fi
+            ;;
+        ripgrep)
+            tr '\n' '\0' < "$list" | xargs -0 rg -l --no-messages --fixed-strings "$pattern" 2>/dev/null || true
+            ;;
+        grep)
+            tr '\n' '\0' < "$list" | xargs -0 grep -lF "$pattern" 2>/dev/null || true
+            ;;
+    esac
+}
+
 # Function: fast_grep_any_fixed
 # Purpose: Union guard — does ANY of the given fixed literals appear anywhere in the
 #          file list? One grep pass with -f instead of one pass per literal.
@@ -1163,14 +1213,14 @@ fast_grep_any_fixed() {
     local hit="" outside matched
     case "$GREP_TOOL" in
         git-grep)
-            outside="$(grep_outside_file)"
-            matched=$(grep_paths_to_base "$outside" < "$list" | \
-                xargs -0 git -C "${GREP_BASE:-.}" grep -l --no-index -F -f "$patfile" -- 2>/dev/null) || true
+            local cache
+            cache="$(grep_cached_pathspecs "$list")"
+            outside="${cache%.nul}.outside"
+            matched=$(xargs -0 git -C "${GREP_BASE:-.}" grep -l --no-index -F -f "$patfile" -- < "$cache" 2>/dev/null) || true
             hit="$matched"
-            if [[ -z "$hit" && -n "$outside" && -s "$outside" ]]; then
+            if [[ -z "$hit" && -s "$outside" ]]; then
                 hit=$(tr '\n' '\0' < "$outside" | xargs -0 grep -lF -f "$patfile" 2>/dev/null) || true
             fi
-            [[ -n "$outside" ]] && rm -f "$outside"
             ;;
         ripgrep)
             hit=$(tr '\n' '\0' < "$list" | xargs -0 rg -l --no-messages --fixed-strings -f "$patfile" 2>/dev/null) || true
@@ -1212,7 +1262,7 @@ scan_fixed_iocs() {
         literal="${row%%$'\t'*}"
         message="${row#*$'\t'}"
         message="${message//%s/$literal}"
-        fast_grep_files_fixed "$literal" < "$list" | \
+        fast_grep_files_fixed_list "$list" "$literal" | \
             while IFS= read -r file; do
                 [[ -n "$file" ]] && printf '%s:%s\n' "$file" "$message" >> "$out"
             done

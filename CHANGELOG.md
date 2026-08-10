@@ -5,6 +5,17 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.19.1] - 2026-08-10
+
+### Changed
+- **Relativized path lists are now cached per bucket file.** Ports the remaining optimisation from PR #157 (Eric Boehs) — its `_fgrep_read_list` idea — onto the current helpers. The bucket lists are written once by `collect_all_files` and then searched many times (`code_files.txt` alone is read ~48 times per scan); each read previously cost a `cat` subshell plus an awk pass to relativize the same content again. `grep_cached_pathspecs` does that work once per list per run, and `fast_grep_files_fixed_list` reuses it. Caching keyed on the list path is safe because the buckets are immutable for the life of `TEMP_DIR`, which is per-run.
+  - **Measured** (macOS, median of 3): a directory of infected fixtures **6.2s to 5.3s**; a 3,061-file tree containing IoCs 12.9s to 12.6s. A clean tree is unchanged (11.5s), because the 3.19.0 union guard already skips the per-literal loops there — this only pays when a guard hits, i.e. when there is something to find.
+  - **Verified**: all 97 fixtures byte-identical; suite 281/281; identical output across all four backends (auto, `--use-git-grep`, `--use-ripgrep`, `--use-grep`).
+- **`shai-hulud-detector.sh`**: `SCRIPT_VERSION` 3.19.0 to 3.19.1.
+
+### Notes
+- No detection logic changed. PR #157's optimisations are now fully ported; nothing further from it remains outstanding.
+
 ## [3.19.0] - 2026-08-10
 
 ### Changed
