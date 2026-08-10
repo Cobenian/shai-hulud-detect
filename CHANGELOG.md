@@ -5,6 +5,20 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.19.0] - 2026-08-10
+
+### Changed
+- **Scan performance: roughly 2x faster on large trees, with detection output unchanged.** Ports the two highest-value optimisations from PR #157 (Eric Boehs) onto the current code. That PR was written before the 3.14.2 grep fix and could not be merged directly — its version of these functions passed absolute pathspecs to `git grep`, which is the bug 3.14.2 exists to fix. Reimplemented here on top of the current relativization-aware helpers.
+  - **Fixed-string IoC scans now run behind a union guard.** Twenty-one groups of campaign literals (C2 domains, beacon strings, publisher fingerprints, commit SHAs) used to run one `grep` per literal. `scan_fixed_iocs` first asks, in a single `grep -F -f` pass, whether *any* literal in the group appears at all; only then does the per-literal loop run. The same row list drives both the guard and the loop, so a literal cannot be scanned without being guarded — adding one later cannot silently skip it. Grep-helper invocations per scan: **153 to 81**.
+  - **File categorisation is one `awk` pass instead of ~27 `grep` pipelines** (about 40 processes), which ran on every scan regardless of tree size. Each bucket keeps the exact pattern its `grep` used, including the per-ecosystem vendored-directory exclusions; patterns that were BRE are written as the equivalent ERE.
+  - **Measured** (macOS, median of 3): 3,061-file tree **22.0s to 11.5s**; small project **3.2s to 2.0s**. A directory of deliberately-infected fixtures is unchanged (~5.7s) — when the guard hits, the per-literal loop runs exactly as before, which is the point.
+  - **Verified**: all 97 test fixtures produce byte-identical findings before and after; the 27 categorisation buckets are byte-identical on a synthetic inventory covering every pattern and exclusion; suite 281/281; spot-checked across all four backends (auto, `--use-git-grep`, `--use-ripgrep`, `--use-grep`).
+- **`shai-hulud-detector.sh`**: `SCRIPT_VERSION` 3.18.0 to 3.19.0.
+
+### Notes
+- No detection logic changed. This is purely a reduction in process count.
+- Not ported from #157: its hash-intersection rewrite (superseded by the awk pass added in 3.15.0), and its `ECOSYSTEM_MARKER_COUNTS` change (collides with the ecosystem fallback added in 3.18.0). Its `_fgrep_read_list` caching remains available as future work.
+
 ## [3.18.0] - 2026-08-10
 
 ### Fixed
