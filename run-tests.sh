@@ -84,6 +84,8 @@ declare -A EXPECTED=(
     ["sl4x0-attack"]="1|yes|no|no"             # HIGH: sl4x0 dependency-confusion campaign (oc-aa-module-client@9.9.10 + C2 oob.sl4x0.xyz + @sl4x0.xyz publisher fingerprint + slaxorg fab org + hex-named helpers b02e30.js / 6ad264.js)
     ["art-template-attack"]="1|yes|no|no"      # HIGH: 2025-2026 art-template npm hijack (art-template@4.13.5 + iOS exploit-kit C2 v3.jiathis.com / utaq.cfww.shop / l1ewsu3yjkqeroy.xyz + threat-actor goofychris/daughtrymom)
     ["durabletask-attack"]="1|yes|no|no"       # HIGH: May 19, 2026 durabletask PyPI compromise (pypi:durabletask@1.4.1 + C2 check.git-service.com + secondary t.m-kosche.com + FIRESCALE/BABA-YAGA-KOSCHEI beacons + pgsql-monitor persistence)
+    ["durabletask-endpoint-fp"]="0|no|no|no"   # Clean: benign AI SDK code using /v1/models etc. — the durabletask C2 endpoints must not fire without corroboration
+    ["durabletask-endpoint-corroborated"]="1|yes|no|no" # HIGH: rotated C2 domain + campaign endpoint + campaign marker in one file — the case corroboration exists to keep
     ["trapdoor-attack"]="1|yes|no|no"          # HIGH: May 22-25, 2026 TrapDoor (TeamPCP) multi-ecosystem crypto-stealer — npm (eth-wallet-sentinel) + PyPI (pypi:eth-security-auditor@0.1.0) + Crates (sui-move-build-helper) name matches, P-2024-001 marker, cargo-build-helper-2026 XOR key, trap-core.js payload, and the .cursorrules AI-assistant dropper
     ["laravel-lang-attack"]="1|yes|no|no"      # HIGH: May 22, 2026 Laravel-Lang Composer tag-rewrite — name match on laravel-lang/lang + /http-statuses (all tags backdoored), composer exact-version (composer:laravel-lang/lang@15.29.5), flipboxstudio.info C2 + DebugElevator/DebugChromium payload + malicious commit SHAs
     ["node-ipc-attack"]="1|yes|no|no"          # HIGH: May 14, 2026 node-ipc backdoor (node-ipc@9.1.6 + sh.azurestaticprovider.net C2 + __ntRun/key markers; node-ipc.cjs hash in MALICIOUS_HASHLIST)
@@ -335,8 +337,8 @@ for dt_check in \
     "durabletask compromised PyPI version|durabletask@1.4.1" \
     "durabletask primary C2|durabletask C2 reference (check.git-service.com)" \
     "durabletask C2 /rope.pyz|durabletask C2 reference (/rope.pyz)" \
-    "durabletask C2 /v1/models|durabletask C2 reference (/v1/models)" \
-    "durabletask C2 /api/public/version|durabletask C2 reference (/api/public/version)" \
+    "durabletask C2 /v1/models|durabletask C2 endpoint (/v1/models) alongside another campaign marker" \
+    "durabletask C2 /api/public/version|durabletask C2 endpoint (/api/public/version) alongside another campaign marker" \
     "durabletask beacon FIRESCALE|durabletask beacon string (FIRESCALE)" \
     "durabletask beacon BABA-YAGA-KOSCHEI|durabletask beacon string (BABA-YAGA-KOSCHEI)" \
     "durabletask beacon PUSH UR T3MPRR|durabletask beacon string (PUSH UR T3MPRR)" \
@@ -869,6 +871,25 @@ if [[ -n "$HASHCOV_LINE" && "$HASHCOV_N" == "$HASHCOV_M" && "$HASHCOV_M" -ge 4 ]
     ((passed++))
 else
     echo -e "${RED}FAIL${NC}: hash sweep skipped files (hashed '$HASHCOV_N' of '$HASHCOV_M' collected)"
+    ((failed++))
+fi
+
+# ============================================================
+#  durabletask C2 endpoints: corroborated match must still fire
+# ============================================================
+# The endpoint paths are no longer matched bare (see test-cases/durabletask-endpoint-fp),
+# but dropping them outright would lose the one case the bare match caught and the C2
+# host literal does not: a variant that rotates the C2 domain while keeping the
+# endpoints. That case is preserved by requiring another campaign marker in the same
+# file. The EXPECTED table already asserts the fixture is HIGH; this pins the reason,
+# so the fixture cannot start passing for some unrelated finding.
+((total++))
+DTCORR_OUT=$("$BASH_CMD" "$DETECTOR" "$SCRIPT_DIR/test-cases/durabletask-endpoint-corroborated" 2>&1)
+if grep -qF "durabletask C2 endpoint (/v1/models) alongside another campaign marker" <<< "$DTCORR_OUT"; then
+    echo -e "${GREEN}PASS${NC}: durabletask C2 endpoint still fires when corroborated (rotated C2 host)"
+    ((passed++))
+else
+    echo -e "${RED}FAIL${NC}: durabletask C2 endpoint missed a corroborated match (rotated C2 host)"
     ((failed++))
 fi
 
