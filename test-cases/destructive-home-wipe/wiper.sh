@@ -26,3 +26,10 @@ WIPE_6='rm -rf "/home/bob"'
 
 # Whole /home tree.
 WIPE_7='rm -rf /home/'
+
+# Trailing double-slash spellings. These delete exactly what the single-slash
+# forms delete, and were matched by the pre-3.14.5 regex; the bounded-tail
+# rewrite dropped them until the tail was changed to accept "/+".
+WIPE_8='rm -rf $HOME//'
+WIPE_9='rm -rf /home//'
+WIPE_10='rm -rf /home/bob//'

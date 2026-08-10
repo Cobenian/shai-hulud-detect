@@ -29,7 +29,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPROMISED_PACKAGES_FILE="$SCRIPT_DIR/compromised-packages.txt"
 
 # Tool version (surfaced in --json output for downstream consumers)
-SCRIPT_VERSION="3.14.5"
+SCRIPT_VERSION="3.14.6"
 
 # Global temp directory for file-based storage
 TEMP_DIR=""
@@ -3689,7 +3689,7 @@ check_destructive_patterns() {
     #       and there was no allowance for quotes or brace expansion. As a result the real wipes
     #       "rm -rf ~", "rm -rf ~/", "rm -rf ~/*", 'rm -rf "$HOME"' and "rm -rf ${HOME}" were all
     #       MISSED. The optional leading ["'] plus \$\{?HOME\}? and ~[a-zA-Z0-9._-]* now cover them.
-    local basic_destructive_regex="rm -rf[[:space:]]+[\"']?((\\\$\\{?HOME\\}?|~[a-zA-Z0-9._-]*)(/[*]?)?([^a-zA-Z0-9._\$~{}*/-]|\$)|/home/([a-zA-Z0-9._\$~{}*-]+(/[*]?)?)?([^a-zA-Z0-9._\$~{}*/-]|\$))|del /s /q[[:space:]]+[\"']?(%USERPROFILE%|\\\$HOME)|Remove-Item -Recurse[[:space:]]+[\"']?(\\\$HOME|~[^a-zA-Z0-9_/])|find[[:space:]]+[\"']?((\\\$\\{?HOME\\}?|~[a-zA-Z0-9._-]*)(/[*]?)?([^a-zA-Z0-9._\$~{}*/-]|\$)|/home/([a-zA-Z0-9._\$~{}*-]+(/[*]?)?)?([^a-zA-Z0-9._\$~{}*/-]|\$)).*-exec rm|find[[:space:]]+[\"']?((\\\$\\{?HOME\\}?|~[a-zA-Z0-9._-]*)(/[*]?)?([^a-zA-Z0-9._\$~{}*/-]|\$)|/home/([a-zA-Z0-9._\$~{}*-]+(/[*]?)?)?([^a-zA-Z0-9._\$~{}*/-]|\$)).*-delete"
+    local basic_destructive_regex="rm -rf[[:space:]]+[\"']?((\\\$\\{?HOME\\}?|~[a-zA-Z0-9._-]*)(/+[*]?)?([^a-zA-Z0-9._\$~{}*/-]|\$)|/home/+([a-zA-Z0-9._\$~{}*-]+(/+[*]?)?)?([^a-zA-Z0-9._\$~{}*/-]|\$))|del /s /q[[:space:]]+[\"']?(%USERPROFILE%|\\\$HOME)|Remove-Item -Recurse[[:space:]]+[\"']?(\\\$HOME|~[^a-zA-Z0-9_/])|find[[:space:]]+[\"']?((\\\$\\{?HOME\\}?|~[a-zA-Z0-9._-]*)(/+[*]?)?([^a-zA-Z0-9._\$~{}*/-]|\$)|/home/+([a-zA-Z0-9._\$~{}*-]+(/+[*]?)?)?([^a-zA-Z0-9._\$~{}*/-]|\$)).*-exec rm|find[[:space:]]+[\"']?((\\\$\\{?HOME\\}?|~[a-zA-Z0-9._-]*)(/+[*]?)?([^a-zA-Z0-9._\$~{}*/-]|\$)|/home/+([a-zA-Z0-9._\$~{}*-]+(/+[*]?)?)?([^a-zA-Z0-9._\$~{}*/-]|\$)).*-delete"
 
     # Shai-Hulud 2.0 wiper patterns - SPECIFIC signatures from actual malware (Koi Security disclosure)
     # These tight patterns eliminate false positives on TypeScript/minified JS (GitHub issue #105)

@@ -5,6 +5,17 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.14.6] - 2026-08-10
+
+### Fixed
+- **Restored three whole-home wipe spellings dropped by the 3.14.5 bounded-tail rewrite.** The new tail accepted a single `/` after the home target, so `rm -rf $HOME//`, `rm -rf /home//` and `rm -rf /home/bob//` stopped matching — a trailing `//` removes exactly what the single-slash form removes, and the pre-3.14.5 regex did catch all three. A fixture containing `rm -rf /home/bob//` scanned clean (exit 0).
+  - **Fix:** the tail now accepts `/+` and the `/home/` alternative is `/home/+`.
+  - Re-verified over 23 true-positive and 9 false-positive spellings: every 3.14.5 verdict is unchanged, with the three double-slash wipes restored. Suite remains 250/250.
+  - `test-cases/destructive-home-wipe/wiper.sh` now pins the three spellings.
+
+### Changed
+- **`shai-hulud-detector.sh`**: `SCRIPT_VERSION` 3.14.5 → 3.14.6.
+
 ## [3.14.5] - 2026-08-10
 
 ### Fixed
