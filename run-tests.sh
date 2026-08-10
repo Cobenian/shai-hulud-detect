@@ -51,6 +51,8 @@ declare -A EXPECTED=(
     ["github-actions-runners"]="1|yes|no|no"   # HIGH: malicious runners
     ["gitlab-false-positive"]="0|no|no|no"    # Clean: non-.github YAML files (issue #83)
     ["secret-scanner-mention"]="2|no|yes|no"  # MEDIUM: bare trufflehog reference - pins severity attribution in --save-log/--json
+    ["global-install-attack"]="1|yes|no|no"  # HIGH: compromised package present on disk with nothing declaring it (global install / stale lockfile shape)
+    ["global-install-clean"]="0|no|no|no"     # Clean: same shape, last-known-good version — identity match must not fire on the name alone
     ["hash-verification"]="1|yes|no|no"        # HIGH: known malicious hashes (was timeout in orig)
     ["hash-in-node-modules"]="0|no|no|no"      # Clean: inert files under node_modules/ — asserts the hash sweep covers them (see the coverage assertion below)
     ["npm-shrinkwrap-attack"]="2|no|yes|no"  # MEDIUM: npm-shrinkwrap.json (same format as package-lock) was never collected, so never parsed
@@ -934,6 +936,28 @@ else
     ((failed++))
 fi
 
+# ============================================================
+#  Installed-package identity (global installs, stale lockfiles)
+# ============================================================
+# check_packages only ever read dependencies / devDependencies blocks, so a manifest's
+# own name+version was never matched. A package sitting on disk that nothing declares
+# — `npm i -g <compromised>`, or a node_modules tree whose lockfile is gone — was
+# invisible. That is the exact shape of $(npm root -g), i.e. the directory people scan
+# to check their globally installed CLIs.
+#
+# Both fixtures deliberately have NO top-level package.json, which is also what makes
+# them exercise the ecosystem-detection fallback: npm markers exist only inside
+# node_modules, and the npm exclusion used to remove the entire basis for detection.
+((total++))
+GLOBID_OUT=$("$BASH_CMD" "$DETECTOR" "$SCRIPT_DIR/test-cases/global-install-attack" 2>&1)
+if grep -qF "keyv@6.0.0" <<< "$GLOBID_OUT"; then
+    echo -e "${GREEN}PASS${NC}: installed package matched by its own identity (no declaring manifest)"
+    ((passed++))
+else
+    echo -e "${RED}FAIL${NC}: installed package not matched by identity - a global install would be missed"
+    ((failed++))
+fi
+
 ((total++))
 SYMROOT_BULK=$("$BASH_CMD" "$DETECTOR" --bulk --bulk-list "$SYMROOT_TMP/link" 2>&1)
 if grep -q "/proj$" <<< "$SYMROOT_BULK"; then
@@ -969,6 +993,15 @@ if [[ -n "$HASHCOV_LINE" && "$HASHCOV_N" == "$HASHCOV_M" && "$HASHCOV_M" -ge 4 ]
     ((passed++))
 else
     echo -e "${RED}FAIL${NC}: hash sweep skipped files (hashed '$HASHCOV_N' of '$HASHCOV_M' collected)"
+    ((failed++))
+fi
+
+((total++))
+if grep -qF "Detected ecosystems: npm" <<< "$GLOBID_OUT"; then
+    echo -e "${GREEN}PASS${NC}: npm activates when its only markers are inside node_modules"
+    ((passed++))
+else
+    echo -e "${RED}FAIL${NC}: npm not activated for a node_modules-only root (needs --ecosystem npm)"
     ((failed++))
 fi
 
