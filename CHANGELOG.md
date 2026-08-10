@@ -5,6 +5,20 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.15.2] - 2026-08-10
+
+### Fixed
+- **`--bulk` rows could contradict themselves, e.g. `🟡 MEDIUM RISK (H:4 M:0 L:0)`.** `trufflehog_activity.txt` stores entries as `path:SEVERITY:message` and mixes HIGH, MEDIUM and LOW in one file, but the `--save-log` and `--json` writers dumped the **whole file** into the HIGH bucket via `cut -d: -f1`, discarding the severity field. A file that merely mentions trufflehog is a MEDIUM finding (`Contains trufflehog references in source code`), so it was recorded as HIGH.
+  - In `--bulk` the row label comes from the child's exit code (correctly MEDIUM, since only `medium_risk` was incremented) while the H/M/L counts are parsed from the saved log (wrongly HIGH) — producing rows that contradict themselves and invite mis-triage in both directions.
+  - **`--json` was affected identically**, marking every trufflehog finding HIGH. That matters more, since it is the machine-readable output downstream tooling is meant to build on.
+  - Each severity is now emitted into its own section, matching what the neighbouring `crypto_patterns.txt` writer already did (`grep -E "(HIGH RISK|Known attacker wallet)"`). The `--json` message no longer carries a redundant `HIGH:` / `MEDIUM:` prefix.
+
+### Added
+- **Two assertions** pinning trufflehog severity in `--save-log` and in `--json`, using an inert fixture whose only marker is a bare reference to the tool name. Both fail on the unpatched code. The `--json` one skips when `jq` is absent, matching the existing convention. Suite: 257 → 260 checks.
+
+### Changed
+- **`shai-hulud-detector.sh`**: `SCRIPT_VERSION` 3.15.1 → 3.15.2.
+- **`README.md`**: tests badge/count 257 → 260.
 ## [3.15.1] - 2026-08-10
 
 ### Fixed
