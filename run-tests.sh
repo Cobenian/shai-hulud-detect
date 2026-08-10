@@ -108,6 +108,8 @@ declare -A EXPECTED=(
     ["leoplatform-miasma-clean"]="0|no|no|no"  # Clean: non-compromised (one release below) versions of LeoPlatform/RStreams package names
     ["keyv-shai-hulud-attack"]="1|yes|no|no"   # HIGH: August 4, 2026 Shai-Hulud "Here We Go Again" keyv/cacheable wave (Wiz/Socket) — keyv@6.0.0, flat-cache@6.1.24, file-entry-cache@11.1.6, cacheable-request@13.0.20, @or-sdk/auth@0.38.2; also exercises the extended "node setup.mjs" preinstall pattern
     ["keyv-shai-hulud-clean"]="0|no|no|no"     # Clean: last-known-good versions of keyv/cacheable-wave-targeted package names
+    ["keyv-c2-rotation-attack"]="1|yes|no|no"  # HIGH: Aug 4, 2026 keyv-wave C2-rotation channel (contract 0xE1f2395e… + eth-mainnet.nodereal.io RPC)
+    ["keyv-c2-rotation-clean"]="0|no|no|no"    # Clean: legitimate NodeReal RPC usage — must not fire without another wave marker
     ["go-attack"]="1|yes|no|no"                # HIGH: Go ecosystem support — go.mod + go.sum pin the compromised Verana module (go:github.com/verana-labs/verana-blockchain:v0.10.1-dev.20) from the June 25 Miasma wave
     ["go-clean"]="0|no|no|no"                  # Clean: go.mod requires a non-compromised Verana version (v0.10.0) — exercises the go.mod parser without firing
     ["hex-clean"]="0|no|no|no"                 # Clean: Elixir mix.exs + mix.lock with safe deps — exercises the Hex parsers without firing (no hex: entries in the real list yet). Match path is asserted via the SHAI_HULUD_PACKAGES_FILE override block below.
@@ -474,6 +476,43 @@ do
         ((failed++))
     fi
 done
+
+# ------------------------------------------------------------
+#  keyv/cacheable C2-rotation channel (contract + RPC endpoint)
+# ------------------------------------------------------------
+# The wave rotates its exfil host through an Ethereum contract rather than
+# hard-coding one, so the contract address outlives npm-cache[.]com. The RPC
+# endpoint is only reported alongside another wave marker: NodeReal is a real
+# provider and eth-mainnet.nodereal.io is used by legitimate dapps.
+KEYVROT_OUT=$("$BASH_CMD" "$DETECTOR" "$SCRIPT_DIR/test-cases/keyv-c2-rotation-attack" 2>&1)
+for keyvrot_check in \
+    "C2-rotation contract address (checksummed)|C2-rotation contract address (0xE1f2395ee43e45A1556EC6438a88c31B83493103)" \
+    "C2-rotation contract address (lowercase)|C2-rotation contract address (0xe1f2395ee43e45a1556ec6438a88c31b83493103)" \
+    "C2-rotation RPC endpoint, corroborated|C2-rotation RPC endpoint (eth-mainnet.nodereal.io) alongside another wave marker"
+do
+    label="${keyvrot_check%|*}"
+    pattern="${keyvrot_check#*|}"
+    ((total++))
+    if grep -qF "$pattern" <<< "$KEYVROT_OUT"; then
+        echo -e "${GREEN}PASS${NC}: keyv-c2-rotation-attack fires IoC: $label"
+        ((passed++))
+    else
+        echo -e "${RED}FAIL${NC}: keyv-c2-rotation-attack did NOT fire: $label (looked for: '$pattern')"
+        ((failed++))
+    fi
+done
+
+# The clean fixture is asserted overall by the EXPECTED table; pin the specific
+# regression too, so a future broadening of the RPC match is caught here.
+((total++))
+KEYVROT_CLEAN=$("$BASH_CMD" "$DETECTOR" "$SCRIPT_DIR/test-cases/keyv-c2-rotation-clean" 2>&1)
+if grep -qF "C2-rotation RPC endpoint" <<< "$KEYVROT_CLEAN"; then
+    echo -e "${RED}FAIL${NC}: legitimate NodeReal RPC usage flagged as a keyv-wave C2 indicator"
+    ((failed++))
+else
+    echo -e "${GREEN}PASS${NC}: legitimate NodeReal RPC usage is not flagged without corroboration"
+    ((passed++))
+fi
 
 # ------------------------------------------------------------
 #  Go ecosystem support — go.mod / go.sum parsing + matching
