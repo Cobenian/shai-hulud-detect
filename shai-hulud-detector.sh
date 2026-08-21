@@ -29,7 +29,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPROMISED_PACKAGES_FILE="$SCRIPT_DIR/compromised-packages.txt"
 
 # Tool version (surfaced in --json output for downstream consumers)
-SCRIPT_VERSION="3.19.2"
+SCRIPT_VERSION="3.19.3"
 
 # Global temp directory for file-based storage
 TEMP_DIR=""
@@ -3275,15 +3275,18 @@ check_easy_day_js_indicators() {
 #          (caught by the version list, the "node setup.mjs" preinstall hook, the
 #          payload hashes, and the "Shai-Hulud: Here We Go Again" repo-description
 #          marker). This covers three network indicators:
-#            1. the fallback exfil domain npm-cache[.]com (Wiz, Socket DomainSender,
-#               Aikido),
+#            1. the exfil domains npm-cache[.]com (Wiz, Socket DomainSender, Aikido)
+#               and awqhnjewqjkl[.]icu,
 #            2. the C2-rotation contract 0xE1f2395e… , and
 #            3. the eth-mainnet.nodereal[.]io RPC endpoint used to read it, matched
 #               only alongside another wave marker (see IOC 3 for why).
 #          NOTE: the attacker rotates C2 via that Ethereum contract without changing
-#          the payload, so npm-cache[.]com specifically may be short-lived. The
-#          contract address is the more durable network indicator, but hash and
-#          version detection remain the strongest signals for this wave.
+#          the payload, so any single domain may be short-lived — and that rotation
+#          was then observed in the wild: an on-chain transaction on Aug 4, 2026 at
+#          15:15 UTC swung the active C2 from npm-cache[.]com to the freshly
+#          registered awqhnjewqjkl[.]icu (Unit 42; Zscaler ThreatLabz). Both are
+#          matched here, but the contract address is the durable network indicator,
+#          and hash and version detection remain the strongest signals for this wave.
 # Args: $1 = scan_dir
 # Modifies: $TEMP_DIR/keyv_indicators.txt
 check_keyv_indicators() {
@@ -3297,7 +3300,9 @@ check_keyv_indicators() {
         local kv_domain
         scan_fixed_iocs "$TEMP_DIR/code_files.txt" "$TEMP_DIR/keyv_indicators.txt" \
             $'npm-cache.com\tkeyv/cacheable wave C2 fallback domain (%s)' \
-            $'npm-cache[.]com\tkeyv/cacheable wave C2 fallback domain (%s)'
+            $'npm-cache[.]com\tkeyv/cacheable wave C2 fallback domain (%s)' \
+            $'awqhnjewqjkl.icu\tkeyv/cacheable wave rotated C2 domain (%s)' \
+            $'awqhnjewqjkl[.]icu\tkeyv/cacheable wave rotated C2 domain (%s)'
 
         # IOC 2: the C2-rotation channel itself.
         #
@@ -3323,7 +3328,7 @@ check_keyv_indicators() {
         # that made the durabletask check fire on every AI SDK. The disclosed IoC is
         # specifically an "eth-mainnet.nodereal[.]io request containing
         # 0xE1f2395e…", i.e. the combination, so that is what is matched here.
-        local kv_rpc_corroboration='0[xX][eE]1[fF]2395[eE][eE]43[eE]45[aA]1556[eE][cC]6438[aA]88[cC]31[bB]83493103|npm-cache\[?\.\]?com|Shai-Hulud|Math_Symbol|math_init'
+        local kv_rpc_corroboration='0[xX][eE]1[fF]2395[eE][eE]43[eE]45[aA]1556[eE][cC]6438[aA]88[cC]31[bB]83493103|npm-cache\[?\.\]?com|awqhnjewqjkl\[?\.\]?icu|Shai-Hulud|Math_Symbol|math_init'
         local kv_rpc
         for kv_rpc in \
             "eth-mainnet.nodereal.io" \

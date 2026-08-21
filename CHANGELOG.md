@@ -5,6 +5,24 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.19.3] - 2026-08-21
+
+### Added
+- **Rotated C2 domain `awqhnjewqjkl[.]icu` for the August 4, 2026 keyv/cacheable wave.** The payload never hard-codes an exfil host: it reads the live one from Ethereum contract `0xE1f2395ee43e45A1556EC6438a88c31B83493103` at run time, so the operator can move hosts without republishing a single package. That rotation was then observed in the wild — an on-chain transaction on 2026-08-04 at 15:15 UTC swung the active C2 off `npm-cache[.]com` onto this freshly registered NameSilo `.icu` domain, which was serving within the hour. Until now a payload that resolved C2 *after* the rotation carried a domain string the detector walked straight past.
+  - Matched in `check_keyv_indicators` in both plain and defanged form, alongside the existing `npm-cache[.]com` rows. The 12-character DGA-style label has no benign reason to appear in a dependency tree, so it is matched on its own with no corroboration requirement.
+  - Also added to the IOC 3 corroboration alternation, so an `eth-mainnet.nodereal[.]io` RPC call is now reported when it sits next to *either* wave domain.
+  - Corroborated by two independent vendors — Unit 42 (`chaindrop-npm-worm-analysis`) and Zscaler ThreatLabz (`tracking-shai-hulud-inside-chaindrop-npm-worm`), both listing it in their IoC tables. Single-source indicators from the same reporting (a second GitHub dead-drop search keyword, `.github/workflows/codeql_analysis.yml`, the `0x53ed5143` `eth_call` selector, the operator wallet) were deliberately **not** added pending corroboration.
+  - Regression-locked: `test-cases/keyv-shai-hulud-attack/c2_inert.js` carries both forms as inert strings, with two new assertions in `run-tests.sh`.
+
+### Changed
+- **`README.md`**: the keyv/cacheable wave row still carried the pre-re-sync counts (`434 npm packages / 1,782 versions across nine orgs`) and asserted **no attacker domain** — both stale. Corrected to 444 packages / 2,236 versions across 15 scopes plus the 3 Go modules, and reworded to describe the on-chain C2-rotation mechanism and the two observed domains. The row now also lists **ChainDrop**, the name Microsoft and Elastic use for this wave, so the campaign is findable under either name.
+- **`shai-hulud-detector.sh`**: `SCRIPT_VERSION` 3.19.2 to 3.19.3.
+- **Test suite**: 281 to **283** checks.
+
+### Verified
+- Wiz `reports/keyv-packages.csv` re-pulled and re-diffed against `compromised-packages.txt`: upstream is unchanged since the 2026-08-06 14:16 UTC snapshot, and the delta is **zero in both directions** across all 2,317 rows. No package-list drift; the entry count stays at 5,782.
+- No campaign newer than the August 4 wave has been disclosed. Coverage published through 2026-08-15 (The Register, Zscaler, Unit 42, BleepingComputer, Sygnia, Snyk, Endor Labs) all analyses the same wave, and Zscaler's timeline ends with it.
+
 ## [3.19.2] - 2026-08-10
 
 ### Added
