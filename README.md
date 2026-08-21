@@ -3,7 +3,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Shell](https://img.shields.io/badge/shell-Bash%205.0%2B-blue)](#requirements)
 [![Status](https://img.shields.io/badge/status-Active-success)](../../)
-[![Tests](https://img.shields.io/badge/tests-281%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-283%20passing-brightgreen)](#testing)
 [![Packages](https://img.shields.io/badge/compromised%20packages-5%2C782-red)](compromised-packages.txt)
 [![Type](https://img.shields.io/badge/type-Security%20Tool-red)](#what-it-catches)
 [![Contributions](https://img.shields.io/badge/contributions-Welcome-orange)](#contributing)
@@ -67,7 +67,7 @@ The detector looks for two kinds of evidence on disk:
 | IronWorm ("rustier cousin") | 2026-06-03 | 37 npm packages from the `asteroiddao` account (`weavedb-*`, `arnext`, `cwao`, `wao`, `zkjson`); Rust infostealer + eBPF rootkit via `preinstall` ELF hook, Exodus-wallet theft, leaked operator wallet `0x7e28…a4d6` |
 | easy-day-js / Mastra AI | 2026-06-17 | 141 `@mastra/*` packages + `mastra`/`create-mastra` republished with an injected `easy-day-js` (dayjs typosquat) dependency; `postinstall` dropper disables TLS, pulls a cross-platform infostealer from C2 `23.254.164.92`/`.123`; North-Korea-attributed (Sapphire Sleet / BlueNoroff) |
 | Miasma LeoPlatform / RStreams | 2026-06-25 | 23 npm packages (`leo-*`, `rstreams-*`, `serverless-leo`, …); Miasma worm reaches the AWS data-streaming ecosystem via the `binding.gyp` trigger + editor/CI auto-run hooks; new markers `RevokeAndItGoesKaboom`, `thebeautifulmarchoftime` |
-| Shai-Hulud "Here We Go Again" (keyv / cacheable) | 2026-08-04 | **Largest wave by install volume: 434 npm packages / 1,782 versions across nine orgs, >2B monthly installs** (`keyv`, `flat-cache`, `file-entry-cache`, `cacheable-request`, `@servicetitan/*`, `@ornikar/*`, `@onereach/*`, `@or-sdk/*`, `@qlik/*`); `"preinstall": "node setup.mjs"` bootstraps Bun 1.3.13 → 727KB `Math_Symbol.js`; **no attacker domain** — exfil to GitHub dead-drop repos described `Shai-Hulud: Here We Go Again`; poisoned releases carry **valid npm OIDC provenance / SLSA attestation** |
+| Shai-Hulud "Here We Go Again" (keyv / cacheable) — also tracked as **ChainDrop** (Microsoft, Elastic) | 2026-08-04 | **Largest wave by install volume: 444 npm packages / 2,236 versions across 15 scopes, plus 3 Go modules / 82 versions, >2B monthly installs** (`keyv`, `flat-cache`, `file-entry-cache`, `cacheable-request`, `cacheable`, `cache-manager`, `@servicetitan/*`, `@ornikar/*`, `@onereach/*`, `@or-sdk/*`, `@qlik/*`, `@nebula.js/*`, `@umacloud/*`); `"preinstall": "node setup.mjs"` bootstraps Bun 1.3.13 → 727KB `Math_Symbol.js`; primary exfil is to GitHub dead-drop repos described `Shai-Hulud: Here We Go Again`, with **no hard-coded C2** — the payload reads its live domain from Ethereum contract `0xE1f2395e…` at run time, so hosts rotate without republishing (`npm-cache[.]com` → `awqhnjewqjkl[.]icu` on Aug 4); poisoned releases carry **valid npm OIDC provenance / SLSA attestation** |
 
 For per-wave IoC inventories, payload hashes, source advisories, and version-by-version lists, see [`CHANGELOG.md`](CHANGELOG.md).
 
@@ -253,7 +253,7 @@ To add new packages from a fresh advisory: append entries in that format, run `.
 ## Testing
 
 ```bash
-./run-tests.sh                          # full suite, 281 checks
+./run-tests.sh                          # full suite, 283 checks
 ./shai-hulud-detector.sh test-cases/<fixture-name>   # run one fixture manually
 ```
 
