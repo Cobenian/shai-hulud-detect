@@ -5,6 +5,32 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.20.0] - 2026-10-11
+
+### Added
+- **Three incidents disclosed after the keyv/cacheable wave: 7 packages, 9 versions.** Each version is confirmed by an OSV `MAL-` advisory and the vendor write-up cited in its `compromised-packages.txt` block. The bad versions have been unpublished, so the list is now the only record of them. Neighbouring versions are clean and deliberately absent.
+  - **2026-09-07, Mini Shai-Hulud resurfacing (Aikido).** `blueai-cli@0.7.0`, `bmc-i18n-extract-cli@1.1.1`, `bmc-translate-utils@1.1.1` and `feishu-docx-mcp@0.3.2` were published by one account within an hour. All four carry the byte-identical May 19 `@antv` payload (`"preinstall": "bun run index.js"`), 111 days after it was last seen. OSV MAL-2026-16024/16025/16026/16032.
+  - **2026-09-23, "supplychain.local" Go-binary worm (Aikido).** This is a new family, not Shai-Hulud code: a multiplatform Go `sckit` binary that steals tokens and republishes through npm, PyPI and a GitHub Actions workflow it plants. Listed: `@memtensor/memos-cloud-openclaw-plugin@0.1.21/0.1.23/0.1.25` (OSV MAL-2026-16476) and `pypi:memoryos@2.0.34` (MAL-2026-16475, PYSEC-2026-3987). The attacker's releases alternated with the maintainer's, so 0.1.22 and 0.1.24 are clean republishes and are not listed.
+  - **2026-10-08, tensorlake (Endor Labs, Socket, Aikido, OX Security).** `tensorlake@0.5.144` was published with provenance by the project's own release workflow after an attacker commit to `main`. OSV MAL-2026-17650. The six `tensorlake-native-*@0.5.144` platform packages from the same release run are **not** listed: Endor Labs found no payload and no install script in them.
+- **`MALICIOUS_HASHLIST`: 9 SHA-256s.** These are the May 19 `index.js` payload as re-shipped on Sept 7, the tensorlake `lib/setup.mjs` loader and its 856KB `lib/Math_Symbol.js` payload, and six `sckit` binaries from the Sept 23 worm.
+- **tensorlake infrastructure in `check_keyv_indicators` (IOC 4).** The tensorlake payload is the same family as the August keyv wave, but it has its own contract, wallet and C2, so none of the August indicators fired on it. The following are now matched, each listed by at least two of Endor Labs, Aikido and OX Security:
+  - C2 domain `iseekaigogo[.]com`, in plain and defanged forms.
+  - C2-rotation contract `0xb614155Fd88114d40549b259457Bcf921Df091B9`, the durable indicator.
+  - Operator wallet `0x779f83aE56309682beDb04816c19d358c4B21040`.
+  - Both addresses are matched in checksummed and lowercase forms.
+  - The public Ethereum RPCs the resolver queries are legitimate services and are deliberately not matched.
+- **`WORMTAG` infection-tag variable (IOC 5).** The payload sets `globalThis.WORMTAG='tensrlake'`. The check matches the variable name rather than the value, so a future victim's tag is caught too.
+- **Fixtures `sept-oct-2026-attack` / `sept-oct-2026-clean`.** These are inert version pins plus a strings-only IoC file. The clean fixture pins the interleaved clean `@memtensor` republish to show that a name match alone does not fire.
+
+### Changed
+- **Fake-Bun preinstall pattern** now also matches `"node lib/setup.mjs"`, the tensorlake loader path.
+- **Fake-Bun preinstall finding names the command it matched.** The context line always said `node setup_bun.js`, the November 2025 loader, even when the hook was `node setup.mjs` or `node lib/setup.mjs`, so a responder searching the flagged `package.json` for that string found nothing. It now quotes the matched command. The findings file and `--json` output are unchanged.
+- **keyv report heading** renamed from "August 4, 2026 keyv/cacheable 'Here We Go Again' C2 domain" to "keyv/cacheable (ChainDrop) family IOCs". The section now also reports the tensorlake infrastructure, and some of its entries are not domains.
+- **`README.md`**: entry count raised to 5,791 and coverage extended to October 2026, with three new rows in the waves table.
+- **`compromised-packages.txt`**: 5,782 to **5,791** entries.
+- **`shai-hulud-detector.sh`**: `SCRIPT_VERSION` 3.19.3 to 3.20.0.
+- **Test suite**: 283 to **296** checks.
+
 ## [3.19.3] - 2026-08-21
 
 ### Added

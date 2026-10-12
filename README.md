@@ -3,15 +3,15 @@
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Shell](https://img.shields.io/badge/shell-Bash%205.0%2B-blue)](#requirements)
 [![Status](https://img.shields.io/badge/status-Active-success)](../../)
-[![Tests](https://img.shields.io/badge/tests-283%20passing-brightgreen)](#testing)
-[![Packages](https://img.shields.io/badge/compromised%20packages-5%2C782-red)](compromised-packages.txt)
+[![Tests](https://img.shields.io/badge/tests-296%20passing-brightgreen)](#testing)
+[![Packages](https://img.shields.io/badge/compromised%20packages-5%2C791-red)](compromised-packages.txt)
 [![Type](https://img.shields.io/badge/type-Security%20Tool-red)](#what-it-catches)
 [![Contributions](https://img.shields.io/badge/contributions-Welcome-orange)](#contributing)
 [![Last Commit](https://img.shields.io/github/last-commit/Cobenian/shai-hulud-detect)](https://github.com/Cobenian/shai-hulud-detect/commits/main)
 
 <img src="shai_hulu_detector.jpg" alt="sshd" width="80%" />
 
-A Bash script that scans a project — or many projects at once — for known traces of the September 2025 → August 2026 npm, PyPI, Composer, Crates, Go, Hex, and RubyGems supply-chain attacks. Cross-checks 5,782 confirmed bad package versions and a library of content-pattern IoCs (file hashes, C2 domains, dead-man's-switch artifacts, wipe-threat strings, AI-assistant config droppers, etc.).
+A Bash script that scans a project — or many projects at once — for known traces of the September 2025 → October 2026 npm, PyPI, Composer, Crates, Go, Hex, and RubyGems supply-chain attacks. Cross-checks 5,791 confirmed bad package versions and a library of content-pattern IoCs (file hashes, C2 domains, dead-man's-switch artifacts, wipe-threat strings, AI-assistant config droppers, etc.).
 
 ## Quick Start
 
@@ -36,7 +36,7 @@ chmod +x shai-hulud-detector.sh
 
 The detector looks for two kinds of evidence on disk:
 
-1. **Compromised package versions** — every `package.json`, lockfile, `pyproject.toml`, `requirements.txt`, `Pipfile`, `poetry.lock`, `uv.lock`, etc. is parsed and the resolved versions are checked against the 5,782-entry list in [`compromised-packages.txt`](compromised-packages.txt). Transitive deps inside `node_modules/` are checked too, not skipped.
+1. **Compromised package versions** — every `package.json`, lockfile, `pyproject.toml`, `requirements.txt`, `Pipfile`, `poetry.lock`, `uv.lock`, etc. is parsed and the resolved versions are checked against the 5,791-entry list in [`compromised-packages.txt`](compromised-packages.txt). Transitive deps inside `node_modules/` are checked too, not skipped.
 2. **Content-pattern IoCs** — known-malicious file hashes, payload filenames, C2 domains, dead-man's-switch artifacts, marker repo names, malicious workflow files, forged orphan-commit references, suspicious lifecycle hooks, and threat-actor publisher fingerprints. These don't depend on the package list and fire even if the bad package has been uninstalled but the dropper traces remain.
 
 | Wave | Date | Scope |
@@ -68,6 +68,9 @@ The detector looks for two kinds of evidence on disk:
 | easy-day-js / Mastra AI | 2026-06-17 | 141 `@mastra/*` packages + `mastra`/`create-mastra` republished with an injected `easy-day-js` (dayjs typosquat) dependency; `postinstall` dropper disables TLS, pulls a cross-platform infostealer from C2 `23.254.164.92`/`.123`; North-Korea-attributed (Sapphire Sleet / BlueNoroff) |
 | Miasma LeoPlatform / RStreams | 2026-06-25 | 23 npm packages (`leo-*`, `rstreams-*`, `serverless-leo`, …); Miasma worm reaches the AWS data-streaming ecosystem via the `binding.gyp` trigger + editor/CI auto-run hooks; new markers `RevokeAndItGoesKaboom`, `thebeautifulmarchoftime` |
 | Shai-Hulud "Here We Go Again" (keyv / cacheable) — also tracked as **ChainDrop** (Microsoft, Elastic) | 2026-08-04 | **Largest wave by install volume: 444 npm packages / 2,236 versions across 15 scopes, plus 3 Go modules / 82 versions, >2B monthly installs** (`keyv`, `flat-cache`, `file-entry-cache`, `cacheable-request`, `cacheable`, `cache-manager`, `@servicetitan/*`, `@ornikar/*`, `@onereach/*`, `@or-sdk/*`, `@qlik/*`, `@nebula.js/*`, `@umacloud/*`); `"preinstall": "node setup.mjs"` bootstraps Bun 1.3.13 → 727KB `Math_Symbol.js`; primary exfil is to GitHub dead-drop repos described `Shai-Hulud: Here We Go Again`, with **no hard-coded C2** — the payload reads its live domain from Ethereum contract `0xE1f2395e…` at run time, so hosts rotate without republishing (`npm-cache[.]com` → `awqhnjewqjkl[.]icu` on Aug 4); poisoned releases carry **valid npm OIDC provenance / SLSA attestation** |
+| Mini Shai-Hulud resurfacing | 2026-09-07 | 4 npm packages / 4 versions (`blueai-cli`, `bmc-i18n-extract-cli`, `bmc-translate-utils`, `feishu-docx-mcp`), all published by one account within an hour; the byte-identical May 19 `@antv` payload (`index.js`, hash in `MALICIOUS_HASHLIST`) via `"preinstall": "bun run index.js"`, 111 days after it was last seen |
+| "supplychain.local" Go-binary worm | 2026-09-23 | A new family, not Shai-Hulud code: `@memtensor/memos-cloud-openclaw-plugin@0.1.21/0.1.23/0.1.25` (the even versions in between are clean maintainer republishes) and `pypi:memoryos@2.0.34`. A multiplatform Go `sckit` binary (6 hashes in `MALICIOUS_HASHLIST`) steals tokens and republishes through npm, PyPI and a planted GitHub Actions workflow. It runs on invocation, not at install |
+| tensorlake (ChainDrop family) | 2026-10-08 | `tensorlake@0.5.144`, published by the project's own release workflow **with provenance** after an attacker commit to `main`; `"preinstall": "node lib/setup.mjs"` → Bun → `lib/Math_Symbol.js` (both hashed). Same payload family as the keyv wave but **new infrastructure**: C2 `iseekaigogo[.]com`, rotation contract `0xb614155F…`, operator wallet `0x779f83aE…`, and the `WORMTAG` infection-tag variable, all matched |
 
 For per-wave IoC inventories, payload hashes, source advisories, and version-by-version lists, see [`CHANGELOG.md`](CHANGELOG.md).
 
@@ -253,7 +256,7 @@ To add new packages from a fresh advisory: append entries in that format, run `.
 ## Testing
 
 ```bash
-./run-tests.sh                          # full suite, 283 checks
+./run-tests.sh                          # full suite, 296 checks
 ./shai-hulud-detector.sh test-cases/<fixture-name>   # run one fixture manually
 ```
 

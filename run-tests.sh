@@ -117,6 +117,8 @@ declare -A EXPECTED=(
     ["keyv-shai-hulud-clean"]="0|no|no|no"     # Clean: last-known-good versions of keyv/cacheable-wave-targeted package names
     ["keyv-c2-rotation-attack"]="1|yes|no|no"  # HIGH: Aug 4, 2026 keyv-wave C2-rotation channel (contract 0xE1f2395e… + eth-mainnet.nodereal.io RPC)
     ["keyv-c2-rotation-clean"]="0|no|no|no"    # Clean: legitimate NodeReal RPC usage — must not fire without another wave marker
+    ["sept-oct-2026-attack"]="1|yes|no|no"     # HIGH: Sept-Oct 2026 incidents — blueai-cli@0.7.0 (Sept 7 Mini Shai-Hulud resurfacing), @memtensor/memos-cloud-openclaw-plugin@0.1.21 + pypi:memoryos@2.0.34 (Sept 23 supplychain.local worm), tensorlake@0.5.144 (Oct 8, ChainDrop family); inert markers exercise the tensorlake C2/contract/wallet/WORMTAG checks and the "node lib/setup.mjs" preinstall pattern
+    ["sept-oct-2026-clean"]="0|no|no|no"       # Clean: the same names at versions not on the list, incl. the clean interleaved @memtensor 0.1.22 republish
     ["go-attack"]="1|yes|no|no"                # HIGH: Go ecosystem support — go.mod + go.sum pin the compromised Verana module (go:github.com/verana-labs/verana-blockchain:v0.10.1-dev.20) from the June 25 Miasma wave
     ["go-clean"]="0|no|no|no"                  # Clean: go.mod requires a non-compromised Verana version (v0.10.0) — exercises the go.mod parser without firing
     ["hex-clean"]="0|no|no|no"                 # Clean: Elixir mix.exs + mix.lock with safe deps — exercises the Hex parsers without firing (no hex: entries in the real list yet). Match path is asserted via the SHAI_HULUD_PACKAGES_FILE override block below.
@@ -522,6 +524,36 @@ else
     echo -e "${GREEN}PASS${NC}: legitimate NodeReal RPC usage is not flagged without corroboration"
     ((passed++))
 fi
+
+# ------------------------------------------------------------
+#  September-October 2026 incidents (Mini Shai-Hulud resurfacing,
+#  supplychain.local worm, tensorlake ChainDrop-family compromise)
+# ------------------------------------------------------------
+SEPTOCT_OUT=$("$BASH_CMD" "$DETECTOR" "$SCRIPT_DIR/test-cases/sept-oct-2026-attack" 2>&1)
+for septoct_check in \
+    "Sept 7 resurfacing version flagged|blueai-cli@0.7.0" \
+    "Sept 23 worm npm version flagged|@memtensor/memos-cloud-openclaw-plugin@0.1.21" \
+    "Sept 23 worm PyPI version flagged|[PyPI] memoryos@2.0.34" \
+    "Oct 8 tensorlake version flagged|tensorlake@0.5.144" \
+    "node lib/setup.mjs preinstall hook flagged|Fake Bun preinstall patterns detected" \
+    "preinstall finding names the matched command|malicious preinstall: node lib/setup.mjs" \
+    "tensorlake C2 domain flagged|tensorlake wave (Oct 8, 2026) C2 domain (iseekaigogo.com)" \
+    "tensorlake C2 domain, defanged|tensorlake wave (Oct 8, 2026) C2 domain (iseekaigogo[.]com)" \
+    "tensorlake C2-rotation contract flagged|C2-rotation contract address (0xb614155Fd88114d40549b259457Bcf921Df091B9)" \
+    "tensorlake operator wallet flagged|operator wallet address (0x779f83aE56309682beDb04816c19d358c4B21040)" \
+    "WORMTAG infection-tag variable flagged|Shai-Hulud worm per-infection tag variable (WORMTAG"
+do
+    label="${septoct_check%|*}"
+    pattern="${septoct_check#*|}"
+    ((total++))
+    if grep -qF "$pattern" <<< "$SEPTOCT_OUT"; then
+        echo -e "${GREEN}PASS${NC}: sept-oct-2026-attack fires IoC: $label"
+        ((passed++))
+    else
+        echo -e "${RED}FAIL${NC}: sept-oct-2026-attack did NOT fire: $label (looked for: '$pattern')"
+        ((failed++))
+    fi
+done
 
 # ------------------------------------------------------------
 #  Go ecosystem support — go.mod / go.sum parsing + matching

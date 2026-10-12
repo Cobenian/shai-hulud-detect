@@ -1,0 +1,10 @@
+{
+  "name": "sept-oct-2026-clean-test",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Clean counterpart: package names targeted in the September-October 2026 incidents, pinned to versions that are NOT on the list. @memtensor/memos-cloud-openclaw-plugin 0.1.22 and 0.1.24 are the maintainer's clean republishes that sat between the bad odd versions (Aikido; OSV MAL-2026-16476 lists only 0.1.21/0.1.23/0.1.25). A name match alone must not fire.",
+  "dependencies": {
+    "@memtensor/memos-cloud-openclaw-plugin": "0.1.22",
+    "tensorlake": "0.5.143"
+  }
+}

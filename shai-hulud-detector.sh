@@ -29,7 +29,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPROMISED_PACKAGES_FILE="$SCRIPT_DIR/compromised-packages.txt"
 
 # Tool version (surfaced in --json output for downstream consumers)
-SCRIPT_VERSION="3.19.3"
+SCRIPT_VERSION="3.20.0"
 
 # Global temp directory for file-based storage
 TEMP_DIR=""
@@ -324,6 +324,15 @@ MALICIOUS_HASHLIST=(
     "54dc7ea54a1317cca0e890a2770630cf7fa6c97813e0cb9d2caa93012b350668" # Aug 4, 2026 keyv/cacheable wave: setup.mjs npm tarball preinstall loader (Socket/Aikido IOC)
     "fd3ca4007b225fdf8de7af4345a19179d5efa8c4bb9205f88cda806e5684b1eb" # Aug 4, 2026 keyv/cacheable wave: setup.mjs .claude/.vscode repository loader (Socket IOC)
     "9fc2570b7cef51c1b8df116d144d11ff4096357be7d2c4c6367cfc2509cf1bcc" # Aug 4, 2026 keyv/cacheable wave: Math_Symbol.js / math_init.js 727KB Bun payload (Socket IOC)
+    "e37e3ddeeaaa9e0c4fdbcb829b4895a6521031c80053fc436625b61e6ee5b1a6" # May 19 @antv payload, resurfaced Sept 7, 2026 (blueai-cli, bmc-*, feishu-docx-mcp): root index.js (Aikido IOC)
+    "25a0735d0db7dc40e5d45ce42d9c106067e6a66e184d967cfecfab17c3bcb5ef" # Oct 8, 2026 tensorlake@0.5.144: lib/setup.mjs preinstall loader (Endor Labs/Socket/Aikido IOC)
+    "b50a00900399ba99fb6ce1fc151519cb99d44320ef2a631f2237e1aea0ad6fec" # Oct 8, 2026 tensorlake@0.5.144: lib/Math_Symbol.js 856KB Bun payload (Endor Labs/Socket/Aikido IOC)
+    "65faf8ccbcf5b34eb4f72c71bf82815fa9c1e2f947b9c898491540e866132c31" # Sept 23, 2026 supplychain.local worm: sckit Go binary (Aikido IOC)
+    "f8ccdd1da7dff1aef16377a2842bc7acf7c516e32122dd6e42dc4a4e57653fce" # Sept 23, 2026 supplychain.local worm: sckit Go binary (Aikido IOC)
+    "381ac6dc1715d9298fe81b2a53a11f7b7d78e361ee3a6619ad54f8c4b062cc18" # Sept 23, 2026 supplychain.local worm: sckit Go binary (Aikido IOC)
+    "e077c387b223811064b7bbc5a55a0182fca9bf50894f949ff284d4be87d44b26" # Sept 23, 2026 supplychain.local worm: sckit Go binary (Aikido IOC)
+    "d6b3e77c36ee8017c9bf30d1da7218ec0ea843768d313eb8e35845c8a9b38a26" # Sept 23, 2026 supplychain.local worm: sckit Go binary (Aikido IOC)
+    "56cd3416d2ec2aa7e7cec2a06010cf0b58eb09c0a5486809df52afeaca8f14be" # Sept 23, 2026 supplychain.local worm: sckit Go binary (Aikido IOC)
 )
 
 PARALLELISM=4
@@ -3287,11 +3296,15 @@ check_easy_day_js_indicators() {
 #          registered awqhnjewqjkl[.]icu (Unit 42; Zscaler ThreatLabz). Both are
 #          matched here, but the contract address is the durable network indicator,
 #          and hash and version detection remain the strongest signals for this wave.
+#          ALSO covers the Oct 8, 2026 tensorlake@0.5.144 compromise (IOC 4). It ships
+#          the same family's payload (Socket: the preinstall hook, payload filenames
+#          and on-chain resolver all match the keyv wave) but has its own contract,
+#          wallet and C2 domain, so the August indicators above do not fire on it.
 # Args: $1 = scan_dir
 # Modifies: $TEMP_DIR/keyv_indicators.txt
 check_keyv_indicators() {
     local scan_dir=$1
-    print_status "$BLUE" "   Checking for keyv/cacheable C2 domain IOCs (Aug 4, 2026 'Here We Go Again' wave)..."
+    print_status "$BLUE" "   Checking for keyv/cacheable (ChainDrop) family IOCs (Aug 4 keyv wave + Oct 8 tensorlake)..."
 
     if [[ -s "$TEMP_DIR/code_files.txt" ]]; then
         # Match the FULL domain only (plain + defanged). Never match bare
@@ -3341,6 +3354,33 @@ check_keyv_indicators() {
                     fi
                 done
         done
+
+        # IOC 4: the Oct 8, 2026 tensorlake@0.5.144 compromise. Same payload family,
+        # new infrastructure: each row below appears in the IoC tables of at least two
+        # of Endor Labs, Aikido and OX Security.
+        #   - iseekaigogo[.]com: the current C2, itself rotated on-chain, so expect it
+        #     to be short-lived like npm-cache[.]com was.
+        #   - contract 0xb614155F…: the dead-drop the resolver reads the C2 from (over
+        #     eth.llamarpc.com, rpc.ankr.com, ethereum.publicnode.com, all legitimate
+        #     public RPCs, so they are not matched). This is the durable indicator.
+        #   - wallet 0x779f83aE…: the operator wallet that writes to that contract.
+        # Addresses are matched in checksummed and lowercase forms, as for IOC 2.
+        local tl_ioc
+        scan_fixed_iocs "$TEMP_DIR/code_files.txt" "$TEMP_DIR/keyv_indicators.txt" \
+            $'iseekaigogo.com\ttensorlake wave (Oct 8, 2026) C2 domain (%s)' \
+            $'iseekaigogo[.]com\ttensorlake wave (Oct 8, 2026) C2 domain (%s)' \
+            $'0xb614155Fd88114d40549b259457Bcf921Df091B9\ttensorlake wave (Oct 8, 2026) C2-rotation contract address (%s)' \
+            $'0xb614155fd88114d40549b259457bcf921df091b9\ttensorlake wave (Oct 8, 2026) C2-rotation contract address (%s)' \
+            $'0x779f83aE56309682beDb04816c19d358c4B21040\ttensorlake wave (Oct 8, 2026) operator wallet address (%s)' \
+            $'0x779f83ae56309682bedb04816c19d358c4b21040\ttensorlake wave (Oct 8, 2026) operator wallet address (%s)'
+
+        # IOC 5: the worm's per-infection tag. The tensorlake payload sets
+        # globalThis.WORMTAG='tensrlake' (Endor Labs, Aikido, OX Security), a label it
+        # stamps on each package it infects. Match the variable name rather than the
+        # tag value so the next victim's tag is caught too. Nothing legitimate uses
+        # this identifier.
+        scan_fixed_iocs "$TEMP_DIR/code_files.txt" "$TEMP_DIR/keyv_indicators.txt" \
+            $'WORMTAG\tShai-Hulud worm per-infection tag variable (%s; tensorlake wave set it to \'tensrlake\')'
     fi
 
     # Deduplicate
@@ -3836,10 +3876,11 @@ check_preinstall_bun_patterns() {
     # Nov 2025 wave: "node setup_bun.js" / "node bun_installer.js".
     # Aug 4, 2026 keyv/cacheable wave: "node setup.mjs" — the loader that downloads
     # Bun 1.3.13 from the genuine oven-sh release and runs Math_Symbol.js.
+    # Oct 8, 2026 tensorlake@0.5.144: the same loader moved under lib/ ("node lib/setup.mjs").
     while IFS= read -r file; do
         if [[ -f "$file" ]]; then
             # Check if the file contains the malicious preinstall pattern
-            if grep -Eq '"preinstall"[[:space:]]*:[[:space:]]*"node (setup_bun\.js|bun_installer\.js|setup\.mjs)"' "$file" 2>/dev/null; then
+            if grep -Eq '"preinstall"[[:space:]]*:[[:space:]]*"node (setup_bun\.js|bun_installer\.js|(lib/)?setup\.mjs)"' "$file" 2>/dev/null; then
                 echo "$file" >> "$TEMP_DIR/preinstall_bun_patterns.txt"
             fi
         fi
@@ -6089,7 +6130,7 @@ generate_report() {
     fi
 
     if [[ -s "$TEMP_DIR/keyv_indicators.txt" ]]; then
-        print_status "$RED" "🚨 HIGH RISK: August 4, 2026 keyv/cacheable 'Here We Go Again' C2 domain detected:"
+        print_status "$RED" "🚨 HIGH RISK: keyv/cacheable (ChainDrop) family IOCs detected (Aug 4 keyv wave, Oct 8 tensorlake):"
         print_status "$RED" "    ⚠️  Fallback exfiltration endpoint for the keyv/cacheable Shai-Hulud wave. The"
         print_status "$RED" "        primary channel is GitHub dead-drop repos; this is the network fallback."
         while IFS= read -r line; do
@@ -6097,7 +6138,7 @@ generate_report() {
             local reason="${line#*:}"
             echo "   - $file"
             echo "     Reason: $reason"
-            show_file_preview "$file" "HIGH RISK: keyv/cacheable wave C2 domain"
+            show_file_preview "$file" "HIGH RISK: keyv/cacheable (ChainDrop) family indicator"
             high_risk=$((high_risk+1))
         done < "$TEMP_DIR/keyv_indicators.txt"
         print_status "$RED" "    📋 IMMEDIATE ACTION: Treat the host as compromised — remove any keyv/cacheable-wave"
@@ -6290,9 +6331,13 @@ generate_report() {
 
     if [[ -s "$TEMP_DIR/preinstall_bun_patterns.txt" ]]; then
         print_status "$RED" "🚨 HIGH RISK: Fake Bun preinstall patterns detected:"
+        local preinstall_cmd
         while IFS= read -r file; do
             echo "   - $file"
-            show_file_preview "$file" "HIGH RISK: package.json contains malicious preinstall: node setup_bun.js"
+            # Name the command actually found: the pattern covers several loader
+            # filenames, and quoting the wrong one sends a responder hunting for it.
+            preinstall_cmd=$(grep -Eo '"node (setup_bun\.js|bun_installer\.js|(lib/)?setup\.mjs)"' "$file" 2>/dev/null | head -1 | tr -d '"')
+            show_file_preview "$file" "HIGH RISK: package.json contains malicious preinstall: ${preinstall_cmd:-fake Bun loader}"
             high_risk=$((high_risk+1))
         done < "$TEMP_DIR/preinstall_bun_patterns.txt"
     fi
