@@ -1,0 +1,4 @@
+# TEST FIXTURE — Sept 23, 2026 "supplychain.local" worm, PyPI side (Aikido;
+# OSV MAL-2026-16475). DO NOT `pip install` this file. It pins a
+# known-malicious version purely as inert text so the PyPI version check fires.
+MemoryOS==2.0.34

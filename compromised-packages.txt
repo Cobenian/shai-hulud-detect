@@ -1,7 +1,7 @@
 # Shai-Hulud Supply Chain Attack - Compromised Packages List
 #
-# This file contains 5,782 confirmed compromised package versions from
-# multiple supply chain attacks between September 2025 and August 2026.
+# This file contains 5,791 confirmed compromised package versions from
+# multiple supply chain attacks between September 2025 and October 2026.
 # The campaigns were self-replicating, so new compromised packages may still be discovered.
 #
 # Sources: StepSecurity, Wiz.io, Semgrep, JFrog security advisories and Socket.dev
@@ -13,7 +13,7 @@
 #         NOTE: campaigns where ALL versions of a package are malicious (TrapDoor,
 #         Laravel-Lang) are detected version-agnostically by their dedicated
 #         check_* functions in shai-hulud-detector.sh, not by per-version entries here.
-# Last updated: August 2026
+# Last updated: October 2026
 #
 # MAINTAINING THIS LIST:
 # - Add new compromised packages as they are discovered
@@ -6426,3 +6426,55 @@ go:github.com/adieuu-llc/adieuu-2026:v0.4.9
 
 # github.com/evilgodfahim/kal (1 versions)
 go:github.com/evilgodfahim/kal:v0.0.0-20260805062327-23dc26d5459b
+
+# ========================================================================
+# SEPTEMBER - OCTOBER 2026 — three incidents after the keyv/cacheable wave.
+# Every version below is confirmed by an OSV MAL- advisory as well as the
+# vendor write-up cited for its block. Bad versions have since been unpublished,
+# so this list is the only remaining record of them; neighbouring versions are
+# clean and deliberately absent.
+# ========================================================================
+
+# ------------------------------------------------------------------------
+# 2026-09-07 — Mini Shai-Hulud (May 19 @antv payload) resurfaces after 111 days.
+# Aikido ("Shai-Hulud Rises From the Dead after 111 days"): four versions
+# published within one hour (09:25 UTC) by a single npm account, all carrying
+# the byte-identical May 19 payload (index.js SHA-256 e37e3ddeeaaa…, preinstall
+# "bun run index.js"). npm has since replaced each with 0.0.1-security.
+# OSV: MAL-2026-16024, MAL-2026-16025, MAL-2026-16026, MAL-2026-16032.
+# 4 packages, 4 versions.
+# ------------------------------------------------------------------------
+blueai-cli:0.7.0
+bmc-i18n-extract-cli:1.1.1
+bmc-translate-utils:1.1.1
+feishu-docx-mcp:0.3.2
+
+# ------------------------------------------------------------------------
+# 2026-09-23 — "supplychain.local" Go-binary worm (Aikido). This is a new
+# family, not Shai-Hulud code: a multiplatform Go "sckit" binary that steals
+# tokens and republishes through npm, PyPI and a GitHub Actions workflow it
+# plants. It runs when the package is invoked, not at install time.
+# npm: the attacker interleaved with the maintainer, so 0.1.22 and 0.1.24 are
+# clean republishes (identical file count/size to 0.1.20); only the odd versions
+# carried the binary. OSV MAL-2026-16476 lists exactly 0.1.21, 0.1.23, 0.1.25.
+# PyPI: MemoryOS 2.0.34 (OSV MAL-2026-16475, PYSEC-2026-3987); since removed.
+# 2 packages, 4 versions.
+# ------------------------------------------------------------------------
+@memtensor/memos-cloud-openclaw-plugin:0.1.21
+@memtensor/memos-cloud-openclaw-plugin:0.1.23
+@memtensor/memos-cloud-openclaw-plugin:0.1.25
+pypi:memoryos:2.0.34
+
+# ------------------------------------------------------------------------
+# 2026-10-08 — tensorlake SDK, ChainDrop/keyv-family payload (Endor Labs,
+# Socket, Aikido, OX Security). Published 01:12:07 UTC from the project's own
+# GitHub Actions release workflow, with provenance, after an attacker commit to
+# main. Delivery is "preinstall": "node lib/setup.mjs", which loads Bun and runs
+# lib/Math_Symbol.js. It has its own C2-rotation contract (0xb614155F…) and
+# domain (iseekaigogo[.]com), separate from the August wave. OSV MAL-2026-17650.
+# NOT listed: the six tensorlake-native-*@0.5.144 platform packages from the
+# same release run. Endor Labs found no payload and no install script in them;
+# they are only native binaries.
+# 1 package, 1 version.
+# ------------------------------------------------------------------------
+tensorlake:0.5.144

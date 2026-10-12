@@ -1,0 +1,2 @@
+# Clean counterpart: MemoryOS pinned below the compromised 2.0.34.
+MemoryOS==2.0.33
