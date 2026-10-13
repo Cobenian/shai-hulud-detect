@@ -81,7 +81,7 @@ For per-wave IoC inventories, payload hashes, source advisories, and version-by-
 
 | Ecosystem | Auto-detected via | Status |
 |---|---|---|
-| **npm** | `package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml` | Full support |
+| **npm** | `package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `bun.lock` | Full support (the binary `bun.lockb` is not parsed) |
 | **PyPI** | `pyproject.toml`, `requirements*.txt`, `Pipfile`, `Pipfile.lock`, `poetry.lock`, `uv.lock`, `setup.py`, `setup.cfg` | Full support (pure-bash awk parsers, no Python required) |
 | **Composer** | `composer.json`, `composer.lock` | Full support (PHP / Packagist; added for the Laravel-Lang wave) |
 | **Crates** | `Cargo.toml`, `Cargo.lock` | Full support (Rust / crates.io; added for the TrapDoor wave) |

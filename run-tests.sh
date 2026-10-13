@@ -59,6 +59,8 @@ declare -A EXPECTED=(
     ["yarn-lock-attack"]="2|no|yes|no"       # MEDIUM: Yarn v1 lockfile pinning keyv@6.0.0 + scoped @or-sdk/auth@0.38.2 (yarn.lock was never parsed before)
     ["yarn-berry-attack"]="2|no|yes|no"      # MEDIUM: Yarn Berry lockfile pinning flat-cache@6.1.24 (name@npm:version descriptors)
     ["yarn-lock-clean"]="0|no|no|no"         # Clean: last-known-good keyv in a Yarn v1 lockfile — name match alone must not fire
+    ["bun-lock-attack"]="2|no|yes|no"        # MEDIUM: Bun text lockfile (bun.lock) pinning scoped @or-sdk/auth@0.38.2 + keyv@6.0.0 under a nested install-path key (bun.lock was never collected or parsed before)
+    ["bun-lock-clean"]="0|no|no|no"          # Clean: last-known-good keyv in a bun.lock — name match alone must not fire
     ["pnpm-first-entry-attack"]="2|no|yes|no" # MEDIUM: compromised entry is the FIRST package in the pnpm lockfile (entry #1 used to be swallowed)
     ["infected-lockfile"]="2|no|yes|no"        # MEDIUM: lockfile issues
     ["infected-lockfile-pnpm"]="2|no|yes|no"   # MEDIUM: pnpm lockfile issues
@@ -901,7 +903,9 @@ for lock_check in \
     "yarn-lock-attack|Compromised package in lockfile: keyv@6.0.0|Yarn v1 lockfile" \
     "yarn-lock-attack|Compromised package in lockfile: @or-sdk/auth@0.38.2|Yarn v1 scoped name" \
     "yarn-berry-attack|Compromised package in lockfile: flat-cache@6.1.24|Yarn Berry lockfile" \
-    "pnpm-first-entry-attack|Compromised package in lockfile: keyv@6.0.0|pnpm first entry"
+    "pnpm-first-entry-attack|Compromised package in lockfile: keyv@6.0.0|pnpm first entry" \
+    "bun-lock-attack|Compromised package in lockfile: @or-sdk/auth@0.38.2|bun.lock scoped name" \
+    "bun-lock-attack|Compromised package in lockfile: keyv@6.0.0|bun.lock nested install-path key"
 do
     lock_fixture="${lock_check%%|*}"
     lock_rest="${lock_check#*|}"
@@ -932,6 +936,35 @@ else
     echo -e "${GREEN}PASS${NC}: yarn.lock pin is not cleared as safe under --check-semver-ranges"
     ((passed++))
 fi
+
+# bun.lock under --check-semver-ranges: get_lockfile_version never looked at bun.lock,
+# so a Bun project was always reported as "no lockfile ... Your current installation is
+# safe" — even when bun.lock pinned the compromised version. Pin both directions: a
+# compromised pin is not cleared, and a safe pin is resolved to its locked version.
+((total++))
+BUNSEM_OUT=$("$BASH_CMD" "$DETECTOR" --check-semver-ranges "$SCRIPT_DIR/test-cases/bun-lock-attack" 2>&1)
+if grep -qF "safe lockfile versions" <<< "$BUNSEM_OUT"; then
+    echo -e "${RED}FAIL${NC}: bun.lock pin cleared as a safe lockfile version under --check-semver-ranges"
+    ((failed++))
+else
+    echo -e "${GREEN}PASS${NC}: bun.lock pin is not cleared as safe under --check-semver-ranges"
+    ((passed++))
+fi
+
+BUNSAFE_TMP=$(mktemp -d)
+# Inert: version strings only. keyv@6.1.0 is not on the list; ^6.0.0 could resolve to 6.0.0.
+printf '{"name":"p","version":"1.0.0","dependencies":{"keyv":"^6.0.0"}}\n' > "$BUNSAFE_TMP/package.json"
+printf '{\n  "lockfileVersion": 1,\n  "packages": {\n    "keyv": ["keyv@6.1.0", "", {}, "sha512-AAAA"],\n  }\n}\n' > "$BUNSAFE_TMP/bun.lock"
+((total++))
+BUNSAFE_OUT=$("$BASH_CMD" "$DETECTOR" --check-semver-ranges "$BUNSAFE_TMP" 2>&1)
+if grep -qF "locked to 6.1.0" <<< "$BUNSAFE_OUT"; then
+    echo -e "${GREEN}PASS${NC}: bun.lock safe pin is resolved to its locked version under --check-semver-ranges"
+    ((passed++))
+else
+    echo -e "${RED}FAIL${NC}: bun.lock safe pin was not resolved (reported as no lockfile?)"
+    ((failed++))
+fi
+rm -rf "$BUNSAFE_TMP"
 
 ((total++))
 SHRINK_OUT=$("$BASH_CMD" "$DETECTOR" "$SCRIPT_DIR/test-cases/npm-shrinkwrap-attack" 2>&1)

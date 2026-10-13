@@ -374,7 +374,7 @@ print_stage_complete() {
 # detect_ecosystems() populates ACTIVE_ECOSYSTEMS based on the scan tree.
 # Override via --ecosystem=<list> on the command line.
 declare -A ECOSYSTEM_MARKERS=(
-    ["npm"]="package.json|package-lock.json|yarn.lock|pnpm-lock.yaml"
+    ["npm"]="package.json|package-lock.json|yarn.lock|pnpm-lock.yaml|bun.lock"
     ["pypi"]="pyproject.toml|requirements.txt|requirements-dev.txt|requirements-prod.txt|Pipfile|Pipfile.lock|poetry.lock|uv.lock|setup.py|setup.cfg"
     ["composer"]="composer.json|composer.lock"
     ["crates"]="Cargo.toml|Cargo.lock"
@@ -1388,6 +1388,7 @@ collect_all_files() {
             -name "*.php" -o \
             -name "package.json" -o \
             -name "package-lock.json" -o -name "npm-shrinkwrap.json" -o -name "yarn.lock" -o -name "pnpm-lock.yaml" -o \
+            -name "bun.lock" -o \
             -name "shai-hulud-workflow.yml" -o \
             -name "setup_bun.js" -o -name "bun_environment.js" -o \
             -name "bun_installer.js" -o -name "environment_source.js" -o \
@@ -1476,7 +1477,7 @@ collect_all_files() {
         /\.(js|ts|json|mjs|cjs)$/                                    { put("code_files.txt") }
         /\.(yml|yaml)$/                                              { put("yaml_files.txt") }
         /\.(py|sh|bat|ps1|cmd|php)$/                                 { put("script_files.txt") }
-        /(package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml)$/ { put("lockfiles.txt") }
+        /(package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lock)$/ { put("lockfiles.txt") }
         /shai-hulud-workflow\.yml$/                                  { put("workflow_files_found.txt") }
         /(setup_bun\.js|bun_installer\.js)$/                         { put("setup_bun_files.txt") }
         /(bun_environment\.js|environment_source\.js)$/              { put("bun_environment_files.txt") }
@@ -4127,6 +4128,59 @@ transform_yarn_lock() {
     echo "}"
 }
 
+# Function: transform_bun_lock
+# Purpose: Convert bun.lock (Bun's text lockfile) to pseudo-package-lock.json for the
+#          shared package-lock parser in check_package_integrity.
+# Args: $1 = lockfile (path to bun.lock)
+# Modifies: None
+# Returns: Outputs JSON to stdout with a packages structure compatible with the
+#          package-lock parser
+# Note: bun.lock has been Bun's default lockfile since Bun 1.2, but it was neither
+#       collected nor parsed, so a Bun project pinning a compromised version reported
+#       clean (and --check-semver-ranges reported "no lockfile").
+#
+#       bun.lock is JSONC (trailing commas), so it is read line by line rather than
+#       with a JSON parser. Under "packages", Bun writes each entry on one line, keyed
+#       by its install path, with the resolved "name@version" as the first array item:
+#
+#         "keyv": ["keyv@6.0.0", "", { ... }, "sha512-..."],
+#         "flat-cache/keyv": ["keyv@4.5.4", "", { ... }, "sha512-..."],
+#         "@scope/pkg": ["@scope/pkg@1.2.3", "", { ... }, "sha512-..."],
+#
+#       The name comes from that first item, not from the key: a nested key is a path
+#       ("flat-cache/keyv"), and an npm alias key is the alias, not the real package.
+#       Workspace, git, file and tarball entries ("pkg@workspace:...", "pkg@github:...")
+#       carry no semver version and are skipped by the version check below.
+#       The binary bun.lockb predecessor is not parsed.
+transform_bun_lock() {
+    local lockfile=$1
+
+    echo "{"
+    echo "  \"packages\": {"
+
+    awk '
+        /^[[:space:]]*"packages"[[:space:]]*:[[:space:]]*\{/ { in_pkgs = 1; next }
+
+        in_pkgs && /^[[:space:]]*"[^"]+"[[:space:]]*:[[:space:]]*\[[[:space:]]*"/ {
+            d = $0
+            sub(/^[[:space:]]*"[^"]+"[[:space:]]*:[[:space:]]*\[[[:space:]]*"/, "", d)
+            sub(/".*/, "", d)
+
+            # Name = up to the last "@", ignoring a leading "@" on scoped names.
+            name = ""; v = ""
+            for (i = length(d); i > 1; i--) {
+                if (substr(d, i, 1) == "@") { name = substr(d, 1, i - 1); v = substr(d, i + 1); break }
+            }
+            if (name != "" && v ~ /^[0-9]/) {
+                printf "    \"node_modules/%s\": {\n      \"version\": \"%s\"\n    },\n", name, v
+            }
+        }
+    ' "$lockfile"
+
+    echo "  }"
+    echo "}"
+}
+
 # Function: transform_pnpm_yaml
 # Purpose: Convert pnpm-lock.yaml to pseudo-package-lock.json format for parsing
 # Args: $1 = packages_file (path to pnpm-lock.yaml)
@@ -4819,6 +4873,23 @@ get_lockfile_version() {
             fi
         fi
 
+        # Check for bun.lock (resolved version comes from transform_bun_lock, as for yarn.lock)
+        if [[ -f "$current_dir/bun.lock" ]]; then
+            local found_version
+            found_version=$(transform_bun_lock "$current_dir/bun.lock" 2>/dev/null | \
+                awk -v pkg="node_modules/$package_name" '
+                    $0 ~ "\"" pkg "\":" { want = 1; next }
+                    want && /"version"/ {
+                        split($0, parts, "\"")
+                        for (i in parts) if (parts[i] ~ /^[0-9]/) { print parts[i]; exit }
+                    }
+                ' 2>/dev/null || true)
+            if [[ -n "$found_version" ]]; then
+                echo "$found_version"
+                return
+            fi
+        fi
+
         # Check for pnpm-lock.yaml
         if [[ -f "$current_dir/pnpm-lock.yaml" ]]; then
             # Use transform_pnpm_yaml and then parse like package-lock.json
@@ -5002,6 +5073,10 @@ check_package_integrity() {
                     lockfile=$(mktemp "${TMPDIR:-/tmp}/lockfile.XXXXXXXX")
                     transform_yarn_lock "$org_file" > "$lockfile"
                     ;;
+                bun.lock)
+                    lockfile=$(mktemp "${TMPDIR:-/tmp}/lockfile.XXXXXXXX")
+                    transform_bun_lock "$org_file" > "$lockfile"
+                    ;;
             esac
 
             # Extract all package:version pairs from lockfile using AWK block parser
@@ -5055,7 +5130,7 @@ check_package_integrity() {
 
             # Cleanup the temp lockfile written by the transforms above
             case "$(basename "$org_file")" in
-                pnpm-lock.yaml|yarn.lock) rm -f "$lockfile" ;;
+                pnpm-lock.yaml|yarn.lock|bun.lock) rm -f "$lockfile" ;;
             esac
         fi
     done < <(tr '\n' '\0' < "$TEMP_DIR/lockfiles.txt")
@@ -6823,7 +6898,7 @@ _bulk_collect_unreadable() {
 _bulk_dir_is_project() {
     local d="$1" f
     [[ -e "$d/.git" ]] && return 0          # .git dir (normal checkout) or file (git worktree)
-    for f in "$d"/package.json "$d"/package-lock.json "$d"/pnpm-lock.yaml "$d"/yarn.lock "$d"/npm-shrinkwrap.json \
+    for f in "$d"/package.json "$d"/package-lock.json "$d"/pnpm-lock.yaml "$d"/yarn.lock "$d"/npm-shrinkwrap.json "$d"/bun.lock \
              "$d"/pyproject.toml "$d"/setup.py "$d"/setup.cfg "$d"/Pipfile* "$d"/poetry.lock "$d"/uv.lock "$d"/requirements*.txt \
              "$d"/Cargo.toml "$d"/go.mod "$d"/composer.json "$d"/Gemfile "$d"/build.gradle* "$d"/pom.xml "$d"/Package.swift; do
         [[ -e "$f" ]] && return 0

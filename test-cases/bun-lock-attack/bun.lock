@@ -1,0 +1,25 @@
+{
+  "lockfileVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "bun-lock-attack",
+      "dependencies": {
+        "@or-sdk/auth": "^0.38.2",
+        "cache-wrapper": "^2.0.0",
+      },
+    },
+    "packages/shared": {
+      "name": "shared",
+      "version": "0.0.0",
+    },
+  },
+  "packages": {
+    "@or-sdk/auth": ["@or-sdk/auth@0.38.2", "", {}, "sha512-AAAA"],
+
+    "cache-wrapper": ["cache-wrapper@2.0.1", "", { "dependencies": { "keyv": "^6.0.0" } }, "sha512-AAAA"],
+
+    "shared": ["shared@workspace:packages/shared"],
+
+    "cache-wrapper/keyv": ["keyv@6.0.0", "", {}, "sha512-AAAA"],
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "lockfileVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "bun-lock-clean",
+      "dependencies": {
+        "keyv": "^5.0.0",
+      },
+    },
+  },
+  "packages": {
+    "keyv": ["keyv@5.3.4", "", {}, "sha512-AAAA"],
+  }
+}
