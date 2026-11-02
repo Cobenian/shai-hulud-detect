@@ -3,7 +3,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Shell](https://img.shields.io/badge/shell-Bash%205.0%2B-blue)](#requirements)
 [![Status](https://img.shields.io/badge/status-Active-success)](../../)
-[![Tests](https://img.shields.io/badge/tests-296%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-303%20passing-brightgreen)](#testing)
 [![Packages](https://img.shields.io/badge/compromised%20packages-5%2C791-red)](compromised-packages.txt)
 [![Type](https://img.shields.io/badge/type-Security%20Tool-red)](#what-it-catches)
 [![Contributions](https://img.shields.io/badge/contributions-Welcome-orange)](#contributing)
@@ -81,7 +81,7 @@ For per-wave IoC inventories, payload hashes, source advisories, and version-by-
 
 | Ecosystem | Auto-detected via | Status |
 |---|---|---|
-| **npm** | `package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml` | Full support |
+| **npm** | `package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `bun.lock` | Full support (the binary `bun.lockb` is not parsed) |
 | **PyPI** | `pyproject.toml`, `requirements*.txt`, `Pipfile`, `Pipfile.lock`, `poetry.lock`, `uv.lock`, `setup.py`, `setup.cfg` | Full support (pure-bash awk parsers, no Python required) |
 | **Composer** | `composer.json`, `composer.lock` | Full support (PHP / Packagist; added for the Laravel-Lang wave) |
 | **Crates** | `Cargo.toml`, `Cargo.lock` | Full support (Rust / crates.io; added for the TrapDoor wave) |
@@ -256,7 +256,7 @@ To add new packages from a fresh advisory: append entries in that format, run `.
 ## Testing
 
 ```bash
-./run-tests.sh                          # full suite, 296 checks
+./run-tests.sh                          # full suite, 303 checks
 ./shai-hulud-detector.sh test-cases/<fixture-name>   # run one fixture manually
 ```
 

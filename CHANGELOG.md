@@ -5,6 +5,18 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.20.1] - 2026-11-02
+
+### Added
+- **`bun.lock` is now collected and parsed (PR #172).** Bun's default text lockfile since Bun 1.2 was never read, so a Bun project pinning a compromised version scanned clean, and `--check-semver-ranges` reported "no lockfile" and called it safe. New `transform_bun_lock` converts it to the pseudo package-lock shape used for `yarn.lock`. The package name comes from the resolved `name@version` item, not the key, so nested install paths and npm aliases resolve to the real package. `bun.lock` also activates the npm ecosystem and marks a directory as a project in `--bulk`. The older binary `bun.lockb` is still not parsed.
+
+### Fixed
+- **`--check-semver-ranges` could report a nested `bun.lock` copy as the locked version.** The lookup takes the first match, so a nested safe copy sorting ahead of a compromised top-level entry printed "locked to 4.5.4" under "safe lockfile versions". The compromised-lockfile finding still fired, so no detection was lost, but the output contradicted itself. `transform_bun_lock` now emits top-level entries first.
+
+### Changed
+- **`shai-hulud-detector.sh`**: `SCRIPT_VERSION` 3.20.0 to 3.20.1.
+- **Test suite**: 296 to **303** checks.
+
 ## [3.20.0] - 2026-10-11
 
 ### Added
