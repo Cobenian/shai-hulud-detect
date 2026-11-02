@@ -966,6 +966,23 @@ else
 fi
 rm -rf "$BUNSAFE_TMP"
 
+# A nested copy that sorts ahead of the top-level entry must not stand in for it: the
+# project resolves keyv@6.0.0 here, so reporting the nested 4.5.4 would clear a bad pin.
+BUNNEST_TMP=$(mktemp -d)
+# Inert: version strings only.
+printf '{"name":"p","version":"1.0.0","dependencies":{"keyv":"^6.0.0"}}\n' > "$BUNNEST_TMP/package.json"
+printf '{\n  "lockfileVersion": 1,\n  "packages": {\n    "a/keyv": ["keyv@4.5.4", "", {}, "sha512-AAAA"],\n\n    "keyv": ["keyv@6.0.0", "", {}, "sha512-AAAA"],\n  }\n}\n' > "$BUNNEST_TMP/bun.lock"
+((total++))
+BUNNEST_OUT=$("$BASH_CMD" "$DETECTOR" --check-semver-ranges "$BUNNEST_TMP" 2>&1)
+if grep -qF "locked to 4.5.4" <<< "$BUNNEST_OUT"; then
+    echo -e "${RED}FAIL${NC}: bun.lock nested copy reported in place of the top-level pin"
+    ((failed++))
+else
+    echo -e "${GREEN}PASS${NC}: bun.lock top-level pin wins over a nested copy under --check-semver-ranges"
+    ((passed++))
+fi
+rm -rf "$BUNNEST_TMP"
+
 ((total++))
 SHRINK_OUT=$("$BASH_CMD" "$DETECTOR" "$SCRIPT_DIR/test-cases/npm-shrinkwrap-attack" 2>&1)
 if grep -qF "Compromised package in lockfile: keyv@6.0.0" <<< "$SHRINK_OUT"; then

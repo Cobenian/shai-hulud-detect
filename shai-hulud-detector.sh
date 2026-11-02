@@ -29,7 +29,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPROMISED_PACKAGES_FILE="$SCRIPT_DIR/compromised-packages.txt"
 
 # Tool version (surfaced in --json output for downstream consumers)
-SCRIPT_VERSION="3.20.0"
+SCRIPT_VERSION="3.20.1"
 
 # Global temp directory for file-based storage
 TEMP_DIR=""
@@ -4172,9 +4172,18 @@ transform_bun_lock() {
                 if (substr(d, i, 1) == "@") { name = substr(d, 1, i - 1); v = substr(d, i + 1); break }
             }
             if (name != "" && v ~ /^[0-9]/) {
-                printf "    \"node_modules/%s\": {\n      \"version\": \"%s\"\n    },\n", name, v
+                k = $0
+                sub(/^[[:space:]]*"/, "", k)
+                sub(/".*/, "", k)
+                entry = sprintf("    \"node_modules/%s\": {\n      \"version\": \"%s\"\n    },\n", name, v)
+                if (k == name) printf "%s", entry
+                else nested = nested entry
             }
         }
+
+        # Top-level entries go first: get_lockfile_version takes the first match, and
+        # that must be the copy the project resolves, not a nested one that sorts ahead.
+        END { printf "%s", nested }
     ' "$lockfile"
 
     echo "  }"
