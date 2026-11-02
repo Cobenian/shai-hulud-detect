@@ -1,0 +1,10 @@
+# TEST FIXTURE: inert version pins only.
+version = 3
+
+[[package]]
+name = "arrayref"
+version = "0.3.10"
+
+[[package]]
+name = "proc-macro1"
+version = "1.0.107"

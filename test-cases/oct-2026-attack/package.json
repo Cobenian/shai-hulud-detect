@@ -1,0 +1,12 @@
+{
+  "name": "oct-2026-attack-test",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Test fixture for the incidents added on 2026-11-02. Version pins only; nothing here installs or runs.",
+  "dependencies": {
+    "@subql/common": "5.8.3",
+    "@testsecuiitytestme/cache-helper": "1.0.1",
+    "data-pipeline-testmetest": "2.0.1",
+    "function-flag": "1.7.3"
+  }
+}

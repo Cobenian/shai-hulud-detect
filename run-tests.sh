@@ -121,6 +121,8 @@ declare -A EXPECTED=(
     ["keyv-c2-rotation-clean"]="0|no|no|no"    # Clean: legitimate NodeReal RPC usage — must not fire without another wave marker
     ["sept-oct-2026-attack"]="1|yes|no|no"     # HIGH: Sept-Oct 2026 incidents — blueai-cli@0.7.0 (Sept 7 Mini Shai-Hulud resurfacing), @memtensor/memos-cloud-openclaw-plugin@0.1.21 + pypi:memoryos@2.0.34 (Sept 23 supplychain.local worm), tensorlake@0.5.144 (Oct 8, ChainDrop family); inert markers exercise the tensorlake C2/contract/wallet/WORMTAG checks and the "node lib/setup.mjs" preinstall pattern
     ["sept-oct-2026-clean"]="0|no|no|no"       # Clean: the same names at versions not on the list, incl. the clean interleaved @memtensor 0.1.22 republish
+    ["oct-2026-attack"]="1|yes|no|no"          # HIGH: incidents added 2026-11-02 — LiteLLM 1.107.0, testmetest worm, @subql/common 5.8.3, MALFEX, reqthrottle gems, Aug 20 crates, mrmustard; first crates: and gem: entries matched from real lockfiles; inert markers exercise check_oct_2026_indicators
+    ["oct-2026-clean"]="0|no|no|no"            # Clean: same names at versions not on the list, plus litellm.dev_mode, cook, svc-telemetry look-alikes that must not fire
     ["go-attack"]="1|yes|no|no"                # HIGH: Go ecosystem support — go.mod + go.sum pin the compromised Verana module (go:github.com/verana-labs/verana-blockchain:v0.10.1-dev.20) from the June 25 Miasma wave
     ["go-clean"]="0|no|no|no"                  # Clean: go.mod requires a non-compromised Verana version (v0.10.0) — exercises the go.mod parser without firing
     ["hex-clean"]="0|no|no|no"                 # Clean: Elixir mix.exs + mix.lock with safe deps — exercises the Hex parsers without firing (no hex: entries in the real list yet). Match path is asserted via the SHAI_HULUD_PACKAGES_FILE override block below.
@@ -556,6 +558,82 @@ do
         ((failed++))
     fi
 done
+
+# ------------------------------------------------------------
+#  Incidents added 2026-11-02 (LiteLLM, testmetest, @subql/common,
+#  MALFEX, reqthrottle, Aug 20 crates, mrmustard, Cursor extension)
+# ------------------------------------------------------------
+OCT_OUT=$("$BASH_CMD" "$DETECTOR" "$SCRIPT_DIR/test-cases/oct-2026-attack" 2>&1)
+for oct_check in \
+    "LiteLLM version flagged|[PyPI] litellm@1.107.0" \
+    "mrmustard version flagged|[PyPI] mrmustard@0.7.4" \
+    "@subql/common version flagged|@subql/common@5.8.3" \
+    "testmetest scoped version flagged|@testsecuiitytestme/cache-helper@1.0.1" \
+    "testmetest version flagged|data-pipeline-testmetest@2.0.1" \
+    "MALFEX version flagged|function-flag@1.7.3" \
+    "crates entry matched from Cargo.lock|[Crates] arrayref@0.3.10" \
+    "crates impersonator matched from Cargo.lock|[Crates] proc-macro1@1.0.107" \
+    "gem entry matched from Gemfile.lock|[Gem] bitcoin-rpc-lite@1.0.3" \
+    "gem name with a dot matched|[Gem] etheremu.rb@1.0.0" \
+    "LiteLLM attacker domain with scheme|LiteLLM 1.107.0 attacker domain (://www.litellm.dev)" \
+    "LiteLLM attacker domain, defanged|LiteLLM 1.107.0 attacker domain (litellm[.]dev)" \
+    "LiteLLM dead-drop repository|C2 dead-drop repository (letters9813/pythonclient-test)" \
+    "LiteLLM C2 token|C2 request token (XWiA8gZNa7NcX2XRoAEb)" \
+    "LiteLLM run-once marker|run-once marker (.pc_once_72129118c59f5636c0bb)" \
+    "LiteLLM lookalike repository|lookalike source repository (Berri-AI/litellm)" \
+    "LiteLLM Docker tag in compose|compromised Docker image (berriai/litellm:v1.107.0)" \
+    "LiteLLM Docker digest in Dockerfile|compromised Docker image digest (sha256:1bbcb1443bc9" \
+    "cook.pth in site-packages|LiteLLM 1.107.0 startup hook (cook.pth in site-packages)" \
+    "testmetest C2 domain|testmetest worm fallback C2 domain (aiarmor.website)" \
+    "testmetest campaign ID|testmetest worm campaign ID (msync-3f7a)" \
+    "testmetest repository loader|testmetest worm repository loader (node .github/init.js)" \
+    ".napi_cache by filename|encrypted payload container (.napi_cache)" \
+    "@subql/common C2 domain|@subql/common 5.8.3 C2 domain (ci-artifacts.dev)" \
+    "@subql/common lock file|worker lock file (tmp.ts018051808.lock)" \
+    "Cursor extension C2 address|C2 address (134.209.82.225)" \
+    "wheel files are hashed|hash-target.whl" \
+    "cook.pth is hashed|0de55f3a091b139f4abe0c0272ef8143449efe7eca0f779b5c3fad5d4f360503"
+do
+    label="${oct_check%|*}"
+    pattern="${oct_check#*|}"
+    ((total++))
+    if grep -qF "$pattern" <<< "$OCT_OUT"; then
+        echo -e "${GREEN}PASS${NC}: oct-2026-attack fires IoC: $label"
+        ((passed++))
+    else
+        echo -e "${RED}FAIL${NC}: oct-2026-attack did NOT fire: $label (looked for: '$pattern')"
+        ((failed++))
+    fi
+done
+
+# The clean fixture is asserted overall by the EXPECTED table; pin the specific
+# regression too. litellm.dev_mode must never read as the attacker domain.
+((total++))
+OCT_CLEAN=$("$BASH_CMD" "$DETECTOR" "$SCRIPT_DIR/test-cases/oct-2026-clean" 2>&1)
+if grep -qF "LiteLLM 1.107.0" <<< "$OCT_CLEAN"; then
+    echo -e "${RED}FAIL${NC}: ordinary LiteLLM use flagged as an October 2026 indicator"
+    ((failed++))
+else
+    echo -e "${GREEN}PASS${NC}: litellm.dev_mode and a clean image tag are not flagged"
+    ((passed++))
+fi
+
+# --check-host: the Cursor extension's persistence lives outside any project.
+OCTHOST_TMP=$(mktemp -d)
+mkdir -p "$OCTHOST_TMP/home/.ssh" "$OCTHOST_TMP/proj"
+# Inert: a key comment only, in a throwaway fake home.
+echo 'ssh-ed25519 AAAA svc-telemetry' > "$OCTHOST_TMP/home/.ssh/authorized_keys"
+echo '{}' > "$OCTHOST_TMP/proj/package.json"
+((total++))
+OCTHOST_OUT=$(HOME="$OCTHOST_TMP/home" "$BASH_CMD" "$DETECTOR" --check-host "$OCTHOST_TMP/proj" 2>&1)
+if grep -qF "attacker SSH key (svc-telemetry)" <<< "$OCTHOST_OUT"; then
+    echo -e "${GREEN}PASS${NC}: --check-host finds the Cursor extension SSH key"
+    ((passed++))
+else
+    echo -e "${RED}FAIL${NC}: --check-host missed the Cursor extension SSH key"
+    ((failed++))
+fi
+rm -rf "$OCTHOST_TMP"
 
 # ------------------------------------------------------------
 #  Go ecosystem support — go.mod / go.sum parsing + matching

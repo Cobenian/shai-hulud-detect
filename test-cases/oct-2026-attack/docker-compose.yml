@@ -1,0 +1,4 @@
+# TEST FIXTURE: inert image reference. Do not run.
+services:
+  proxy:
+    image: ghcr.io/berriai/litellm:v1.107.0

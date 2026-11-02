@@ -1,0 +1,3 @@
+# Clean counterpart. 1.106.4 is the clean release StepSecurity recommends.
+litellm==1.106.4
+mrmustard==0.7.3
