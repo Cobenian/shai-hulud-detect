@@ -1,6 +1,6 @@
 # Shai-Hulud Supply Chain Attack - Compromised Packages List
 #
-# This file contains 5,791 confirmed compromised package versions from
+# This file contains 5,924 confirmed compromised package versions from
 # multiple supply chain attacks between September 2025 and October 2026.
 # The campaigns were self-replicating, so new compromised packages may still be discovered.
 #
@@ -13,7 +13,7 @@
 #         NOTE: campaigns where ALL versions of a package are malicious (TrapDoor,
 #         Laravel-Lang) are detected version-agnostically by their dedicated
 #         check_* functions in shai-hulud-detector.sh, not by per-version entries here.
-# Last updated: October 2026
+# Last updated: November 2026
 #
 # MAINTAINING THIS LIST:
 # - Add new compromised packages as they are discovered
@@ -6478,3 +6478,211 @@ pypi:memoryos:2.0.34
 # 1 package, 1 version.
 # ------------------------------------------------------------------------
 tensorlake:0.5.144
+
+# ========================================================================
+# JULY - OCTOBER 2026 — incidents found in the 2026-11-02 sweep: four new
+# ones, plus older ones earlier sweeps missed. Versions come from OSV or the
+# cited vendor tables, read directly. Bad versions have been removed from
+# their registries; neighbouring versions are clean and deliberately absent.
+# ========================================================================
+
+# ------------------------------------------------------------------------
+# 2026-07-23 — mrmustard 0.7.4, PyPI maintainer-token hijack (StepSecurity).
+# Credential stealer that runs on import. No tag or release matches it.
+# OSV MAL-2026-11049. 1 package, 1 version.
+# ------------------------------------------------------------------------
+pypi:mrmustard:0.7.4
+
+# ------------------------------------------------------------------------
+# 2026-08-20 — crates.io: arrayref, internment and append-only-vec were
+# published from one compromised owner account with a dependency on
+# proc-macro1, whose build script fetched a payload (JFrog; The Hacker News).
+# First per-version crates entries: TrapDoor's crates are matched by name in
+# code. OSV lists proc-macro1 and proc-macro-en as malicious at every version;
+# the versions here are the ones JFrog's table names.
+# OSV MAL-2026-14336/14337/14333/14338/14339; RUSTSEC-2026-0260/0262/0264/0265.
+# 5 packages, 5 versions.
+# ------------------------------------------------------------------------
+crates:append-only-vec:0.1.9
+crates:arrayref:0.3.10
+crates:internment:0.8.7
+crates:proc-macro-en:1.0.10
+crates:proc-macro1:1.0.107
+
+# ------------------------------------------------------------------------
+# 2026-10-05 — @subql/common 5.8.3 (StepSecurity, Corgea). Release workflow
+# hijacked and shipped through trusted publishing. Runs on install AND import.
+# ~5.8.2 ranges in @subql/cli 6.6.3, @subql/node-core 19.3.1 and others let it
+# resolve transitively. 5.8.3-onf-rt1 is a harmless canary: NOT listed.
+# OSV MAL-2026-17571, GHSA-9333-3c4x-x3h5. 1 package, 1 version.
+# ------------------------------------------------------------------------
+@subql/common:5.8.3
+
+# ------------------------------------------------------------------------
+# 2026-10-05 — reqthrottle RubyGems campaign (SafeDep). Attacker-owned gems from
+# one account: a reverse shell or downloader in extconf.rb that stays quiet on
+# CI and sandboxes. First gem: entries in this file. SafeDep's CSV lists each
+# gem's newest version; the 1.0.0 entries come from OSV.
+# OSV MAL-2026-17567 through 17617. 42 packages, 53 versions.
+# ------------------------------------------------------------------------
+gem:base58-check-helper:1.0.0
+gem:bip39-wordlist-utils:1.0.0
+gem:bitciin:1.0.0
+gem:bitcion:1.0.0
+gem:bitcion-ruby:1.0.0
+gem:bitcoij-ruby:1.0.0
+gem:bitcoin-address-utils:1.0.0
+gem:bitcoin-rpc-lite:1.0.0
+gem:bitcoin-rpc-lite:1.0.3
+gem:blockchain-sync-utils:1.0.0
+gem:btc-wallet-tools:1.0.0
+gem:btc-wallet-tools:1.0.3
+gem:coinmarket-utils:1.0.0
+gem:crylto-toolbox:1.0.0
+gem:cryoto-toolbox:1.0.0
+gem:crypti-toolbox:1.0.0
+gem:crypto-key-utils:1.0.0
+gem:crypto-mnemonic-tools:1.0.0
+gem:crypto-mnemonic-tools:1.0.3
+gem:electrum-protocol-lite:1.0.0
+gem:eth-address-utils:1.0.0
+gem:eth-address-utils:1.0.3
+gem:eth-keystore-utils:1.0.0
+gem:eth-keystore-utils:1.0.3
+gem:etherdum.rb:1.0.0
+gem:etheremu.rb:1.0.0
+gem:ethereum-tx-helper:1.0.0
+gem:hdkey-derive-helper:1.0.0
+gem:kecack:1.0.0
+gem:keccka:1.0.0
+gem:ligbtning-invoice:1.0.0
+gem:lighthing-invoice:1.0.0
+gem:lightinng-invoice:1.0.0
+gem:lightning-invoice-utils:1.0.0
+gem:merkle-proof-lite:1.0.0
+gem:rate-limit-mini:1.0.0
+gem:rate-limit-mini:1.0.1
+gem:req-throttle-mini:1.0.0
+gem:req-throttle-mini:1.0.1
+gem:request-guard:1.0.0
+gem:request-guard:1.0.1
+gem:solaan-ruby:1.0.0
+gem:throttle-requests:1.0.0
+gem:throttle-requests:1.0.1
+gem:tron-rb:1.0.0
+gem:tx-broadcast-utils:1.0.0
+gem:utxo-set-utils:1.0.0
+gem:wallet-backup-tool:1.0.0
+gem:wallet-crypto-utils:1.0.0
+gem:wallet-crypto-utils:1.0.3
+gem:web3-eth-utils:1.0.0
+gem:web3-eth-utils:1.0.3
+gem:web3-sign-helper:1.0.0
+
+# ------------------------------------------------------------------------
+# 2026-09 to 10 — MALFEX npm (The Hacker News, SafeDep). Attacker-owned packages,
+# about 40,767 downloads, 37,419 of them function-flag. A planted AGENTS.md
+# tricked an AI agent into installing function-color. Versions from OSV.
+# OSV MAL-2026-17648, 17647, 16385, 16384, 16383, 17320, 17216, 17218, 17330,
+# 17332, 18196. 11 packages, 26 versions.
+# ------------------------------------------------------------------------
+cdn-img-fetch:1.0.0
+cdn-img-fetch:1.0.1
+cdn-img-fetch:1.0.3
+function-color:1.0.0
+function-color:1.7.3
+function-flag:1.7.3
+img-to-native:1.0.0
+img-to-native:1.0.1
+img-to-native:1.0.2
+img-to-native:1.0.3
+imgbundle:1.0.0
+imgbundle:1.0.1
+imgbundle:1.0.2
+imgdecode:1.0.0
+imgdecode:1.0.1
+imgdecode:1.0.2
+imgdecode:1.0.3
+mxdriver:0.0.1
+mxdriver:0.0.2
+native-runner:1.0.0
+native-runner:1.0.1
+native-runner:1.0.2
+native-runner:1.0.3
+runhelper:1.0.0
+tldriver:0.0.1
+tlxbnhd:0.0.1
+
+# ------------------------------------------------------------------------
+# 2026-10-19 to 27 — testmetest npm worm, a Miasma/Shai-Hulud descendant with the
+# token-revocation wiper (SafeDep, JFrog). JFrog found 42 armed repositories
+# across 11 owners. @testsecuiitytestme/cache-helper starts on import, so
+# --ignore-scripts does not protect.
+# Union of JFrog's table and OSV. Sources differ, and a version one of them
+# marks malicious is kept: OSV omits event-bus-lite 0.0.1/0.0.2 and
+# event-emitter 3.0.0/3.0.1, and JFrog lists event-emitter 1.0.4/1.0.5 as
+# benign. OSV alone adds cache-helper 1.0.9 and 1.1.0-1.1.3, native-helper 0.0.2,
+# path-stream-utils 0.0.3/0.0.4 and @testsecuiitytestme 1.0.7. JFrog alone gives
+# npm-publish 1.0.1 and retry-utils 1.0.3. OSV also lists 0.0.0-stage stubs for
+# three packages, which SafeDep and JFrog mark benign: NOT listed.
+# test-brotli and test-brotli2 1.0.0 are armed, unlike the other 1.0.0 decoys.
+# testmgkregme is the earlier cluster package (MAL-2026-16317), removed 10-12.
+# OSV MAL-2026-18177 to 18182, 18185, 18186, 18292, 18329, 18330, 18333, 18358.
+# 16 packages, 46 versions.
+# ------------------------------------------------------------------------
+@iobandamwer/cache-helper:1.0.2
+@iobandamwer/cache-helper:1.0.3
+@iobandamwer/cache-helper:1.0.4
+@iobandamwer/cache-helper:1.0.5
+@iobandamwer/cache-helper:1.0.6
+@iobandamwer/cache-helper:1.0.7
+@iobandamwer/cache-helper:1.0.8
+@iobandamwer/cache-helper:1.0.9
+@iobandamwer/cache-helper:1.1.0
+@iobandamwer/cache-helper:1.1.1
+@iobandamwer/cache-helper:1.1.2
+@iobandamwer/cache-helper:1.1.3
+@iobandamwer/native-helper:0.0.1
+@iobandamwer/native-helper:0.0.2
+@testsecuiitytestme/cache-helper:1.0.1
+@testsecuiitytestme/cache-helper:1.0.2
+@testsecuiitytestme/cache-helper:1.0.3
+@testsecuiitytestme/cache-helper:1.0.4
+@testsecuiitytestme/cache-helper:1.0.5
+@testsecuiitytestme/cache-helper:1.0.6
+@testsecuiitytestme/cache-helper:1.0.7
+data-pipeline-testmetest:2.0.1
+event-bus-lite-testmetest:0.0.1
+event-bus-lite-testmetest:0.0.2
+event-bus-lite-testmetest:0.0.6
+event-emitter-testmetest:1.0.6
+event-emitter-testmetest:1.0.7
+event-emitter-testmetest:3.0.0
+event-emitter-testmetest:3.0.1
+event-emitter-testmetest:4.1.0
+event-emitter-testmetest:5.0.0
+log-rotate-testmetest:1.0.1
+log-sink-testmetest:1.0.1
+net-codec-testmetest:1.0.1
+npm-publish-testmetest:1.0.1
+path-stream-utils-testmetest:0.0.1
+path-stream-utils-testmetest:0.0.2
+path-stream-utils-testmetest:0.0.3
+path-stream-utils-testmetest:0.0.4
+pixel-map-testmetest:0.0.1
+pixel-map-testmetest:0.0.2
+pixel-map-testmetest:0.0.3
+retry-utils-testmetest:1.0.3
+test-brotli-testmetest:1.0.0
+test-brotli2-testmetest:1.0.0
+testmgkregme:1.0.1
+
+# ------------------------------------------------------------------------
+# 2026-10-21 — LiteLLM 1.107.0 (Microsoft, StepSecurity, Datadog, Aikido, Wiz,
+# OX Security). All 7 wheels carry cook.pth, cook.py and sitecustomize.py, so
+# the stealer runs at every Python start. The release workflow was pointed at
+# the lookalike repository Berri-AI/litellm. Clean: 1.107.0rc1/rc2 and 1.106.x.
+# No vendor attributes it to TeamPCP or Shai-Hulud. Not the same as the March
+# compromise (1.82.7, 1.82.8). OSV has no October record yet. 1 package, 1 version.
+# ------------------------------------------------------------------------
+pypi:litellm:1.107.0

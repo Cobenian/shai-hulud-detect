@@ -1,0 +1,4 @@
+# TEST FIXTURE. DO NOT `pip install` this file. Pins known-malicious versions as
+# inert text so the PyPI version check fires. Nothing here runs.
+litellm==1.107.0
+mrmustard==0.7.4

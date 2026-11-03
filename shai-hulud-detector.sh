@@ -29,7 +29,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPROMISED_PACKAGES_FILE="$SCRIPT_DIR/compromised-packages.txt"
 
 # Tool version (surfaced in --json output for downstream consumers)
-SCRIPT_VERSION="3.20.1"
+SCRIPT_VERSION="3.21.0"
 
 # Global temp directory for file-based storage
 TEMP_DIR=""
@@ -127,6 +127,7 @@ create_temp_dir() {
     touch "$TEMP_DIR/durabletask_indicators.txt"
     touch "$TEMP_DIR/hades_miasma_indicators.txt"
     touch "$TEMP_DIR/easy_day_js_indicators.txt"
+    touch "$TEMP_DIR/oct_2026_indicators.txt"
     touch "$TEMP_DIR/keyv_indicators.txt"
     touch "$TEMP_DIR/trapdoor_indicators.txt"
     touch "$TEMP_DIR/laravel_lang_indicators.txt"
@@ -333,6 +334,27 @@ MALICIOUS_HASHLIST=(
     "e077c387b223811064b7bbc5a55a0182fca9bf50894f949ff284d4be87d44b26" # Sept 23, 2026 supplychain.local worm: sckit Go binary (Aikido IOC)
     "d6b3e77c36ee8017c9bf30d1da7218ec0ea843768d313eb8e35845c8a9b38a26" # Sept 23, 2026 supplychain.local worm: sckit Go binary (Aikido IOC)
     "56cd3416d2ec2aa7e7cec2a06010cf0b58eb09c0a5486809df52afeaca8f14be" # Sept 23, 2026 supplychain.local worm: sckit Go binary (Aikido IOC)
+    "7598727f209d717041db37f7dca271d3a7d328a279890e0e1d55375729aeb86d" # Oct 21, 2026 LiteLLM 1.107.0: macosx_10_12_x86_64 wheel (StepSecurity/Wiz IOC)
+    "0aaf7ba346d41ef2f40390436738b001180d5a1c03aa093f121078a9969d9a1a" # Oct 21, 2026 LiteLLM 1.107.0: macosx_11_0_arm64 wheel (StepSecurity/Wiz IOC)
+    "668169d35b87bf51324080390b1b1c5ab12bd335cfe5f1a99e3689abd5e02ae6" # Oct 21, 2026 LiteLLM 1.107.0: manylinux_2_28_aarch64 wheel (StepSecurity/Wiz IOC)
+    "462d0c9f67ca522d9e0e4acd245e90b36ce0d5353604a66bb7c43a1ec4a6fcf7" # Oct 21, 2026 LiteLLM 1.107.0: manylinux_2_28_x86_64 wheel (StepSecurity/Wiz IOC)
+    "c2e32d0ce2548aa662c18bf5001911a79fe5b30cf8357132275add02fdcde054" # Oct 21, 2026 LiteLLM 1.107.0: musllinux_1_2_aarch64 wheel (StepSecurity/Wiz IOC)
+    "1bbce8caa94f01c0aaa0b7ddae51553a8a32e1ce53d96d44fe583272aff7ad00" # Oct 21, 2026 LiteLLM 1.107.0: musllinux_1_2_x86_64 wheel (StepSecurity/Wiz IOC)
+    "12d4ccc5c6f8d35cf4f2cf233b7f3e418e863e657d81ff5f5fc9e210005b9484" # Oct 21, 2026 LiteLLM 1.107.0: win_amd64 wheel (StepSecurity/Wiz IOC)
+    "7f191632e7320705d154b85204f1ae546b543acbd7e8861229b76f5042b92bdb" # Oct 21, 2026 LiteLLM 1.107.0: cook.pth (Unix) (StepSecurity/Wiz IOC)
+    "84dc8c82c0a4a4a62552ef826b49fcc86d1a5c4a5d0f2c06665723f93d129d7d" # Oct 21, 2026 LiteLLM 1.107.0: cook.pth (Windows) (StepSecurity/Wiz IOC)
+    "9dd0a3926f96a37eb86cf1ee2310d9be93139cc4ebef3ef9e2efe9531390be25" # Oct 21, 2026 LiteLLM 1.107.0: cook.py (Unix) (StepSecurity/Wiz IOC)
+    "03ac2a8b752605d1d7710979c17ff18b03dd978203ba23ba97fd8ce3d6f897ea" # Oct 21, 2026 LiteLLM 1.107.0: cook.py (Windows) (StepSecurity/Wiz IOC)
+    "34bef04fe88ac9d0aae0475630b1738681d15b94f233ac8aa46eacf5968305fa" # Oct 21, 2026 LiteLLM 1.107.0: sitecustomize.py (Unix) (StepSecurity/Wiz IOC)
+    "b6122440d0d9cb1eb1ade9933f49214da8c31288de7710c076c2680dfa528465" # Oct 21, 2026 LiteLLM 1.107.0: sitecustomize.py (Windows) (StepSecurity/Wiz IOC)
+    "f0c8b0cde86b98a2869a22fd43ffcf61f1dcca252729e2be291e590e3dc5f49a" # Oct 5, 2026 @subql/common 5.8.3: manifest-cache.js (StepSecurity IOC)
+    "fcbb327e38e61c4fec795e0d0591f52cd1014b813d20a5912104953c3a17c364" # Oct 29, 2026 Cursor marketplace Claude Code extension: 2.1.312 darwin-arm64 VSIX (Cursor/StepSecurity IOC)
+    "3de1722901165769893bef57c72594e9a54459faa23f3091b136b79966edd081" # Oct 29, 2026 Cursor marketplace Claude Code extension: 2.1.312 win32-x64 VSIX (Cursor/StepSecurity IOC)
+    "80402fdcad8799285fd93044976973ca000da7995fb93363f819bb8e4f84ee6c" # Oct 29, 2026 Cursor marketplace Claude Code extension: 2.1.313 darwin-arm64 VSIX (Cursor/StepSecurity IOC)
+    "6786ec90cbd45949695bd7805c9fbb26cfc91bc5fc897de0183d9bcb9cb21731" # Oct 29, 2026 Cursor marketplace Claude Code extension: 2.1.313 win32-x64 VSIX (Cursor/StepSecurity IOC)
+    "ecb58cb29078d9646ad1dcdbe51526f2d9cfea06be5fb2ab183e8ecc3ab6bf15" # Oct 29, 2026 Cursor marketplace Claude Code extension: extension.js (Cursor/StepSecurity IOC)
+    "b99e03c75e19aa59c7011be0020aa671ebd28e8c621afe1a0ddd5be7db2cba0c" # test-cases/oct-2026-attack/hash-target.whl
+    "0de55f3a091b139f4abe0c0272ef8143449efe7eca0f779b5c3fad5d4f360503" # test-cases/oct-2026-attack/fake-env/site-packages/cook.pth
 )
 
 PARALLELISM=4
@@ -1417,7 +1439,9 @@ collect_all_files() {
             -name "Cargo.toml" -o -name "Cargo.lock" -o \
             -name "go.mod" -o -name "go.sum" -o \
             -name "mix.exs" -o -name "mix.lock" -o \
-            -name "Gemfile" -o -name "Gemfile.lock" \
+            -name "Gemfile" -o -name "Gemfile.lock" -o \
+            -name "*.whl" -o -name "*.vsix" -o -name "cook.pth" -o \
+            -name ".napi_cache" -o -name "Dockerfile*" \
         \) -type f 2>/dev/null || true
     } > "$TEMP_DIR/all_files_raw.txt"
 
@@ -3218,6 +3242,108 @@ check_hades_miasma_indicators() {
     # Deduplicate
     if [[ -s "$TEMP_DIR/hades_miasma_indicators.txt" ]]; then
         sort -u "$TEMP_DIR/hades_miasma_indicators.txt" -o "$TEMP_DIR/hades_miasma_indicators.txt"
+    fi
+}
+
+# Function: check_oct_2026_indicators
+# Purpose: Detect the non-package indicators of the October 2026 incidents: LiteLLM
+#          1.107.0, the testmetest npm worm, @subql/common 5.8.3 and the Cursor
+#          marketplace Claude Code extension. Every row is listed by at least two
+#          independent sources.
+#          Matching is deliberately narrow. "litellm.dev" alone would hit Python
+#          attribute access such as litellm.dev_mode, so the attacker domain is only
+#          matched with its URL scheme or defanged. cook.py is not matched by name at
+#          all, and cook.pth only inside site-packages, because both names are
+#          ordinary outside this incident. "svc-telemetry" is a plausible service name,
+#          so it counts only inside authorized_keys. Attacker IPs reported by a single
+#          vendor are left out.
+# Args: $1 = scan_dir, $2 = check_host ("true"/"false")
+# Modifies: $TEMP_DIR/oct_2026_indicators.txt
+check_oct_2026_indicators() {
+    local scan_dir=$1
+    local check_host=${2:-false}
+    print_status "$BLUE" "   Checking for October 2026 IOCs (LiteLLM, testmetest, @subql/common, Cursor extension)..."
+
+    : > "$TEMP_DIR/_oct_2026_search_files.txt"
+    local bucket
+    for bucket in code_files script_files yaml_files package_files; do
+        [[ -s "$TEMP_DIR/$bucket.txt" ]] && cat "$TEMP_DIR/$bucket.txt" >> "$TEMP_DIR/_oct_2026_search_files.txt"
+    done
+    grep -E '/Dockerfile[^/]*$' "$TEMP_DIR/all_files_raw.txt" >> "$TEMP_DIR/_oct_2026_search_files.txt" 2>/dev/null || true
+    sort -u "$TEMP_DIR/_oct_2026_search_files.txt" -o "$TEMP_DIR/_oct_2026_search_files.txt"
+
+    scan_fixed_iocs "$TEMP_DIR/_oct_2026_search_files.txt" "$TEMP_DIR/oct_2026_indicators.txt" \
+        $'://litellm.dev\tLiteLLM 1.107.0 attacker domain (%s)' \
+        $'://www.litellm.dev\tLiteLLM 1.107.0 attacker domain (%s)' \
+        $'litellm[.]dev\tLiteLLM 1.107.0 attacker domain (%s)' \
+        $'letters9813/pythonclient-test\tLiteLLM 1.107.0 C2 dead-drop repository (%s)' \
+        $'XWiA8gZNa7NcX2XRoAEb\tLiteLLM 1.107.0 C2 request token (%s)' \
+        $'.pc_once_72129118c59f5636c0bb\tLiteLLM 1.107.0 run-once marker (%s)' \
+        $'remote_code_loader.lock\tLiteLLM 1.107.0 loader lock file (%s)' \
+        $'PRIVCOLLECT_ACTIVE\tLiteLLM 1.107.0 stealer guard variable (%s)' \
+        $'Berri-AI/litellm\tLiteLLM 1.107.0 lookalike source repository (%s)' \
+        $'berriai/litellm:v1.107.0\tLiteLLM 1.107.0 compromised Docker image (%s)' \
+        $'berriai/litellm-database:v1.107.0\tLiteLLM 1.107.0 compromised Docker image (%s)' \
+        $'berriai/litellm-non_root:v1.107.0\tLiteLLM 1.107.0 compromised Docker image (%s)' \
+        $'litellm/litellm:v1.107.0\tLiteLLM 1.107.0 compromised Docker image (%s)' \
+        $'sha256:1bbcb1443bc962e45f5aad53fe3d2c30600e0379715fb6c664cdd3ac126c339e\tLiteLLM 1.107.0 compromised Docker image digest (%s)' \
+        $'sha256:bd1aeee419ea36da9aa2b657288da4101887be468f020ac63d22ba6ed84a3ea5\tLiteLLM 1.107.0 compromised Docker image digest (%s)' \
+        $'sha256:56b74573eed6e4aafe4b50603dbe7853e0345f188c8e44a09f1098caf1f4bcdf\tLiteLLM 1.107.0 compromised Docker image digest (%s)' \
+        $'aiarmor.website\ttestmetest worm fallback C2 domain (%s)' \
+        $'aiarmor[.]website\ttestmetest worm fallback C2 domain (%s)' \
+        $'msync-3f7a\ttestmetest worm campaign ID (%s)' \
+        $'AutoSyncComplete:\ttestmetest worm exfiltration commit prefix (%s)' \
+        $'CementBeetleSteeple\ttestmetest worm operator GitHub account (%s)' \
+        $'node .github/init.js\ttestmetest worm repository loader (%s)' \
+        $'net-health-checker.sh\ttestmetest worm dead-man\'s-switch persistence (%s)' \
+        $'.fontconfig_state\ttestmetest worm persistence state file (%s)' \
+        $'ci-artifacts.dev\t@subql/common 5.8.3 C2 domain (%s)' \
+        $'ci-artifacts[.]dev\t@subql/common 5.8.3 C2 domain (%s)' \
+        $'MANIFEST_CACHE_SEED\t@subql/common 5.8.3 payload seed array (%s)' \
+        $'tmp.ts018051808.lock\t@subql/common 5.8.3 worker lock file (%s)' \
+        $'134.209.82.225\tCursor marketplace Claude Code extension C2 address (%s)' \
+        $'134[.]209[.]82[.]225\tCursor marketplace Claude Code extension C2 address (%s)'
+
+    # By filename: the startup hook and the worm's encrypted payload container.
+    local file
+    while IFS= read -r file; do
+        [[ -n "$file" ]] && echo "$file:LiteLLM 1.107.0 startup hook (cook.pth in site-packages)" >> "$TEMP_DIR/oct_2026_indicators.txt"
+    done < <(grep -E '/site-packages/cook\.pth$' "$TEMP_DIR/all_files_raw.txt" 2>/dev/null || true)
+    while IFS= read -r file; do
+        [[ -n "$file" ]] && echo "$file:testmetest worm encrypted payload container (.napi_cache)" >> "$TEMP_DIR/oct_2026_indicators.txt"
+    done < <(grep -E '/\.napi_cache$' "$TEMP_DIR/all_files_raw.txt" 2>/dev/null || true)
+
+    # Host persistence, opt-in. None of these live in a project tree.
+    if [[ "$check_host" == "true" ]]; then
+        local host_path
+        for host_path in \
+            "$HOME/.config/.smt" "$HOME/.config/.smtk" \
+            "$HOME/Library/LaunchAgents/com.apple.sysmond.plist"; do
+            [[ -e "$host_path" ]] && echo "$host_path:Cursor marketplace Claude Code extension persistence artifact" >> "$TEMP_DIR/oct_2026_indicators.txt"
+        done
+        for host_path in \
+            "$HOME/.local/bin/net-health-checker.sh" "/var/tmp/.fontconfig_state" \
+            "$HOME/Library/LaunchAgents/com.user.net-health-checker.plist" \
+            "$HOME/Library/LaunchAgents/com.user.pkg-runtime.plist"; do
+            [[ -e "$host_path" ]] && echo "$host_path:testmetest worm persistence artifact (remove BEFORE rotating tokens)" >> "$TEMP_DIR/oct_2026_indicators.txt"
+        done
+        for host_path in "/tmp/.pc_once_72129118c59f5636c0bb" "/tmp/remote_code_loader.lock"; do
+            [[ -e "$host_path" ]] && echo "$host_path:LiteLLM 1.107.0 runtime marker" >> "$TEMP_DIR/oct_2026_indicators.txt"
+        done
+        if [[ -f "$HOME/.ssh/authorized_keys" ]] && \
+           grep -qE 'svc-telemetry|AAAAC3NzaC1lZDI1NTE5AAAAIDdvylCEJ/k2TpezcTfedrkHyFSK9IZ3vmP6vhY4Ss0P' "$HOME/.ssh/authorized_keys" 2>/dev/null; then
+            echo "$HOME/.ssh/authorized_keys:Cursor marketplace Claude Code extension attacker SSH key (svc-telemetry)" >> "$TEMP_DIR/oct_2026_indicators.txt"
+        fi
+        for host_path in "$HOME"/.cursor/extensions/anthropic.claude-code-2.1.31[23]*; do
+            [[ -e "$host_path" ]] && echo "$host_path:Cursor marketplace Claude Code extension, malicious version if from before Oct 29 13:35 PT" >> "$TEMP_DIR/oct_2026_indicators.txt"
+        done
+    fi
+
+    rm -f "$TEMP_DIR/_oct_2026_search_files.txt"
+
+    # Deduplicate
+    if [[ -s "$TEMP_DIR/oct_2026_indicators.txt" ]]; then
+        sort -u "$TEMP_DIR/oct_2026_indicators.txt" -o "$TEMP_DIR/oct_2026_indicators.txt"
     fi
 }
 
@@ -5619,6 +5745,7 @@ write_log_file() {
         [[ -s "$TEMP_DIR/durabletask_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/durabletask_indicators.txt" || true
         [[ -s "$TEMP_DIR/hades_miasma_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/hades_miasma_indicators.txt" || true
         [[ -s "$TEMP_DIR/easy_day_js_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/easy_day_js_indicators.txt" || true
+        [[ -s "$TEMP_DIR/oct_2026_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/oct_2026_indicators.txt" || true
         [[ -s "$TEMP_DIR/keyv_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/keyv_indicators.txt" || true
         [[ -s "$TEMP_DIR/trapdoor_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/trapdoor_indicators.txt" || true
         [[ -s "$TEMP_DIR/laravel_lang_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/laravel_lang_indicators.txt" || true
@@ -5843,6 +5970,7 @@ write_json_file() {
         _jf_pathmsg HIGH "$TEMP_DIR/durabletask_indicators.txt"
         _jf_pathmsg HIGH "$TEMP_DIR/hades_miasma_indicators.txt"
         _jf_pathmsg HIGH "$TEMP_DIR/easy_day_js_indicators.txt"
+        _jf_pathmsg HIGH "$TEMP_DIR/oct_2026_indicators.txt"
         _jf_pathmsg HIGH "$TEMP_DIR/keyv_indicators.txt"
         _jf_pathmsg HIGH "$TEMP_DIR/trapdoor_indicators.txt"
         _jf_pathmsg HIGH "$TEMP_DIR/laravel_lang_indicators.txt"
@@ -6191,6 +6319,20 @@ generate_report() {
         print_status "$RED" "                         and _index.js loader, rotate ALL credentials (npm/PyPI/GitHub"
         print_status "$RED" "                         tokens, AWS/GCP/Azure/Kubernetes/Vault, SSH keys), and audit"
         print_status "$RED" "                         ~/.local/share/updater/ and .github/workflows/ for persistence."
+    fi
+
+    if [[ -s "$TEMP_DIR/oct_2026_indicators.txt" ]]; then
+        print_status "$RED" "🚨 HIGH RISK: October 2026 supply-chain indicators detected:"
+        while IFS= read -r line; do
+            local file="${line%%:*}"
+            local reason="${line#*:}"
+            echo "   - $file"
+            echo "     Reason: $reason"
+            show_file_preview "$file" "HIGH RISK: October 2026 campaign indicator"
+            high_risk=$((high_risk+1))
+        done < "$TEMP_DIR/oct_2026_indicators.txt"
+        print_status "$RED" "    📋 IMMEDIATE ACTION: Treat the host as compromised and rebuild it. If net-health-checker is"
+        print_status "$RED" "                         present, remove it BEFORE revoking any GitHub token: it wipes on revocation."
     fi
 
     if [[ -s "$TEMP_DIR/easy_day_js_indicators.txt" ]]; then
@@ -7748,6 +7890,7 @@ main() {
     check_durabletask_indicators "$scan_dir"
     check_hades_miasma_indicators "$scan_dir"
     check_easy_day_js_indicators "$scan_dir"
+    check_oct_2026_indicators "$scan_dir" "$check_host"
     check_keyv_indicators "$scan_dir"
     check_trapdoor_indicators "$scan_dir"
     check_laravel_lang_indicators "$scan_dir"

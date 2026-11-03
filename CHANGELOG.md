@@ -5,6 +5,37 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.21.0] - 2026-11-02
+
+### Added
+- **133 package versions from a news sweep covering 2026-10-08 to 2026-11-02, plus older misses found along the way.** Each is confirmed from OSV or a vendor table read directly, cited in its `compromised-packages.txt` block. The list goes from 5,791 to **5,924** entries.
+  - **LiteLLM 1.107.0** (2026-10-21, PyPI, 1 version): all 7 wheels carry `cook.pth`, `cook.py` and `sitecustomize.py`, so the stealer runs at every Python start. Separate from the March 1.82.7/1.82.8 compromise. StepSecurity, Datadog, Aikido and Wiz agree on the hashes. OSV has no October record yet.
+  - **testmetest npm worm** (2026-10-19 to 27, 16 packages, 46 versions): a Miasma/Shai-Hulud descendant with the token-revocation wiper. Union of JFrog's table and OSV; the block comment records where they differ. `test-brotli*` 1.0.0 is armed even though 1.0.0 is a decoy elsewhere in the campaign.
+  - **`@subql/common@5.8.3`** (2026-10-05): hijacked release workflow. The `5.8.3-onf-rt1` canary is harmless and not listed.
+  - **MALFEX** (2026-09 to 10, 11 packages, 26 versions): attacker-owned npm packages.
+  - **reqthrottle RubyGems campaign** (2026-10-05, 42 gems, 53 versions): the first per-version `gem:` entries.
+  - **Rust crates** (2026-08-20, 5 crates, 5 versions): `arrayref`, `internment`, `append-only-vec`, `proc-macro1`, `proc-macro-en`; the first per-version `crates:` entries.
+  - **`mrmustard@0.7.4`** (2026-07-23, PyPI).
+- **`check_oct_2026_indicators`.** Every row is listed by at least two independent sources:
+  - LiteLLM: attacker domain, dead-drop repository, C2 token, run-once and lock markers, guard variable, lookalike repository, Docker tags and digests, and `cook.pth` in `site-packages`.
+  - testmetest: C2 domain, campaign ID, commit prefix, operator account, repository loader, persistence names and `.napi_cache`.
+  - `@subql/common`: C2 domain, seed array and lock file.
+  - Cursor marketplace Claude Code extension: C2 address.
+  - `--check-host` also looks for the extension's SSH key and persistence files, its install directory under `~/.cursor/extensions`, the testmetest persistence files and the LiteLLM runtime markers.
+- **`MALICIOUS_HASHLIST`: 19 SHA-256s**: 13 LiteLLM, 1 `@subql/common`, 5 Cursor extension. Two more entries are hashes of inert fixture files.
+- **File collection**: `*.whl`, `*.vsix`, `cook.pth`, `.napi_cache` and `Dockerfile*` are now collected. Hash IoCs only reach collected files, so the wheel and VSIX hashes would otherwise never match. `.pth` is matched by exact name only, because `*.pth` is also a common model checkpoint extension.
+- **Fixtures `oct-2026-attack` / `oct-2026-clean`**: inert pins, strings and placeholder text. The clean fixture pins `litellm.dev_mode`, `import cook` and `svc-telemetry` as false-positive guards.
+
+### Changed
+- **`shai-hulud-detector.sh`**: `SCRIPT_VERSION` 3.20.1 to 3.21.0.
+- **`README.md`**: counts, badges and six new waves-table rows.
+- **Test suite**: 303 to **335** checks.
+
+### Notes
+- The 3.19.3 note that no campaign newer than August 4 had been disclosed was accurate through 2026-08-15, but later sweeps missed the Aug 20 crates incident, the July `mrmustard` compromise and `@subql/common`. They are added here.
+- Not added: `@dforge-core/dforge-mcp@0.2.21`. Only secondary coverage names the version, and neither CloudSEK's report nor OSV confirms it.
+- Limits: Docker's floating tags (`latest`, `main-latest`, `main-stable`) can't be matched as strings, only the digests. `--check-host` reports a 2.1.312 or 2.1.313 Cursor extension folder by version, so check it against the time window. Wiz's `keyv-packages.csv` is unchanged since 2026-08-06.
+
 ## [3.20.1] - 2026-11-02
 
 ### Added

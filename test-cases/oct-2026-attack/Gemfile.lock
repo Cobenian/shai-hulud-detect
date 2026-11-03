@@ -1,0 +1,12 @@
+GEM
+  remote: https://rubygems.org/
+  specs:
+    bitcoin-rpc-lite (1.0.3)
+    etheremu.rb (1.0.0)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  bitcoin-rpc-lite
+  etheremu.rb

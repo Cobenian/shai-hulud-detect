@@ -1,0 +1,10 @@
+{
+  "name": "oct-2026-clean-test",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Clean counterpart: targeted names at versions not on the list.",
+  "dependencies": {
+    "@subql/common": "5.8.2",
+    "data-pipeline-testmetest": "2.0.0"
+  }
+}

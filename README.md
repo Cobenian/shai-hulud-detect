@@ -3,15 +3,15 @@
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Shell](https://img.shields.io/badge/shell-Bash%205.0%2B-blue)](#requirements)
 [![Status](https://img.shields.io/badge/status-Active-success)](../../)
-[![Tests](https://img.shields.io/badge/tests-303%20passing-brightgreen)](#testing)
-[![Packages](https://img.shields.io/badge/compromised%20packages-5%2C791-red)](compromised-packages.txt)
+[![Tests](https://img.shields.io/badge/tests-335%20passing-brightgreen)](#testing)
+[![Packages](https://img.shields.io/badge/compromised%20packages-5%2C924-red)](compromised-packages.txt)
 [![Type](https://img.shields.io/badge/type-Security%20Tool-red)](#what-it-catches)
 [![Contributions](https://img.shields.io/badge/contributions-Welcome-orange)](#contributing)
 [![Last Commit](https://img.shields.io/github/last-commit/Cobenian/shai-hulud-detect)](https://github.com/Cobenian/shai-hulud-detect/commits/main)
 
 <img src="shai_hulu_detector.jpg" alt="sshd" width="80%" />
 
-A Bash script that scans a project — or many projects at once — for known traces of the September 2025 → October 2026 npm, PyPI, Composer, Crates, Go, Hex, and RubyGems supply-chain attacks. Cross-checks 5,791 confirmed bad package versions and a library of content-pattern IoCs (file hashes, C2 domains, dead-man's-switch artifacts, wipe-threat strings, AI-assistant config droppers, etc.).
+A Bash script that scans a project — or many projects at once — for known traces of the September 2025 → October 2026 npm, PyPI, Composer, Crates, Go, Hex, and RubyGems supply-chain attacks. Cross-checks 5,924 confirmed bad package versions and a library of content-pattern IoCs (file hashes, C2 domains, dead-man's-switch artifacts, wipe-threat strings, AI-assistant config droppers, etc.).
 
 ## Quick Start
 
@@ -36,7 +36,7 @@ chmod +x shai-hulud-detector.sh
 
 The detector looks for two kinds of evidence on disk:
 
-1. **Compromised package versions** — every `package.json`, lockfile, `pyproject.toml`, `requirements.txt`, `Pipfile`, `poetry.lock`, `uv.lock`, etc. is parsed and the resolved versions are checked against the 5,791-entry list in [`compromised-packages.txt`](compromised-packages.txt). Transitive deps inside `node_modules/` are checked too, not skipped.
+1. **Compromised package versions** — every `package.json`, lockfile, `pyproject.toml`, `requirements.txt`, `Pipfile`, `poetry.lock`, `uv.lock`, etc. is parsed and the resolved versions are checked against the 5,924-entry list in [`compromised-packages.txt`](compromised-packages.txt). Transitive deps inside `node_modules/` are checked too, not skipped.
 2. **Content-pattern IoCs** — known-malicious file hashes, payload filenames, C2 domains, dead-man's-switch artifacts, marker repo names, malicious workflow files, forged orphan-commit references, suspicious lifecycle hooks, and threat-actor publisher fingerprints. These don't depend on the package list and fire even if the bad package has been uninstalled but the dropper traces remain.
 
 | Wave | Date | Scope |
@@ -71,6 +71,12 @@ The detector looks for two kinds of evidence on disk:
 | Mini Shai-Hulud resurfacing | 2026-09-07 | 4 npm packages / 4 versions (`blueai-cli`, `bmc-i18n-extract-cli`, `bmc-translate-utils`, `feishu-docx-mcp`), all published by one account within an hour; the byte-identical May 19 `@antv` payload (`index.js`, hash in `MALICIOUS_HASHLIST`) via `"preinstall": "bun run index.js"`, 111 days after it was last seen |
 | "supplychain.local" Go-binary worm | 2026-09-23 | A new family, not Shai-Hulud code: `@memtensor/memos-cloud-openclaw-plugin@0.1.21/0.1.23/0.1.25` (the even versions in between are clean maintainer republishes) and `pypi:memoryos@2.0.34`. A multiplatform Go `sckit` binary (6 hashes in `MALICIOUS_HASHLIST`) steals tokens and republishes through npm, PyPI and a planted GitHub Actions workflow. It runs on invocation, not at install |
 | tensorlake (ChainDrop family) | 2026-10-08 | `tensorlake@0.5.144`, published by the project's own release workflow **with provenance** after an attacker commit to `main`; `"preinstall": "node lib/setup.mjs"` → Bun → `lib/Math_Symbol.js` (both hashed). Same payload family as the keyv wave but **new infrastructure**: C2 `iseekaigogo[.]com`, rotation contract `0xb614155F…`, operator wallet `0x779f83aE…`, and the `WORMTAG` infection-tag variable, all matched |
+| reqthrottle RubyGems | 2026-10-05 | 42 attacker-owned gems / 53 versions, mostly crypto-themed names and typosquats; reverse shell or downloader in `extconf.rb` that stays quiet on CI. First per-version `gem:` entries |
+| `@subql/common` | 2026-10-05 | `@subql/common@5.8.3`: release workflow hijacked and shipped through trusted publishing. Runs on install **and** on import, and `~5.8.2` ranges elsewhere in the @subql scope let it resolve transitively |
+| testmetest worm | 2026-10-19 | 16 npm packages / 46 versions plus 42 armed GitHub repositories. A Miasma/Shai-Hulud descendant with the **token-revocation wiper**: run `--check-host` and remove `net-health-checker` before rotating tokens. One package starts on import, so `--ignore-scripts` does not protect |
+| LiteLLM 1.107.0 | 2026-10-21 | `litellm==1.107.0` on PyPI (about 49,000 downloads) and the `v1.107.0`, `latest`, `main-latest` and `main-stable` Docker tags. `cook.pth` and `sitecustomize.py` run the stealer at **every Python start**. Separate from the March 1.82.7/1.82.8 compromise. Floating tags can't be matched, so check digests |
+| Cursor marketplace Claude Code extension | 2026-10-29 | Modified `Anthropic.claude-code` 2.1.312 and 2.1.313 for macOS and Windows on Cursor's marketplace only, up to 5,000 users; plants an SSH key labelled `svc-telemetry`. Official Anthropic channels and the VS Code Marketplace were unaffected. Detected by hash and `--check-host`, not the package list |
+| Older misses, added 2026-11-02 | 2026-07 to 10 | `mrmustard@0.7.4` (PyPI, July 23); `arrayref@0.3.10`, `internment@0.8.7`, `append-only-vec@0.1.9`, `proc-macro1`, `proc-macro-en` (crates.io, Aug 20, first per-version `crates:` entries); MALFEX, 11 attacker-owned npm packages / 26 versions (`function-flag`, `function-color`, …) |
 
 For per-wave IoC inventories, payload hashes, source advisories, and version-by-version lists, see [`CHANGELOG.md`](CHANGELOG.md).
 
@@ -256,7 +262,7 @@ To add new packages from a fresh advisory: append entries in that format, run `.
 ## Testing
 
 ```bash
-./run-tests.sh                          # full suite, 303 checks
+./run-tests.sh                          # full suite, 335 checks
 ./shai-hulud-detector.sh test-cases/<fixture-name>   # run one fixture manually
 ```
 
