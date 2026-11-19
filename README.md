@@ -3,7 +3,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Shell](https://img.shields.io/badge/shell-Bash%205.0%2B-blue)](#requirements)
 [![Status](https://img.shields.io/badge/status-Active-success)](../../)
-[![Tests](https://img.shields.io/badge/tests-340%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-346%20passing-brightgreen)](#testing)
 [![Packages](https://img.shields.io/badge/compromised%20packages-5%2C924-red)](compromised-packages.txt)
 [![Type](https://img.shields.io/badge/type-Security%20Tool-red)](#what-it-catches)
 [![Contributions](https://img.shields.io/badge/contributions-Welcome-orange)](#contributing)
@@ -191,6 +191,7 @@ For CI gates and tooling that consume findings as data (rather than parsing cons
 |---|---|
 | `--json FILE` | Write findings as structured JSON (severity/file/line/message + summary). Requires `jq`. |
 | `--check-semver-ranges` | Flag `^`/`~` ranges that could resolve to compromised versions (informational, LOW risk). |
+| `--plain` | Plain text output: no colour codes and no icons, for CI logs and terminals that show them as garbage. Setting `NO_COLOR` to any non-empty value ([no-color.org](https://no-color.org)) does the same. Exit codes and `--json` output are unchanged. |
 | `--ecosystem LIST` | Restrict checks to `npm`, `pypi`, `all`, or a comma-separated list. Default: auto-detect. |
 | `--parallelism N` | Threads for parallelisable steps. Defaults to your CPU count. |
 | `--use-git-grep` / `--use-ripgrep` / `--use-grep` | Force a specific grep tool. Default: auto-select fastest available. |
@@ -262,7 +263,7 @@ To add new packages from a fresh advisory: append entries in that format, run `.
 ## Testing
 
 ```bash
-./run-tests.sh                          # full suite, 340 checks
+./run-tests.sh                          # full suite, 346 checks
 ./shai-hulud-detector.sh test-cases/<fixture-name>   # run one fixture manually
 ```
 

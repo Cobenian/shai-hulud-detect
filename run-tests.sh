@@ -663,6 +663,87 @@ fi
 rm -rf "$OCTHOST_TMP"
 
 # ------------------------------------------------------------
+#  Plain output (--plain / NO_COLOR): no colour codes, no icons,
+#  same findings text, same exit code
+# ------------------------------------------------------------
+PLAIN_FIXTURE="$SCRIPT_DIR/test-cases/keyv-shai-hulud-attack"
+PLAIN_NORMAL_RC=0
+"$BASH_CMD" "$DETECTOR" "$PLAIN_FIXTURE" >/dev/null 2>&1 || PLAIN_NORMAL_RC=$?
+PLAIN_RC=0
+PLAIN_OUT=$("$BASH_CMD" "$DETECTOR" --plain "$PLAIN_FIXTURE" 2>&1) || PLAIN_RC=$?
+NOCOLOR_RC=0
+NOCOLOR_OUT=$(NO_COLOR=1 "$BASH_CMD" "$DETECTOR" "$PLAIN_FIXTURE" 2>&1) || NOCOLOR_RC=$?
+
+# True when the text holds an escape byte or any report icon (including the
+# U+FE0F variation selector that follows some of them).
+plain_has_decoration() {
+    LC_ALL=C grep -q $'\x1b' <<< "$1" && return 0
+    LC_ALL=C grep -qF -e '🚨' -e '⚠' -e '✅' -e 'ℹ' -e '📋' -e '🟡' -e '🔴' -e '🛑' \
+        -e '📦' -e '📄' -e '📁' -e '⏭' -e '🎉' -e '❌' -e $'\xef\xb8\x8f' <<< "$1"
+}
+
+((total++))
+if plain_has_decoration "$PLAIN_OUT"; then
+    echo -e "${RED}FAIL${NC}: --plain output still contains colour codes or icons"
+    ((failed++))
+else
+    echo -e "${GREEN}PASS${NC}: --plain output has no colour codes or icons"
+    ((passed++))
+fi
+
+((total++))
+if grep -qF "HIGH RISK" <<< "$PLAIN_OUT" && grep -qF "keyv@6.0.0" <<< "$PLAIN_OUT"; then
+    echo -e "${GREEN}PASS${NC}: --plain output keeps the findings text"
+    ((passed++))
+else
+    echo -e "${RED}FAIL${NC}: --plain output lost findings text (HIGH RISK / keyv@6.0.0)"
+    ((failed++))
+fi
+
+((total++))
+if [[ "$PLAIN_RC" -eq "$PLAIN_NORMAL_RC" && "$PLAIN_RC" -eq 1 ]]; then
+    echo -e "${GREEN}PASS${NC}: --plain keeps the exit code (1)"
+    ((passed++))
+else
+    echo -e "${RED}FAIL${NC}: --plain changed the exit code (normal=$PLAIN_NORMAL_RC, plain=$PLAIN_RC)"
+    ((failed++))
+fi
+
+((total++))
+if [[ "$NOCOLOR_RC" -eq "$PLAIN_NORMAL_RC" ]] && ! plain_has_decoration "$NOCOLOR_OUT" \
+    && grep -qF "keyv@6.0.0" <<< "$NOCOLOR_OUT"; then
+    echo -e "${GREEN}PASS${NC}: NO_COLOR=1 behaves like --plain"
+    ((passed++))
+else
+    echo -e "${RED}FAIL${NC}: NO_COLOR=1 did not behave like --plain (rc=$NOCOLOR_RC)"
+    ((failed++))
+fi
+
+# NO_COLOR set but empty must not turn plain mode on (no-color.org: non-empty only).
+((total++))
+NOCOLOR_EMPTY_OUT=$(NO_COLOR= "$BASH_CMD" "$DETECTOR" "$PLAIN_FIXTURE" 2>&1) || true
+if plain_has_decoration "$NOCOLOR_EMPTY_OUT"; then
+    echo -e "${GREEN}PASS${NC}: an empty NO_COLOR leaves normal output alone"
+    ((passed++))
+else
+    echo -e "${RED}FAIL${NC}: an empty NO_COLOR turned plain mode on"
+    ((failed++))
+fi
+
+# Read from stdin (curl | bash, bash -s) there is no file to re-run, so plain mode must
+# fall back to normal output instead of failing the scan, and keep the exit code.
+((total++))
+PLAIN_STDIN_RC=0
+PLAIN_STDIN_ERR=$("$BASH_CMD" -s -- --plain "$PLAIN_FIXTURE" < "$DETECTOR" 2>&1 >/dev/null) || PLAIN_STDIN_RC=$?
+if [[ "$PLAIN_STDIN_RC" -eq "$PLAIN_NORMAL_RC" ]] && grep -qF "needs the script run from a file" <<< "$PLAIN_STDIN_ERR"; then
+    echo -e "${GREEN}PASS${NC}: --plain from stdin falls back to normal output with a warning (exit $PLAIN_STDIN_RC)"
+    ((passed++))
+else
+    echo -e "${RED}FAIL${NC}: --plain from stdin did not fall back cleanly (rc=$PLAIN_STDIN_RC, normal=$PLAIN_NORMAL_RC)"
+    ((failed++))
+fi
+
+# ------------------------------------------------------------
 #  Go ecosystem support — go.mod / go.sum parsing + matching
 # ------------------------------------------------------------
 GO_OUT=$("$BASH_CMD" "$DETECTOR" "$SCRIPT_DIR/test-cases/go-attack" 2>&1)
