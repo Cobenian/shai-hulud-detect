@@ -5,6 +5,20 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.22.0] - 2026-11-19
+
+### Added
+- **Plain output mode: `--plain`, or `NO_COLOR` set to any non-empty value** ([no-color.org](https://no-color.org)). It removes colour codes and the report icons, for CI log viewers and terminals that render them as garbage. Normal output is unchanged, and plain mode is opt-in.
+  - Built as one filter, `plain_output_filter`, rather than a plain variant of every report line. The script re-runs itself once with stdout and stderr each piped through it. Both are real pipelines, so the filtered output is complete when the scan exits, and the exit code (0/1/2/3) passes through unchanged. The filter is `awk` and flushes every line, so a CI log streams as the scan runs instead of arriving in blocks; `sed` would buffer.
+  - Re-running needs the script as a file. When it is read from stdin (`curl ... | bash`, `bash -s`), plain mode falls back to normal output instead of failing the scan, and an explicit `--plain` prints a warning. A global `NO_COLOR` is ignored silently there.
+  - An icon is removed together with its emoji variation selector and the spaces after it, so `🚨 HIGH RISK:` becomes `HIGH RISK:`. The filter also removes the literal `\033[...m` text that a few argument-error messages print, because they use `echo` without `-e`.
+  - `--bulk` applies it to the console, the per-project console logs and the aggregate Markdown report. Every icon in the report sits before a text label, so nothing is lost.
+  - `--json` and `--save-log` files are unaffected, since neither contains colour codes or icons.
+
+### Changed
+- **`shai-hulud-detector.sh`**: `SCRIPT_VERSION` 3.21.1 to 3.22.0.
+- **Test suite**: 340 to **346** checks. The new checks cover no colour codes or icons with `--plain`, findings text kept, exit code kept, `NO_COLOR=1` behaving the same, an empty `NO_COLOR` leaving output alone, and the stdin fallback.
+
 ## [3.21.1] - 2026-11-19
 
 Fixes for the findings of a code review of 3.20.0 through 3.21.0. No IoCs were added or removed.

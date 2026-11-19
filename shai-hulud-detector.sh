@@ -23,13 +23,68 @@ set -eo pipefail
 # Script directory for locating companion files (compromised-packages.txt)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Function: plain_output_filter
+# Purpose: Strip colour codes and report icons from a text stream (--plain / NO_COLOR)
+# Args: None (stdin to stdout)
+# Modifies: None
+# Returns: Filtered text. Removes ANSI escape sequences (colours, erase-line), the
+#          literal "\033[...m" text some error messages print, and each report icon
+#          together with its emoji variation selector and the spaces after it, so
+#          "🚨 HIGH RISK:" becomes "HIGH RISK:". Everything else passes unchanged.
+#          LC_ALL=C makes awk match the icons byte for byte on any locale. awk, not
+#          sed, so each line is flushed as it arrives: sed block-buffers into a file
+#          or pipe, which would hold a CI log back and lose the tail if the job is
+#          killed.
+plain_output_filter() {
+    LC_ALL=C awk '{
+        gsub(/\033\[[0-9;?]*[A-Za-z]/, "")
+        gsub(/\\033\[[0-9;]*m/, "")
+        gsub(/(🚨|⚠|✅|ℹ|📋|🟡|🔴|🛑|📦|📄|📁|⏭|🎉|❌)(️)? */, "")
+        print
+        fflush()
+    }'
+}
+
+# Plain output: --plain, or NO_COLOR set to any non-empty value (https://no-color.org).
+# Rather than give every report line a plain variant, the script re-runs itself once
+# with stdout and stderr each piped through plain_output_filter. Both streams are real
+# pipelines, not process substitutions, so all filtered output has been written when
+# this process exits, and pipefail passes the scan's exit code (0/1/2/3) through
+# unchanged. _SHAI_HULUD_PLAIN marks the filtered run, so it does not re-run again;
+# --bulk per-project scans inherit it and their console logs are filtered by the parent.
+# Re-running needs the script as a file: when it is read from stdin (curl | bash,
+# bash -s) there is nothing to re-run, so output stays as normal rather than the scan
+# failing. A global NO_COLOR is honoured silently where possible; an explicit --plain
+# that cannot be honoured says so.
+_plain_requested=false
+_plain_explicit=false
+[[ -n "${NO_COLOR:-}" ]] && _plain_requested=true
+for _plain_arg in "$@"; do
+    [[ "$_plain_arg" == "--plain" ]] && _plain_requested=true && _plain_explicit=true
+done
+if [[ "$_plain_requested" == "true" && -z "${_SHAI_HULUD_PLAIN:-}" && ! -f "${BASH_SOURCE[0]:-}" ]]; then
+    _plain_requested=false
+    [[ "$_plain_explicit" == "true" ]] && \
+        echo "Warning: --plain needs the script run from a file; output is not filtered." >&2
+fi
+if [[ "$_plain_requested" == "true" && -z "${_SHAI_HULUD_PLAIN:-}" ]]; then
+    export _SHAI_HULUD_PLAIN=1
+    _plain_rc=0
+    { { "${BASH:-bash}" "${BASH_SOURCE[0]}" "$@" 3>&- | plain_output_filter; } 3>&1 1>&2 2>&3 \
+        | plain_output_filter; } 3>&1 1>&2 2>&3 || _plain_rc=$?
+    exit "$_plain_rc"
+fi
+PLAIN_OUTPUT=false
+[[ -n "${_SHAI_HULUD_PLAIN:-}" ]] && PLAIN_OUTPUT=true
+unset _plain_requested _plain_explicit _plain_arg
+
 # Resolved compromised-packages list path. Defaults to the bundled file; the
 # SHAI_HULUD_PACKAGES_FILE override (applied in load_compromised_packages) updates
 # this so every per-ecosystem checker reads the same list.
 COMPROMISED_PACKAGES_FILE="$SCRIPT_DIR/compromised-packages.txt"
 
 # Tool version (surfaced in --json output for downstream consumers)
-SCRIPT_VERSION="3.21.1"
+SCRIPT_VERSION="3.22.0"
 
 # Global temp directory for file-based storage
 TEMP_DIR=""
@@ -903,6 +958,9 @@ usage() {
     echo "  --json FILE        Write findings as structured JSON to FILE (requires jq)."
     echo "                     Schema: {schema_version,tool,tool_version,generated_at,scan_path,"
     echo "                     summary:{high,medium,low},risk_level,findings:[{severity,file,message}]}"
+    echo "  --plain            Plain text output: no colour codes and no icons, for CI logs and"
+    echo "                     terminals that render them as garbage. Setting NO_COLOR to any"
+    echo "                     non-empty value does the same. Exit codes are unchanged."
     echo ""
     echo "BULK MODE (scan many projects in one run):"
     echo "  --bulk             Treat the positional argument(s) as PARENT directories and scan"
@@ -7642,7 +7700,12 @@ run_bulk_scan() {
         rc=0
         "$self_bash" "$self_script" "${child_flags[@]}" --save-log "$repo_log" "$t" > "$raw_tmp" 2>&1 || rc=$?
         # Strip ANSI colour codes so the saved console log is plain text.
-        sed $'s/\x1b[^m]*m//g' "$raw_tmp" > "$console_log" 2>/dev/null || cp "$raw_tmp" "$console_log" 2>/dev/null || true
+        # In plain mode, the icons go too, using the same filter as the console.
+        if [[ "$PLAIN_OUTPUT" == "true" ]]; then
+            plain_output_filter < "$raw_tmp" > "$console_log" 2>/dev/null || cp "$raw_tmp" "$console_log" 2>/dev/null || true
+        else
+            sed $'s/\x1b[^m]*m//g' "$raw_tmp" > "$console_log" 2>/dev/null || cp "$raw_tmp" "$console_log" 2>/dev/null || true
+        fi
 
         h=$(_bulk_count_section "$repo_log" "HIGH")
         m=$(_bulk_count_section "$repo_log" "MEDIUM")
@@ -7685,6 +7748,11 @@ run_bulk_scan() {
     print_status "$GREEN" "All scans complete — writing aggregate report..."
     _bulk_write_report "$report" "$rows_file" "$skipped_file" "$unreadable_file" "$resolved_roots" "$paranoid_mode" "$self_script" \
         "$n_total" "$n_high" "$n_error" "$n_medium" "$n_low" "$n_clean" "$n_skipped" "${child_flags[@]}"
+    # Plain mode covers the aggregate report too. Every icon in it sits before a text
+    # label, so removing the icons loses no information.
+    if [[ "$PLAIN_OUTPUT" == "true" && -f "$report" ]]; then
+        plain_output_filter < "$report" > "$report.plain" && mv "$report.plain" "$report" || rm -f "$report.plain"
+    fi
 
     echo
     print_status "$BLUE"  "============================================================"
@@ -7765,6 +7833,10 @@ main() {
                 ;;
             --check-semver-ranges)
                 CHECK_SEMVER_RANGES=true
+                ;;
+            --plain)
+                # Handled at startup: the script has already re-run itself through
+                # plain_output_filter by the time arguments are parsed here.
                 ;;
             --help|-h)
                 usage
