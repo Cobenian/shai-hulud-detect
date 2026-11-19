@@ -33,7 +33,7 @@ Test the fix:
 ./shai-hulud-detector.sh test-cases/semver-wildcards/
 
 # Run comprehensive unit tests
-cd test-cases/semver-wildcards && ./test_semver_wildcards.sh
+cd test-cases/semver-wildcards && bash test_semver_wildcards.sh
 ```
 
 Both should complete without syntax errors and all unit tests should pass.
