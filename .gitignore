@@ -4,6 +4,7 @@ target
 .claude
 scratch
 *.plan
+CLAUDE.md
 
 # Output of `shai-hulud-detector.sh --bulk` (per-project logs + aggregate report).
 # The default --bulk-output directory is ./shai-hulud-bulk-report-<timestamp>/.

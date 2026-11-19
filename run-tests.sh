@@ -584,14 +584,15 @@ for oct_check in \
     "LiteLLM Docker tag in compose|compromised Docker image (berriai/litellm:v1.107.0)" \
     "LiteLLM Docker digest in Dockerfile|compromised Docker image digest (sha256:1bbcb1443bc9" \
     "cook.pth in site-packages|LiteLLM 1.107.0 startup hook (cook.pth in site-packages)" \
+    "cook.pth in dist-packages|LiteLLM 1.107.0 startup hook (cook.pth in dist-packages)" \
     "testmetest C2 domain|testmetest worm fallback C2 domain (aiarmor.website)" \
     "testmetest campaign ID|testmetest worm campaign ID (msync-3f7a)" \
     "testmetest repository loader|testmetest worm repository loader (node .github/init.js)" \
-    ".napi_cache by filename|encrypted payload container (.napi_cache)" \
+    ".napi_cache corroborated by worm markers|encrypted payload container (.napi_cache, corroborated)" \
     "@subql/common C2 domain|@subql/common 5.8.3 C2 domain (ci-artifacts.dev)" \
     "@subql/common lock file|worker lock file (tmp.ts018051808.lock)" \
     "Cursor extension C2 address|C2 address (134.209.82.225)" \
-    "wheel files are hashed|hash-target.whl" \
+    "LiteLLM wheel name is hashed|litellm-1.107.0-py3-none-any.whl" \
     "cook.pth is hashed|0de55f3a091b139f4abe0c0272ef8143449efe7eca0f779b5c3fad5d4f360503"
 do
     label="${oct_check%|*}"
@@ -607,16 +608,42 @@ do
 done
 
 # The clean fixture is asserted overall by the EXPECTED table; pin the specific
-# regression too. litellm.dev_mode must never read as the attacker domain.
-((total++))
+# regressions too. litellm.dev_mode must never read as the attacker domain, internal
+# hostnames that merely start with an attacker domain must not either, and a lone
+# .napi_cache is an ordinary cache name.
 OCT_CLEAN=$("$BASH_CMD" "$DETECTOR" "$SCRIPT_DIR/test-cases/oct-2026-clean" 2>&1)
-if grep -qF "LiteLLM 1.107.0" <<< "$OCT_CLEAN"; then
-    echo -e "${RED}FAIL${NC}: ordinary LiteLLM use flagged as an October 2026 indicator"
-    ((failed++))
-else
-    echo -e "${GREEN}PASS${NC}: litellm.dev_mode and a clean image tag are not flagged"
+for octclean_check in \
+    "LiteLLM 1.107.0|litellm.dev_mode, a clean image tag and litellm.dev.* internal hosts are not flagged" \
+    "C2 domain (ci-artifacts.dev)|ci-artifacts.dev.internal is not read as the @subql C2 domain" \
+    "(.napi_cache|a lone .napi_cache is not flagged without corroboration"
+do
+    pattern="${octclean_check%%|*}"
+    label="${octclean_check#*|}"
+    ((total++))
+    if grep -qF "$pattern" <<< "$OCT_CLEAN"; then
+        echo -e "${RED}FAIL${NC}: oct-2026-clean: $label (found: '$pattern')"
+        ((failed++))
+    else
+        echo -e "${GREEN}PASS${NC}: oct-2026-clean: $label"
+        ((passed++))
+    fi
+done
+
+# .napi_cache counts on its own only beside the worm's native loader.
+NAPI_TMP=$(mktemp -d)
+# Inert: two placeholder text files; neither is a real cache or addon.
+echo 'placeholder' > "$NAPI_TMP/.napi_cache"
+echo 'placeholder' > "$NAPI_TMP/addon.node"
+((total++))
+NAPI_OUT=$("$BASH_CMD" "$DETECTOR" "$NAPI_TMP" 2>&1)
+if grep -qF "encrypted payload container (.napi_cache, corroborated)" <<< "$NAPI_OUT"; then
+    echo -e "${GREEN}PASS${NC}: .napi_cache beside addon.node is flagged"
     ((passed++))
+else
+    echo -e "${RED}FAIL${NC}: .napi_cache beside addon.node was not flagged"
+    ((failed++))
 fi
+rm -rf "$NAPI_TMP"
 
 # --check-host: the Cursor extension's persistence lives outside any project.
 OCTHOST_TMP=$(mktemp -d)
@@ -1021,7 +1048,12 @@ fi
 # compromised pin is not cleared, and a safe pin is resolved to its locked version.
 ((total++))
 BUNSEM_OUT=$("$BASH_CMD" "$DETECTOR" --check-semver-ranges "$SCRIPT_DIR/test-cases/bun-lock-attack" 2>&1)
-if grep -qF "safe lockfile versions" <<< "$BUNSEM_OUT"; then
+# The positive half proves the range check ran at all; without it, a check that never
+# reached bun.lock would pass simply by printing nothing.
+if ! grep -qF "semver ranges that could match compromised versions" <<< "$BUNSEM_OUT"; then
+    echo -e "${RED}FAIL${NC}: --check-semver-ranges did not evaluate the bun-lock-attack range"
+    ((failed++))
+elif grep -qF "safe lockfile versions" <<< "$BUNSEM_OUT"; then
     echo -e "${RED}FAIL${NC}: bun.lock pin cleared as a safe lockfile version under --check-semver-ranges"
     ((failed++))
 else
@@ -1052,7 +1084,14 @@ printf '{"name":"p","version":"1.0.0","dependencies":{"keyv":"^6.0.0"}}\n' > "$B
 printf '{\n  "lockfileVersion": 1,\n  "packages": {\n    "a/keyv": ["keyv@4.5.4", "", {}, "sha512-AAAA"],\n\n    "keyv": ["keyv@6.0.0", "", {}, "sha512-AAAA"],\n  }\n}\n' > "$BUNNEST_TMP/bun.lock"
 ((total++))
 BUNNEST_OUT=$("$BASH_CMD" "$DETECTOR" --check-semver-ranges "$BUNNEST_TMP" 2>&1)
-if grep -qF "locked to 4.5.4" <<< "$BUNNEST_OUT"; then
+# A lockfile lookup that found the compromised top-level pin is silent by design, so
+# also require that the range was evaluated and that bun.lock was actually consulted
+# ("no lockfile" would mean it was not).
+if ! grep -qF "semver ranges that could match compromised versions" <<< "$BUNNEST_OUT" || \
+   grep -qF "no lockfile" <<< "$BUNNEST_OUT"; then
+    echo -e "${RED}FAIL${NC}: bun.lock was not consulted for the nested-vs-top-level range"
+    ((failed++))
+elif grep -qF "locked to 4.5.4" <<< "$BUNNEST_OUT"; then
     echo -e "${RED}FAIL${NC}: bun.lock nested copy reported in place of the top-level pin"
     ((failed++))
 else
@@ -1060,6 +1099,26 @@ else
     ((passed++))
 fi
 rm -rf "$BUNNEST_TMP"
+
+# A top-level npm alias ("keyv" resolving to a fork) is not the real keyv, so a lookup of
+# keyv must stop at it rather than fall through to an unrelated nested keyv@4.5.4.
+BUNALIAS_TMP=$(mktemp -d)
+# Inert: version strings only.
+printf '{"name":"p","version":"1.0.0","dependencies":{"keyv":"^6.0.0"}}\n' > "$BUNALIAS_TMP/package.json"
+printf '{\n  "lockfileVersion": 1,\n  "packages": {\n    "flat-cache/keyv": ["keyv@4.5.4", "", {}, "sha512-AAAA"],\n\n    "keyv": ["@my/keyv-fork@1.0.0", "", {}, "sha512-AAAA"],\n  }\n}\n' > "$BUNALIAS_TMP/bun.lock"
+((total++))
+BUNALIAS_OUT=$("$BASH_CMD" "$DETECTOR" --check-semver-ranges "$BUNALIAS_TMP" 2>&1)
+if ! grep -qF "semver ranges that could match compromised versions" <<< "$BUNALIAS_OUT"; then
+    echo -e "${RED}FAIL${NC}: --check-semver-ranges did not evaluate the bun.lock alias range"
+    ((failed++))
+elif grep -qF "locked to 4.5.4" <<< "$BUNALIAS_OUT" || grep -qF "keyv@1.0.0" <<< "$BUNALIAS_OUT"; then
+    echo -e "${RED}FAIL${NC}: bun.lock alias resolved to an unrelated nested copy or filed under the alias name"
+    ((failed++))
+else
+    echo -e "${GREEN}PASS${NC}: bun.lock top-level alias stops the lookup instead of borrowing a nested copy"
+    ((passed++))
+fi
+rm -rf "$BUNALIAS_TMP"
 
 ((total++))
 SHRINK_OUT=$("$BASH_CMD" "$DETECTOR" "$SCRIPT_DIR/test-cases/npm-shrinkwrap-attack" 2>&1)

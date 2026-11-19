@@ -29,7 +29,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPROMISED_PACKAGES_FILE="$SCRIPT_DIR/compromised-packages.txt"
 
 # Tool version (surfaced in --json output for downstream consumers)
-SCRIPT_VERSION="3.21.0"
+SCRIPT_VERSION="3.21.1"
 
 # Global temp directory for file-based storage
 TEMP_DIR=""
@@ -353,11 +353,16 @@ MALICIOUS_HASHLIST=(
     "80402fdcad8799285fd93044976973ca000da7995fb93363f819bb8e4f84ee6c" # Oct 29, 2026 Cursor marketplace Claude Code extension: 2.1.313 darwin-arm64 VSIX (Cursor/StepSecurity IOC)
     "6786ec90cbd45949695bd7805c9fbb26cfc91bc5fc897de0183d9bcb9cb21731" # Oct 29, 2026 Cursor marketplace Claude Code extension: 2.1.313 win32-x64 VSIX (Cursor/StepSecurity IOC)
     "ecb58cb29078d9646ad1dcdbe51526f2d9cfea06be5fb2ab183e8ecc3ab6bf15" # Oct 29, 2026 Cursor marketplace Claude Code extension: extension.js (Cursor/StepSecurity IOC)
-    "b99e03c75e19aa59c7011be0020aa671ebd28e8c621afe1a0ddd5be7db2cba0c" # test-cases/oct-2026-attack/hash-target.whl
+    "b99e03c75e19aa59c7011be0020aa671ebd28e8c621afe1a0ddd5be7db2cba0c" # test-cases/oct-2026-attack/litellm-1.107.0-py3-none-any.whl
     "0de55f3a091b139f4abe0c0272ef8143449efe7eca0f779b5c3fad5d4f360503" # test-cases/oct-2026-attack/fake-env/site-packages/cook.pth
 )
 
 PARALLELISM=4
+
+# Fake-Bun preinstall loader commands, shared by check_preinstall_bun_patterns (which
+# detects them) and generate_report (which names the one it found). Keeping one copy
+# means a new loader path cannot be detected but then reported as an unnamed loader.
+BUN_LOADER_CMD_RE='node (setup_bun\.js|bun_installer\.js|(lib/)?setup\.mjs)'
 if [[ "$OSTYPE" == "linux-gnu"* ]]; then
   PARALLELISM=$(nproc)
 elif [[ "$OSTYPE" == "darwin"* ]]; then
@@ -1440,7 +1445,9 @@ collect_all_files() {
             -name "go.mod" -o -name "go.sum" -o \
             -name "mix.exs" -o -name "mix.lock" -o \
             -name "Gemfile" -o -name "Gemfile.lock" -o \
-            -name "*.whl" -o -name "*.vsix" -o -name "cook.pth" -o \
+            -name "litellm-1.107.0-*.whl" -o \
+            -name "*.vsix" -o \
+            -name "cook.pth" -o \
             -name ".napi_cache" -o -name "Dockerfile*" \
         \) -type f 2>/dev/null || true
     } > "$TEMP_DIR/all_files_raw.txt"
@@ -3252,9 +3259,11 @@ check_hades_miasma_indicators() {
 #          independent sources.
 #          Matching is deliberately narrow. "litellm.dev" alone would hit Python
 #          attribute access such as litellm.dev_mode, so the attacker domain is only
-#          matched with its URL scheme or defanged. cook.py is not matched by name at
-#          all, and cook.pth only inside site-packages, because both names are
-#          ordinary outside this incident. "svc-telemetry" is a plausible service name,
+#          matched with its URL scheme or defanged, and with a host boundary so an
+#          internal name such as litellm.dev.svc.cluster.local does not fire.
+#          cook.py is not matched by name at all, and cook.pth only inside
+#          site-packages or dist-packages, because both names are ordinary outside
+#          this incident. .napi_cache needs corroboration for the same reason. "svc-telemetry" is a plausible service name,
 #          so it counts only inside authorized_keys. Attacker IPs reported by a single
 #          vendor are left out.
 # Args: $1 = scan_dir, $2 = check_host ("true"/"false")
@@ -3273,8 +3282,6 @@ check_oct_2026_indicators() {
     sort -u "$TEMP_DIR/_oct_2026_search_files.txt" -o "$TEMP_DIR/_oct_2026_search_files.txt"
 
     scan_fixed_iocs "$TEMP_DIR/_oct_2026_search_files.txt" "$TEMP_DIR/oct_2026_indicators.txt" \
-        $'://litellm.dev\tLiteLLM 1.107.0 attacker domain (%s)' \
-        $'://www.litellm.dev\tLiteLLM 1.107.0 attacker domain (%s)' \
         $'litellm[.]dev\tLiteLLM 1.107.0 attacker domain (%s)' \
         $'letters9813/pythonclient-test\tLiteLLM 1.107.0 C2 dead-drop repository (%s)' \
         $'XWiA8gZNa7NcX2XRoAEb\tLiteLLM 1.107.0 C2 request token (%s)' \
@@ -3297,20 +3304,64 @@ check_oct_2026_indicators() {
         $'node .github/init.js\ttestmetest worm repository loader (%s)' \
         $'net-health-checker.sh\ttestmetest worm dead-man\'s-switch persistence (%s)' \
         $'.fontconfig_state\ttestmetest worm persistence state file (%s)' \
-        $'ci-artifacts.dev\t@subql/common 5.8.3 C2 domain (%s)' \
         $'ci-artifacts[.]dev\t@subql/common 5.8.3 C2 domain (%s)' \
         $'MANIFEST_CACHE_SEED\t@subql/common 5.8.3 payload seed array (%s)' \
         $'tmp.ts018051808.lock\t@subql/common 5.8.3 worker lock file (%s)' \
         $'134.209.82.225\tCursor marketplace Claude Code extension C2 address (%s)' \
         $'134[.]209[.]82[.]225\tCursor marketplace Claude Code extension C2 address (%s)'
 
-    # By filename: the startup hook and the worm's encrypted payload container.
-    local file
+    # Attacker domains that are also plausible internal hostnames. A plain substring
+    # would read litellm.dev.svc.cluster.local (a LiteLLM proxy in a "dev" Kubernetes
+    # namespace) or ci-artifacts.dev.internal as the attacker host, so each literal is
+    # used only as a prefilter, and the hit must also pass a host-boundary regex: the
+    # name may not run on into another label (".x", "-x", "x"). A trailing "." is
+    # allowed only as punctuation, not as the start of a longer name. litellm.dev keeps
+    # its URL scheme because "litellm.dev" alone is also Python attribute access.
+    local bounded_row bounded_literal bounded_re bounded_msg file
+    local host_end='([^A-Za-z0-9._-]|[.]([^A-Za-z0-9_-]|$)|$)'
+    for bounded_row in \
+        "://litellm.dev"$'\t'"://litellm[.]dev${host_end}"$'\t'"LiteLLM 1.107.0 attacker domain (://litellm.dev)" \
+        "://www.litellm.dev"$'\t'"://www[.]litellm[.]dev${host_end}"$'\t'"LiteLLM 1.107.0 attacker domain (://www.litellm.dev)" \
+        "ci-artifacts.dev"$'\t'"(^|[^A-Za-z0-9-])ci-artifacts[.]dev${host_end}"$'\t'"@subql/common 5.8.3 C2 domain (ci-artifacts.dev)"
+    do
+        bounded_literal="${bounded_row%%$'\t'*}"
+        bounded_re="${bounded_row#*$'\t'}"
+        bounded_msg="${bounded_re#*$'\t'}"
+        bounded_re="${bounded_re%%$'\t'*}"
+        fast_grep_files_fixed_list "$TEMP_DIR/_oct_2026_search_files.txt" "$bounded_literal" | \
+            while IFS= read -r file; do
+                # An if, not an && chain: a prefilter hit that fails the boundary check
+                # must not leave a non-zero status for set -e to act on.
+                if [[ -n "$file" ]] && fast_grep_quiet "$bounded_re" "$file"; then
+                    echo "$file:$bounded_msg" >> "$TEMP_DIR/oct_2026_indicators.txt"
+                fi
+            done
+    done
+
+    # By filename: the startup hook. Debian and Ubuntu system Python installs into
+    # dist-packages rather than site-packages, so both are matched.
+    local pth_dir
     while IFS= read -r file; do
-        [[ -n "$file" ]] && echo "$file:LiteLLM 1.107.0 startup hook (cook.pth in site-packages)" >> "$TEMP_DIR/oct_2026_indicators.txt"
-    done < <(grep -E '/site-packages/cook\.pth$' "$TEMP_DIR/all_files_raw.txt" 2>/dev/null || true)
+        [[ -z "$file" ]] && continue
+        pth_dir="${file%/cook.pth}"
+        pth_dir="${pth_dir##*/}"
+        echo "$file:LiteLLM 1.107.0 startup hook (cook.pth in $pth_dir)" >> "$TEMP_DIR/oct_2026_indicators.txt"
+    done < <(grep -E '/(site|dist)-packages/cook\.pth$' "$TEMP_DIR/all_files_raw.txt" 2>/dev/null || true)
+
+    # By filename, corroborated: the worm's encrypted payload container. "napi" is the
+    # Node-API prefix used across native-addon tooling, so .napi_cache is not reported
+    # on its name alone (the reason cook.py and a bare cook.pth are not matched either).
+    # It counts only next to the worm's native loader (addon.node / addon_win.node in
+    # the same directory) or in a scan that already matched a testmetest content
+    # indicator above.
+    local napi_dir napi_corroborated=false
+    grep -qF ':testmetest worm ' "$TEMP_DIR/oct_2026_indicators.txt" 2>/dev/null && napi_corroborated=true
     while IFS= read -r file; do
-        [[ -n "$file" ]] && echo "$file:testmetest worm encrypted payload container (.napi_cache)" >> "$TEMP_DIR/oct_2026_indicators.txt"
+        [[ -z "$file" ]] && continue
+        napi_dir="${file%/.napi_cache}"
+        if [[ "$napi_corroborated" == "true" || -e "$napi_dir/addon.node" || -e "$napi_dir/addon_win.node" ]]; then
+            echo "$file:testmetest worm encrypted payload container (.napi_cache, corroborated)" >> "$TEMP_DIR/oct_2026_indicators.txt"
+        fi
     done < <(grep -E '/\.napi_cache$' "$TEMP_DIR/all_files_raw.txt" 2>/dev/null || true)
 
     # Host persistence, opt-in. None of these live in a project tree.
@@ -3455,7 +3506,6 @@ check_keyv_indicators() {
         #
         # The address is a 40-hex string with no benign reason to appear in a
         # dependency tree, so it is matched on its own.
-        local kv_contract
         scan_fixed_iocs "$TEMP_DIR/code_files.txt" "$TEMP_DIR/keyv_indicators.txt" \
             $'0xE1f2395ee43e45A1556EC6438a88c31B83493103\tkeyv/cacheable wave C2-rotation contract address (%s)' \
             $'0xe1f2395ee43e45a1556ec6438a88c31b83493103\tkeyv/cacheable wave C2-rotation contract address (%s)'
@@ -3492,7 +3542,6 @@ check_keyv_indicators() {
         #     public RPCs, so they are not matched). This is the durable indicator.
         #   - wallet 0x779f83aE…: the operator wallet that writes to that contract.
         # Addresses are matched in checksummed and lowercase forms, as for IOC 2.
-        local tl_ioc
         scan_fixed_iocs "$TEMP_DIR/code_files.txt" "$TEMP_DIR/keyv_indicators.txt" \
             $'iseekaigogo.com\ttensorlake wave (Oct 8, 2026) C2 domain (%s)' \
             $'iseekaigogo[.]com\ttensorlake wave (Oct 8, 2026) C2 domain (%s)' \
@@ -4007,7 +4056,7 @@ check_preinstall_bun_patterns() {
     while IFS= read -r file; do
         if [[ -f "$file" ]]; then
             # Check if the file contains the malicious preinstall pattern
-            if grep -Eq '"preinstall"[[:space:]]*:[[:space:]]*"node (setup_bun\.js|bun_installer\.js|(lib/)?setup\.mjs)"' "$file" 2>/dev/null; then
+            if grep -Eq "\"preinstall\"[[:space:]]*:[[:space:]]*\"$BUN_LOADER_CMD_RE\"" "$file" 2>/dev/null; then
                 echo "$file" >> "$TEMP_DIR/preinstall_bun_patterns.txt"
             fi
         fi
@@ -4129,6 +4178,13 @@ check_file_hashes() {
     # (all of them), measured on macOS with -P 8. That is the price of the hash IoCs
     # working at all, and it stays bounded because of the intersection rewrite below —
     # with the old grep-per-hashed-file loop the same sweep took ~216s.
+    #
+    # Wheels are the one exception, and it is made at collection time: only
+    # litellm-1.107.0-*.whl is collected, the only wheel name that can carry a listed
+    # hash. A wheelhouse or vendored pip cache holds wheels of 1-2 GB each (torch,
+    # tensorflow), and hashing all of them added minutes to every scan for nothing.
+    # VSIX archives are still collected by extension: they are rare and small, and a
+    # renamed download must still reach its hash.
     print_status "$BLUE" "   Preparing files for hash checking..."
     sort -u "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/priority_files.txt" 2>/dev/null || \
         touch "$TEMP_DIR/priority_files.txt"
@@ -4278,13 +4334,21 @@ transform_yarn_lock() {
 #       Workspace, git, file and tarball entries ("pkg@workspace:...", "pkg@github:...")
 #       carry no semver version and are skipped by the version check below.
 #       The binary bun.lockb predecessor is not parsed.
+#
+#       $2 = "lookup" is for get_lockfile_version only. A top-level npm alias
+#       ("keyv": ["@my/keyv-fork@1.0.0", ...]) then also gets a placeholder entry under
+#       the alias name with version "alias", so a lookup of "keyv" stops there instead
+#       of falling through to an unrelated nested keyv. It is never emitted for
+#       check_package_integrity: the alias's version belongs to the fork, and filing it
+#       under the alias name could match a compromised version of the real package.
 transform_bun_lock() {
     local lockfile=$1
+    local mode=${2:-}
 
     echo "{"
     echo "  \"packages\": {"
 
-    awk '
+    awk -v mode="$mode" '
         /^[[:space:]]*"packages"[[:space:]]*:[[:space:]]*\{/ { in_pkgs = 1; next }
 
         in_pkgs && /^[[:space:]]*"[^"]+"[[:space:]]*:[[:space:]]*\[[[:space:]]*"/ {
@@ -4303,7 +4367,12 @@ transform_bun_lock() {
                 sub(/".*/, "", k)
                 entry = sprintf("    \"node_modules/%s\": {\n      \"version\": \"%s\"\n    },\n", name, v)
                 if (k == name) printf "%s", entry
-                else nested = nested entry
+                else {
+                    # A plain package name as the key (no install path) is a top-level alias.
+                    if (mode == "lookup" && k ~ /^(@[^\/]+\/)?[^\/@]+$/)
+                        printf "    \"node_modules/%s\": {\n      \"version\": \"alias\"\n    },\n", k
+                    nested = nested entry
+                }
             }
         }
 
@@ -4935,6 +5004,51 @@ is_legitimate_pattern() {
     return 1  # potentially suspicious
 }
 
+# Function: transformed_lockfile_version
+# Purpose: Look up a package's resolved version in a yarn.lock or bun.lock, through the
+#          same transform check_package_integrity uses.
+# Args: $1 = lockfile path, $2 = package name
+# Returns: Prints the version, or nothing if the package is absent or the matching
+#          entry has no semver version (a bun.lock alias placeholder).
+# Note: The key is compared as an exact string. It used to be interpolated into an awk
+#       regex, where the "." in names like lodash.get matched any character.
+#       Under --check-semver-ranges this runs once per dependency, so the transform is
+#       cached per lockfile for the rest of the run instead of being rebuilt each time.
+transformed_lockfile_version() {
+    local lockfile=$1 package_name=$2 transformed=""
+
+    if [[ -n "${TEMP_DIR:-}" && -d "$TEMP_DIR" ]]; then
+        local sum
+        sum=$(printf '%s' "$lockfile" | cksum | tr ' ' '_')
+        transformed="$TEMP_DIR/_lock_lookup.$sum.json"
+    fi
+    if [[ -z "$transformed" || ! -f "$transformed" ]]; then
+        local out
+        case "$(basename "$lockfile")" in
+            yarn.lock) out=$(transform_yarn_lock "$lockfile" 2>/dev/null) ;;
+            bun.lock)  out=$(transform_bun_lock "$lockfile" lookup 2>/dev/null) ;;
+            *) return 0 ;;
+        esac
+        if [[ -n "$transformed" ]]; then
+            printf '%s\n' "$out" > "$transformed"
+        else
+            transformed=$(mktemp "${TMPDIR:-/tmp}/lock-lookup.XXXXXXXX")
+            TEMP_FILES+=("$transformed")
+            printf '%s\n' "$out" > "$transformed"
+        fi
+    fi
+
+    awk -v key="\"node_modules/$package_name\":" '
+        { line = $0; sub(/^[[:space:]]+/, "", line) }
+        !want && index(line, key) == 1 { want = 1; next }
+        want && /"version"/ {
+            split($0, parts, "\"")
+            for (i in parts) if (parts[i] ~ /^[0-9]/) { print parts[i]; exit }
+            exit
+        }
+    ' "$transformed" 2>/dev/null || true
+}
+
 # Function: get_lockfile_version
 # Purpose: Extract actual installed version from lockfile for a specific package
 # Args: $1 = package_name, $2 = package_json_dir (directory containing package.json), $3 = scan_boundary (original scan directory)
@@ -4994,14 +5108,7 @@ get_lockfile_version() {
             # compromised version did not merely go unnoticed, it was affirmatively
             # cleared. The resolved version only exists on the block's `version` line.
             local found_version
-            found_version=$(transform_yarn_lock "$current_dir/yarn.lock" 2>/dev/null | \
-                awk -v pkg="node_modules/$package_name" '
-                    $0 ~ "\"" pkg "\":" { want = 1; next }
-                    want && /"version"/ {
-                        split($0, parts, "\"")
-                        for (i in parts) if (parts[i] ~ /^[0-9]/) { print parts[i]; exit }
-                    }
-                ' 2>/dev/null || true)
+            found_version=$(transformed_lockfile_version "$current_dir/yarn.lock" "$package_name")
             if [[ -n "$found_version" ]]; then
                 echo "$found_version"
                 return
@@ -5011,14 +5118,7 @@ get_lockfile_version() {
         # Check for bun.lock (resolved version comes from transform_bun_lock, as for yarn.lock)
         if [[ -f "$current_dir/bun.lock" ]]; then
             local found_version
-            found_version=$(transform_bun_lock "$current_dir/bun.lock" 2>/dev/null | \
-                awk -v pkg="node_modules/$package_name" '
-                    $0 ~ "\"" pkg "\":" { want = 1; next }
-                    want && /"version"/ {
-                        split($0, parts, "\"")
-                        for (i in parts) if (parts[i] ~ /^[0-9]/) { print parts[i]; exit }
-                    }
-                ' 2>/dev/null || true)
+            found_version=$(transformed_lockfile_version "$current_dir/bun.lock" "$package_name")
             if [[ -n "$found_version" ]]; then
                 echo "$found_version"
                 return
@@ -6357,8 +6457,9 @@ generate_report() {
 
     if [[ -s "$TEMP_DIR/keyv_indicators.txt" ]]; then
         print_status "$RED" "🚨 HIGH RISK: keyv/cacheable (ChainDrop) family IOCs detected (Aug 4 keyv wave, Oct 8 tensorlake):"
-        print_status "$RED" "    ⚠️  Fallback exfiltration endpoint for the keyv/cacheable Shai-Hulud wave. The"
-        print_status "$RED" "        primary channel is GitHub dead-drop repos; this is the network fallback."
+        print_status "$RED" "    ⚠️  Infrastructure and payload markers of the keyv/cacheable (ChainDrop) family:"
+        print_status "$RED" "        C2 domains, the on-chain C2-rotation contracts and operator wallet, and the"
+        print_status "$RED" "        worm's infection-tag variable. Each reason line says which one matched."
         while IFS= read -r line; do
             local file="${line%%:*}"
             local reason="${line#*:}"
@@ -6562,7 +6663,7 @@ generate_report() {
             echo "   - $file"
             # Name the command actually found: the pattern covers several loader
             # filenames, and quoting the wrong one sends a responder hunting for it.
-            preinstall_cmd=$(grep -Eo '"node (setup_bun\.js|bun_installer\.js|(lib/)?setup\.mjs)"' "$file" 2>/dev/null | head -1 | tr -d '"')
+            preinstall_cmd=$(grep -Eo "\"$BUN_LOADER_CMD_RE\"" "$file" 2>/dev/null | head -1 | tr -d '"')
             show_file_preview "$file" "HIGH RISK: package.json contains malicious preinstall: ${preinstall_cmd:-fake Bun loader}"
             high_risk=$((high_risk+1))
         done < "$TEMP_DIR/preinstall_bun_patterns.txt"

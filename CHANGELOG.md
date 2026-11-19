@@ -5,6 +5,27 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.21.1] - 2026-11-19
+
+Fixes for the findings of a code review of 3.20.0 through 3.21.0. No IoCs were added or removed.
+
+### Fixed
+- **LiteLLM and @subql attacker domains no longer fire on internal hostnames.** `://litellm.dev` and `ci-artifacts.dev` were plain substrings, so a LiteLLM proxy in a `dev` Kubernetes namespace (`http://litellm.dev.svc.cluster.local:4000`), `litellm.dev-proxy` or `ci-artifacts.dev.internal` produced a HIGH "rebuild the host" finding. The literals are now only a prefilter, and a hit must also pass a host-boundary regex: the name may not run on into another label. `ci-artifacts.dev` also needs a boundary on the left, so `my-ci-artifacts.dev` does not match, while a subdomain such as `x.ci-artifacts.dev` still does. Checked on all three grep backends.
+- **`.napi_cache` is no longer reported on its filename alone.** `napi` is the Node-API prefix across native-addon tooling, so an ordinary cache with that name was a HIGH finding. It now counts only beside the worm's native loader (`addon.node` or `addon_win.node` in the same directory) or in a scan that already matched a testmetest content indicator. This follows the rule that kept bare `cook.py` and `cook.pth` from being matched.
+- **`cook.pth` is now also found under `dist-packages`**, where Debian and Ubuntu system Python installs packages. Before, only the exact-hash check could catch it there, and any byte variant got past.
+- **A top-level npm alias in `bun.lock` no longer borrows an unrelated nested version** under `--check-semver-ranges`. With `"keyv"` aliased to a fork and a nested `flat-cache/keyv@4.5.4`, the lookup reported "locked to 4.5.4". The alias now stops the lookup. Its version is never filed under the alias name for the compromised-version check, where a fork's version could match a compromised version of the real package.
+- **The keyv/ChainDrop report subtitle** called every hit a "fallback exfiltration endpoint". That has not been true since the tensorlake contract, wallet and `WORMTAG` rows were added. It now describes all of them.
+- **A crash path in the new boundary check was caught before release.** A prefilter hit that failed the boundary regex left a non-zero status in a pipeline, and `set -eo pipefail` ended the scan silently in the middle of Stage 5. It now uses an explicit `if`.
+
+### Changed
+- **Wheels are collected by name, not by extension.** 3.21.0 hashed every `*.whl` in the tree, so a wheelhouse of 1-2 GB wheels added minutes to every scan, though only LiteLLM wheel hashes can match. Only `litellm-1.107.0-*.whl` is collected now. VSIX archives are still collected by extension, because they are small and rare, and a renamed download must still reach its hash (this includes the May 18 Nx Console VSIX).
+- **yarn.lock and bun.lock lookups share one helper**, `transformed_lockfile_version`. It compares the package key as an exact string, where the old awk regex let the `.` in names like `lodash.get` match any character. It also caches the transformed lockfile for the rest of the run instead of rebuilding it for every dependency.
+- **The fake-Bun preinstall loader pattern** is one variable, `BUN_LOADER_CMD_RE`, shared by detection and the report, so a new loader path cannot be detected but then reported as an unnamed loader.
+- **Fixtures hold no runnable code and no executable files.** `oct-2026-clean/app.py` had real `import litellm`, `import cook` and attribute statements. Nothing runs it, but on a host that already had the malicious LiteLLM, `import cook` would load the attacker's module. They are now string constants, which the scanner matches just the same. `semver-wildcards/test_semver_wildcards.sh` loses its executable bit; it is a harmless unit test, now run with `bash test_semver_wildcards.sh`.
+- Removed two unused locals in `check_keyv_indicators` (`tl_ioc` and the identical `kv_contract`).
+- **Tests**: the `bun.lock` semver checks now also assert that the range was evaluated and that `bun.lock` was consulted, so they cannot pass by printing nothing. New checks cover the internal-hostname guards, a lone and a corroborated `.napi_cache`, `cook.pth` under `dist-packages`, and the `bun.lock` alias. 335 to **340** checks.
+- **`shai-hulud-detector.sh`**: `SCRIPT_VERSION` 3.21.0 to 3.21.1.
+
 ## [3.21.0] - 2026-11-02
 
 ### Added
